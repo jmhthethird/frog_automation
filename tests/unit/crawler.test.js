@@ -62,6 +62,93 @@ describe('detectLauncher()', () => {
   });
 });
 
+// ─── findSeospiderFile() ──────────────────────────────────────────────────────
+describe('findSeospiderFile()', () => {
+  it('returns null when the directory does not exist', () => {
+    expect(crawler.findSeospiderFile(path.join(dataDir, 'nonexistent'))).toBeNull();
+  });
+
+  it('returns null when passed a falsy value', () => {
+    expect(crawler.findSeospiderFile(null)).toBeNull();
+    expect(crawler.findSeospiderFile('')).toBeNull();
+  });
+
+  it('returns null when no .seospider file is present', () => {
+    const dir = path.join(dataDir, 'no-seospider');
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'results.csv'), 'col\nval\n');
+    expect(crawler.findSeospiderFile(dir)).toBeNull();
+  });
+
+  it('returns the .seospider file path when one is present', () => {
+    const dir = path.join(dataDir, 'has-seospider');
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'crawl.seospider'), 'db-data');
+    const result = crawler.findSeospiderFile(dir);
+    expect(result).toBe(path.join(dir, 'crawl.seospider'));
+  });
+});
+
+// ─── spawnCompare() ───────────────────────────────────────────────────────────
+describe('spawnCompare()', () => {
+  const makeLogStream = () => {
+    const lines = [];
+    const stream = {
+      writable: true,
+      write: (line) => lines.push(line),
+      end: () => {},
+    };
+    return { stream, lines };
+  };
+
+  it('resolves when the compare process exits with code 0', async () => {
+    const { stream } = makeLogStream();
+    fakeProcExit(cp, 0, 'compare done', '');
+    await expect(
+      crawler.spawnCompare('/prev.seospider', '/new.seospider', dataDir, stream)
+    ).resolves.toBeUndefined();
+  });
+
+  it('passes --compare and --output-folder arguments to spawn', async () => {
+    const { stream } = makeLogStream();
+    fakeProcExit(cp, 0);
+    await crawler.spawnCompare('/prev.seospider', '/new.seospider', dataDir, stream);
+    const args = cp.spawn.mock.calls[0][1];
+    expect(args[0]).toBe('--compare');
+    expect(args[1]).toBe('/prev.seospider');
+    expect(args[2]).toBe('/new.seospider');
+    expect(args).toContain('--output-folder');
+    expect(args[args.indexOf('--output-folder') + 1]).toBe(dataDir);
+    expect(args).toContain('--overwrite');
+  });
+
+  it('rejects when the compare process exits with non-zero code', async () => {
+    const { stream } = makeLogStream();
+    fakeProcExit(cp, 2);
+    await expect(
+      crawler.spawnCompare('/prev.seospider', '/new.seospider', dataDir, stream)
+    ).rejects.toThrow(/non-zero code: 2/i);
+  });
+
+  it('rejects when spawn throws (ENOENT)', async () => {
+    const { stream } = makeLogStream();
+    cp.spawn.mockImplementationOnce(() => {
+      throw Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' });
+    });
+    await expect(
+      crawler.spawnCompare('/prev.seospider', '/new.seospider', dataDir, stream)
+    ).rejects.toThrow(/spawn/i);
+  });
+
+  it('rejects when the compare process emits an error event', async () => {
+    const { stream } = makeLogStream();
+    fakeProcError(cp, new Error('compare crash'));
+    await expect(
+      crawler.spawnCompare('/prev.seospider', '/new.seospider', dataDir, stream)
+    ).rejects.toThrow(/compare crash/i);
+  });
+});
+
 // ─── zipOutput() ─────────────────────────────────────────────────────────────
 describe('zipOutput()', () => {
   it('creates a valid ZIP archive containing all files in the source directory', async () => {
@@ -284,6 +371,89 @@ describe('runJob()', () => {
     expect(result.status).toBe('completed');
     // No previous crawl exists for this URL, so no diff should be stored.
     expect(result.diff_summary).toBeNull();
+  });
+
+  it('runs SF compare when both .seospider files exist in prev and new output dirs', async () => {
+    const TARGET_URL = 'https://compare-test.example.com';
+    const csv = 'Address,Status Code\nhttps://compare-test.example.com/page,200\n';
+
+    // Create the previous completed job with a .seospider file.
+    const prevJobId = insertJob(db, dataDir, { url: TARGET_URL, status: 'completed' });
+    const prevJob   = db.prepare('SELECT * FROM jobs WHERE id = ?').get(prevJobId);
+    fs.mkdirSync(prevJob.output_dir, { recursive: true });
+    fs.writeFileSync(path.join(prevJob.output_dir, 'internal_all.csv'), csv);
+    fs.writeFileSync(path.join(prevJob.output_dir, 'prev.seospider'), 'db-data-prev');
+
+    // New job with a .seospider file in its output dir.
+    const jobId  = insertJob(db, dataDir, { url: TARGET_URL });
+    const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    fs.mkdirSync(newJob.output_dir, { recursive: true });
+    fs.writeFileSync(path.join(newJob.output_dir, 'internal_all.csv'), csv);
+    fs.writeFileSync(path.join(newJob.output_dir, 'new.seospider'), 'db-data-new');
+
+    // First spawn call: main crawl (succeeds).
+    fakeProcExit(cp, 0, 'crawl ok', '');
+
+    // Second spawn call: compare. Use mockImplementationOnce so the setImmediate
+    // is only scheduled when spawn() is actually called, ensuring listeners are
+    // attached before the 'close' event fires.
+    let compareArgs;
+    cp.spawn.mockImplementationOnce((cmd, args, opts) => {
+      compareArgs = args;
+      const proc = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      setImmediate(() => proc.emit('close', 0));
+      return proc;
+    });
+
+    await crawler.runJob(jobId);
+
+    const result = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(result.status).toBe('completed');
+
+    // spawn should have been called twice: once for crawl, once for compare.
+    expect(cp.spawn.mock.calls.length).toBe(2);
+
+    // The second call should use the --compare flag.
+    expect(compareArgs[0]).toBe('--compare');
+    // The compare output folder arg should point to a 'compare' subdirectory.
+    const outputFolderIdx = compareArgs.indexOf('--output-folder');
+    expect(outputFolderIdx).toBeGreaterThan(-1);
+    expect(compareArgs[outputFolderIdx + 1]).toMatch(/compare$/);
+  });
+
+  it('does not fail the job when SF compare exits with non-zero code', async () => {
+    const TARGET_URL = 'https://compare-fail-test.example.com';
+    const csv = 'Address,Status Code\nhttps://compare-fail-test.example.com/page,200\n';
+
+    const prevJobId = insertJob(db, dataDir, { url: TARGET_URL, status: 'completed' });
+    const prevJob   = db.prepare('SELECT * FROM jobs WHERE id = ?').get(prevJobId);
+    fs.mkdirSync(prevJob.output_dir, { recursive: true });
+    fs.writeFileSync(path.join(prevJob.output_dir, 'internal_all.csv'), csv);
+    fs.writeFileSync(path.join(prevJob.output_dir, 'prev.seospider'), 'db-data-prev');
+
+    const jobId  = insertJob(db, dataDir, { url: TARGET_URL });
+    const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    fs.mkdirSync(newJob.output_dir, { recursive: true });
+    fs.writeFileSync(path.join(newJob.output_dir, 'internal_all.csv'), csv);
+    fs.writeFileSync(path.join(newJob.output_dir, 'new.seospider'), 'db-data-new');
+
+    // Main crawl succeeds; compare fails with non-zero exit code.
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    cp.spawn.mockImplementationOnce(() => {
+      const proc = new EventEmitter();
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      setImmediate(() => proc.emit('close', 1));
+      return proc;
+    });
+
+    await crawler.runJob(jobId);
+
+    // Job should still be completed even though compare failed.
+    const result = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(result.status).toBe('completed');
   });
 });
 

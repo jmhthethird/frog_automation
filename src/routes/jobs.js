@@ -3,9 +3,11 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const archiver = require('archiver');
 const rateLimit = require('express-rate-limit');
 const { db, DATA_DIR } = require('../db');
 const { validateCronExpression, computeNextRun } = require('../scheduler');
+const { parseCSV } = require('../differ');
 
 const router = express.Router();
 
@@ -160,6 +162,92 @@ router.get('/:id/download', readLimit, (req, res) => {
   }
 
   res.download(realZip, `job-${job.id}-results.zip`);
+});
+
+// ─── SF Compare summary ───────────────────────────────────────────────────────
+router.get('/:id/compare', readLimit, (req, res) => {
+  const job = db.prepare('SELECT id, status, output_dir FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  if (job.status !== 'completed') {
+    return res.status(409).json({ error: 'Compare is only available for completed jobs' });
+  }
+
+  const compareDir = job.output_dir ? path.join(job.output_dir, 'compare') : null;
+
+  if (!compareDir) {
+    return res.status(404).json({ error: 'No compare output available – this may be the first crawl for this URL or .seospider files were not found' });
+  }
+
+  // Safety: ensure compareDir is inside DATA_DIR
+  const realCompare = path.resolve(compareDir);
+  const realData = path.resolve(DATA_DIR);
+  if (!realCompare.startsWith(realData + path.sep)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (!fs.existsSync(compareDir)) {
+    return res.status(404).json({ error: 'No compare output available – this may be the first crawl for this URL or .seospider files were not found' });
+  }
+
+  // Read all CSV files from the compare directory and return their data.
+  let entries;
+  try {
+    entries = fs.readdirSync(compareDir, { withFileTypes: true });
+  } catch {
+    return res.status(500).json({ error: 'Failed to read compare output directory' });
+  }
+
+  const files = {};
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.csv')) continue;
+    try {
+      const content = fs.readFileSync(path.join(compareDir, entry.name), 'utf8');
+      files[entry.name] = parseCSV(content);
+    } catch { /* skip unreadable files */ }
+  }
+
+  if (Object.keys(files).length === 0) {
+    return res.status(404).json({ error: 'No compare output available – this may be the first crawl for this URL or .seospider files were not found' });
+  }
+
+  res.json({ files });
+});
+
+// ─── SF Compare download (zip of compare CSVs) ───────────────────────────────
+router.get('/:id/compare/download', readLimit, (req, res) => {
+  const job = db.prepare('SELECT id, status, output_dir FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  if (job.status !== 'completed') {
+    return res.status(409).json({ error: 'Compare is only available for completed jobs' });
+  }
+
+  const compareDir = job.output_dir ? path.join(job.output_dir, 'compare') : null;
+
+  if (!compareDir || !fs.existsSync(compareDir)) {
+    return res.status(404).json({ error: 'No compare output available' });
+  }
+
+  // Safety: ensure compareDir is inside DATA_DIR
+  const realCompare = path.resolve(compareDir);
+  const realData = path.resolve(DATA_DIR);
+  if (!realCompare.startsWith(realData + path.sep)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  res.setHeader('Content-Disposition', `attachment; filename="job-${job.id}-compare.zip"`);
+  res.setHeader('Content-Type', 'application/zip');
+
+  const archive = archiver('zip', { zlib: { level: 6 } });
+  /* istanbul ignore next */
+  archive.on('error', (err) => {
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to create archive' });
+    else res.destroy(err);
+  });
+  archive.pipe(res);
+  archive.directory(compareDir, `job-${job.id}-compare`);
+  archive.finalize();
 });
 
 module.exports = router;

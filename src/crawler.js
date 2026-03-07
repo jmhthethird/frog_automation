@@ -13,6 +13,24 @@ const SF_LAUNCHER =
   '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher';
 
 /**
+ * Return the path of the first `.seospider` file found in `dir`, or `null`.
+ * @param {string} dir
+ * @returns {string|null}
+ */
+function findSeospiderFile(dir) {
+  if (!dir) return null;
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.seospider')) {
+        return path.join(dir, entry.name);
+      }
+    }
+  } catch { /* dir missing or unreadable */ }
+  return null;
+}
+
+/**
  * Run a crawl job end-to-end.
  * @param {number} jobId
  */
@@ -55,6 +73,20 @@ async function runJob(jobId) {
         if (diff) {
           db.prepare('UPDATE jobs SET diff_summary = ? WHERE id = ?')
             .run(JSON.stringify(diff), jobId);
+        }
+
+        // Run the native SF --compare feature when both .seospider databases exist.
+        try {
+          const prevSeospider = findSeospiderFile(prevJob.output_dir);
+          const newSeospider  = findSeospiderFile(outputDir);
+          if (prevSeospider && newSeospider) {
+            const compareDir = path.join(outputDir, 'compare');
+            fs.mkdirSync(compareDir, { recursive: true });
+            await spawnCompare(prevSeospider, newSeospider, compareDir, logStream);
+          }
+        } catch (compareErr) {
+          // Compare is non-critical – log but don't fail the job.
+          console.error(`[crawler] SF compare failed for job ${jobId}:`, compareErr);
         }
       }
     } catch (diffErr) {
@@ -145,6 +177,53 @@ function spawnCrawl(job, outputDir, logStream) {
 }
 
 /**
+ * Run the Screaming Frog --compare command against two .seospider databases.
+ * Output files (comparison CSVs) are written to `compareOutputDir`.
+ */
+function spawnCompare(prevSeospiderPath, newSeospiderPath, compareOutputDir, logStream) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '--compare', prevSeospiderPath, newSeospiderPath,
+      '--output-folder', compareOutputDir,
+      '--overwrite',
+    ];
+
+    const logLine = (prefix, data) => {
+      if (!logStream.writable) return;
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (line.trim()) logStream.write(`[COMPARE:${prefix}] ${line}\n`);
+      }
+    };
+
+    logStream.write(`[INFO] Running SF compare: ${SF_LAUNCHER} ${args.map(a => JSON.stringify(a)).join(' ')}\n`);
+
+    let proc;
+    try {
+      proc = spawn(SF_LAUNCHER, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (spawnErr) {
+      return reject(new Error(`Failed to spawn compare: ${spawnErr.message}`));
+    }
+
+    proc.stdout.on('data', (d) => logLine('STDOUT', d));
+    proc.stderr.on('data', (d) => logLine('STDERR', d));
+
+    proc.on('error', (err) => {
+      reject(new Error(`Compare process error: ${err.message}`));
+    });
+
+    proc.on('close', (code) => {
+      if (logStream.writable) logStream.write(`[INFO] Compare process exited with code ${code}\n`);
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Screaming Frog compare exited with non-zero code: ${code}`));
+      }
+    });
+  });
+}
+
+/**
  * Zip the output directory into <outputDir>.zip (placed alongside the dir).
  */
 function zipOutput(outputDir, jobId) {
@@ -177,4 +256,4 @@ function detectLauncher() {
   }
 }
 
-module.exports = { runJob, detectLauncher, zipOutput, SF_LAUNCHER };
+module.exports = { runJob, detectLauncher, zipOutput, findSeospiderFile, spawnCompare, SF_LAUNCHER };
