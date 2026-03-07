@@ -24,6 +24,7 @@ app.set('queue', queue);
 app.use('/api/jobs', require('./src/routes/jobs'));
 app.use('/api/profiles', require('./src/routes/profiles'));
 app.use('/api/health', require('./src/routes/health'));
+app.use('/api/update', require('./src/routes/update'));
 
 // ─── startServer ─────────────────────────────────────────────────────────────
 /**
