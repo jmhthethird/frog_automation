@@ -147,11 +147,11 @@ describe('POST /api/jobs', () => {
 
   it('uses custom export tabs when provided', async () => {
     const res = await ctx.request.post('/api/jobs')
-      .send({ url: 'https://custom.example.com', export_tabs: 'Redirects:All' })
+      .send({ url: 'https://custom.example.com', export_tabs: 'Redirect Chains:All' })
       .set('Content-Type', 'application/json')
       .expect(201);
 
-    expect(res.body.export_tabs).toBe('Redirects:All');
+    expect(res.body.export_tabs).toBe('Redirect Chains:All');
   });
 
   it('creates a job with a valid profile_id', async () => {
