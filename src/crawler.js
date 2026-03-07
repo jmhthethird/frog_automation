@@ -126,4 +126,4 @@ function detectLauncher() {
   }
 }
 
-module.exports = { runJob, detectLauncher, SF_LAUNCHER };
+module.exports = { runJob, detectLauncher, zipOutput, SF_LAUNCHER };

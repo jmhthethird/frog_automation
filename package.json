@@ -22,8 +22,11 @@
     "multer": "2.1.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "electron": "35.7.5",
-    "electron-builder": "26.8.1"
+    "electron-builder": "26.8.1",
+    "jest": "^30.2.0",
+    "supertest": "^7.2.2"
   },
   "build": {
     "appId": "com.frogautomation.app",
@@ -48,8 +51,18 @@
       "category": "public.app-category.developer-tools",
       "icon": "electron/assets/icon.png",
       "target": [
-        { "target": "dmg", "arch": ["arm64"] },
-        { "target": "dmg", "arch": ["x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "dmg": {

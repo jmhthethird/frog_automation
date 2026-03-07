@@ -55,6 +55,7 @@ function startServer(port) {
 }
 
 // ─── Auto-start when executed directly (node index.js / npm start) ───────────
+/* istanbul ignore next */
 if (require.main === module) {
   const PORT = parseInt(process.env.PORT || '3000', 10);
   startServer(PORT);
