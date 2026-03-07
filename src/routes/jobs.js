@@ -124,6 +124,26 @@ router.post('/', writeLimit, (req, res) => {
   res.status(201).json(job);
 });
 
+// ─── Get diff summary ─────────────────────────────────────────────────────────
+router.get('/:id/diff', readLimit, (req, res) => {
+  const job = db.prepare('SELECT id, status, diff_summary FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  if (job.status !== 'completed') {
+    return res.status(409).json({ error: 'Diff is only available for completed jobs' });
+  }
+
+  if (!job.diff_summary) {
+    return res.status(404).json({ error: 'No diff available – this may be the first crawl for this URL' });
+  }
+
+  try {
+    res.json(JSON.parse(job.diff_summary));
+  } catch {
+    res.status(500).json({ error: 'Diff data is corrupt' });
+  }
+});
+
 // ─── Download job zip ─────────────────────────────────────────────────────────
 router.get('/:id/download', readLimit, (req, res) => {
   const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);

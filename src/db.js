@@ -39,12 +39,13 @@ db.exec(`
     started_at      TEXT,
     completed_at    TEXT,
     cron_expression TEXT,
-    next_run_at     TEXT
+    next_run_at     TEXT,
+    diff_summary    TEXT
   );
 `);
 
-// Idempotent migrations for databases created before cron support was added.
-for (const col of ['cron_expression TEXT', 'next_run_at TEXT']) {
+// Idempotent migrations for databases created before cron/diff support was added.
+for (const col of ['cron_expression TEXT', 'next_run_at TEXT', 'diff_summary TEXT']) {
   try {
     db.exec(`ALTER TABLE jobs ADD COLUMN ${col}`);
   } catch {

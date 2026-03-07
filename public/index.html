@@ -97,6 +97,21 @@
   .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; letter-spacing: .05em; }
   hr.sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .url-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* diff panel */
+  .diff-summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .diff-stat { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+  .diff-stat-added   { background: #1a4a2e; color: var(--green); }
+  .diff-stat-removed { background: #4a1a1a; color: var(--red); }
+  .diff-stat-changed { background: #4a3000; color: var(--orange); }
+  .diff-file { margin-top: 12px; }
+  .diff-file-name { font-size: 12px; font-family: monospace; color: var(--text-dim); margin-bottom: 6px; font-weight: 600; }
+  .diff-url-list { list-style: none; margin: 0; padding: 0; max-height: 200px; overflow-y: auto; }
+  .diff-url-list li { font-size: 12px; font-family: monospace; padding: 2px 0; border-bottom: 1px solid var(--border); word-break: break-all; }
+  .diff-url-added   { color: var(--green); }
+  .diff-url-removed { color: var(--red); }
+  .diff-url-changed { color: var(--orange); }
+  .diff-change-detail { font-size: 11px; color: var(--text-dim); margin-left: 12px; }
+  #diff-section { margin-top: 16px; display: none; }
 </style>
 </head>
 <body>
@@ -177,6 +192,11 @@
           <h2 id="detail-title">Job Details</h2>
           <div class="detail-grid" id="detail-grid"></div>
           <div id="detail-download" style="margin-bottom:12px;"></div>
+          <div id="diff-section">
+            <hr class="sep"/>
+            <div class="section-label">Diff vs Previous Crawl</div>
+            <div id="diff-content"></div>
+          </div>
           <hr class="sep"/>
           <div class="section-label">Log (last 100 lines)</div>
           <pre id="log-output">Select a job to view logs.</pre>
@@ -324,7 +344,7 @@ async function loadJobs() {
         <td>${j.id}</td>
         <td class="url-cell" title="${escHtml(j.url)}">${escHtml(j.url)}</td>
         <td style="color:var(--text-dim);">${escHtml(j.profile_name || '—')}</td>
-        <td><span class="badge badge-${j.status}">${j.status}</span></td>
+        <td><span class="badge badge-${j.status}">${j.status}</span>${j.diff_summary ? ' <span title="Diff available" aria-label="Diff available" role="img">🔀</span>' : ''}</td>
         <td style="color:var(--text-dim);white-space:nowrap;">${fmtDate(j.created_at)}</td>
         <td><button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="showJobDetail(${j.id})">View</button></td>
       </tr>`).join('')}
@@ -343,6 +363,8 @@ async function showJobDetail(id) {
   document.getElementById('detail-grid').innerHTML = '<em style="color:var(--text-dim);">Loading…</em>';
   document.getElementById('log-output').textContent = 'Loading…';
   document.getElementById('detail-download').innerHTML = '';
+  document.getElementById('diff-section').style.display = 'none';
+  document.getElementById('diff-content').innerHTML = '';
 
   clearInterval(autoRefreshTimer);
 
@@ -368,6 +390,7 @@ async function showJobDetail(id) {
         document.getElementById('detail-download').innerHTML =
           `<a href="/api/jobs/${j.id}/download" class="btn btn-primary" download>⬇ Download Results ZIP</a>`;
         if (!j.cron_expression) clearInterval(autoRefreshTimer);
+        loadDiff(j.id);
       } else if (j.status === 'failed') {
         if (!j.cron_expression) clearInterval(autoRefreshTimer);
       }
@@ -385,6 +408,54 @@ async function showJobDetail(id) {
     await refresh();
     loadJobs(); // also refresh jobs table
   }, 3000);
+}
+
+// ── Diff ──────────────────────────────────────────────────────────────────────
+async function loadDiff(jobId) {
+  const section = document.getElementById('diff-section');
+  const content = document.getElementById('diff-content');
+  try {
+    const r = await fetch(`/api/jobs/${jobId}/diff`);
+    if (r.status === 404) return; // first crawl – no diff
+    if (!r.ok) return;
+    const diff = await r.json();
+    section.style.display = 'block';
+
+    const statsHtml = `
+      <div class="diff-summary">
+        <span class="diff-stat diff-stat-added">+${diff.total_added} added</span>
+        <span class="diff-stat diff-stat-removed">−${diff.total_removed} removed</span>
+        <span class="diff-stat diff-stat-changed">~ ${diff.total_changed} changed</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">
+        Compared to job #${diff.prev_job_id} (${fmtDate(diff.prev_completed_at)})
+      </div>`;
+
+    let filesHtml = '';
+    for (const [filename, fd] of Object.entries(diff.files || {})) {
+      const hasAny = fd.added.length || fd.removed.length || fd.changed.length;
+      if (!hasAny) continue;
+      filesHtml += `<div class="diff-file">
+        <div class="diff-file-name">${escHtml(filename)}</div>
+        <ul class="diff-url-list">
+          ${fd.added.map(u => `<li class="diff-url-added">+ ${escHtml(u)}</li>`).join('')}
+          ${fd.removed.map(u => `<li class="diff-url-removed">− ${escHtml(u)}</li>`).join('')}
+          ${fd.changed.map(c => {
+            const changeLines = Object.entries(c.changes)
+              .map(([k, v]) => `<span class="diff-change-detail">${escHtml(k)}: ${escHtml(v.from)} → ${escHtml(v.to)}</span>`)
+              .join(' ');
+            return `<li class="diff-url-changed">~ ${escHtml(c.url)} ${changeLines}</li>`;
+          }).join('')}
+        </ul>
+      </div>`;
+    }
+
+    if (!filesHtml) {
+      filesHtml = '<em style="color:var(--text-dim);font-size:12px;">No URL-level changes detected.</em>';
+    }
+
+    content.innerHTML = statsHtml + filesHtml;
+  } catch { /* non-critical */ }
 }
 
 // ── Updates ───────────────────────────────────────────────────────────────────
@@ -538,6 +609,7 @@ async function _initUpdateCheck() {
   } catch {}
 }
 
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
 function escHtml(s) {
   if (s == null) return '';
