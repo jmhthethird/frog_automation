@@ -197,6 +197,16 @@ describe('runJob()', () => {
     expect(log).toContain('[STDERR] stderr line');
   });
 
+  it('passes --save-crawl flag to the Screaming Frog process', async () => {
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    const spawnArgs = cp.spawn.mock.calls[0][1];
+    expect(spawnArgs).toContain('--save-crawl');
+  });
+
   it('runs a job that has a profile_path', async () => {
     // Insert a profile and attach it to the job.
     const profilePath = path.join(dataDir, 'test.seospiderconfig');
