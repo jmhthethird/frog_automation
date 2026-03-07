@@ -76,7 +76,7 @@ router.post('/', writeLimit, (req, res) => {
 
   const tabs = (export_tabs && export_tabs.trim())
     ? export_tabs.trim()
-    : 'Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirects:All';
+    : 'Internal:All';
 
   // Create output dir path (will be created when job runs)
   const jobRow = db.prepare(`

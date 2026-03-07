@@ -136,7 +136,7 @@
         </div>
 
         <label>Export Tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated)</span></label>
-        <textarea id="export-tabs">Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirects:All</textarea>
+        <textarea id="export-tabs">Internal:All</textarea>
 
         <div class="form-footer">
           <button class="btn btn-primary" id="submit-btn" onclick="submitJob()">Run Crawl</button>
@@ -177,7 +177,7 @@
 </main>
 
 <script>
-const DEFAULT_TABS = 'Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirects:All';
+const DEFAULT_TABS = 'Internal:All';
 let autoRefreshTimer = null;
 
 // ── Health ───────────────────────────────────────────────────────────────────

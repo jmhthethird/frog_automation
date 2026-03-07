@@ -158,9 +158,6 @@ SF_LAUNCHER="/opt/ScreamingFrog/ScreamingFrogSEOSpiderLauncher" PORT=8080 npm st
 | Tab Name                              |
 |---------------------------------------|
 | `Internal:All`                        |
-| `Response Codes:All`                  |
-| `Response Codes:Client Error (4xx)`   |
-| `Redirects:All`                       |
 
 ---
 

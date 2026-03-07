@@ -52,7 +52,7 @@ async function runJob(jobId) {
  */
 function spawnCrawl(job, outputDir, logStream) {
   return new Promise((resolve, reject) => {
-    const exportTabs = job.export_tabs || 'Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirects:All';
+    const exportTabs = job.export_tabs || 'Internal:All';
 
     const args = [
       '--headless',

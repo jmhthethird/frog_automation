@@ -79,14 +79,11 @@ test.describe('Submit form – static elements', () => {
     await expect(input).toHaveValue('https://example.com');
   });
 
-  test('Export tabs textarea has the four default tabs', async ({ page }) => {
+  test('Export tabs textarea has the default tab', async ({ page }) => {
     const ta = page.locator('#export-tabs');
     await expect(ta).toBeVisible();
     const value = await ta.inputValue();
-    expect(value).toContain('Internal:All');
-    expect(value).toContain('Response Codes:All');
-    expect(value).toContain('Response Codes:Client Error (4xx)');
-    expect(value).toContain('Redirects:All');
+    expect(value).toBe('Internal:All');
   });
 
   test('Run Crawl button is visible and enabled', async ({ page }) => {
@@ -302,21 +299,21 @@ test.describe('Export tabs customisation', () => {
   test('export tabs textarea can be edited', async ({ page }) => {
     await page.goto('/');
     const ta = page.locator('#export-tabs');
-    await ta.fill('Redirects:All');
-    await expect(ta).toHaveValue('Redirects:All');
+    await ta.fill('Internal:All,Response Codes:All');
+    await expect(ta).toHaveValue('Internal:All,Response Codes:All');
   });
 
   test('custom export tabs are sent with the job (verify via API)', async ({ page, baseURL, request }) => {
     await page.goto('/');
     await page.locator('#prof-none').check();
     await page.locator('#job-url').fill('https://custom-tabs.example.com');
-    await page.locator('#export-tabs').fill('Redirects:All');
+    await page.locator('#export-tabs').fill('Internal:All,Response Codes:All');
     await page.locator('#submit-btn').click();
     await expect(page.locator('#submit-msg')).toBeVisible({ timeout: 5_000 });
 
     // Fetch the latest job via API and check its export_tabs.
     const jobs = await request.get(`${baseURL}/api/jobs`).then((r) => r.json());
     const latest = jobs[0];
-    expect(latest.export_tabs).toBe('Redirects:All');
+    expect(latest.export_tabs).toBe('Internal:All,Response Codes:All');
   });
 });
