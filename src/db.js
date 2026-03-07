@@ -37,8 +37,17 @@ db.exec(`
     error        TEXT,
     created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     started_at   TEXT,
-    completed_at TEXT
+    completed_at TEXT,
+    diff_summary TEXT
   );
 `);
+
+// Migration: add diff_summary to existing databases that predate the column.
+{
+  const cols = db.prepare('PRAGMA table_info(jobs)').all();
+  if (!cols.some(c => c.name === 'diff_summary')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN diff_summary TEXT');
+  }
+}
 
 module.exports = { db, DATA_DIR };

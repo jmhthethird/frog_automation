@@ -5,6 +5,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const archiver = require('archiver');
 const { db } = require('./db');
+const { computeDiff } = require('./differ');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -38,6 +39,27 @@ async function runJob(jobId) {
     const zipPath = await zipOutput(outputDir, jobId);
     db.prepare("UPDATE jobs SET status='completed', completed_at=datetime('now'), zip_path=? WHERE id=?")
       .run(zipPath, jobId);
+
+    // Compute a diff against the most recent previous completed crawl of the same URL.
+    try {
+      const prevJob = db.prepare(`
+        SELECT id, output_dir, completed_at FROM jobs
+        WHERE url = ? AND status = 'completed' AND id != ?
+        ORDER BY id DESC LIMIT 1
+      `).get(job.url, jobId);
+
+      if (prevJob && prevJob.output_dir) {
+        const updatedJob = db.prepare('SELECT id, output_dir, completed_at FROM jobs WHERE id = ?').get(jobId);
+        const diff = computeDiff(updatedJob, prevJob);
+        if (diff) {
+          db.prepare('UPDATE jobs SET diff_summary = ? WHERE id = ?')
+            .run(JSON.stringify(diff), jobId);
+        }
+      }
+    } catch (diffErr) {
+      // Diff is non-critical – log but don't fail the job.
+      console.error(`[crawler] diff computation failed for job ${jobId}:`, diffErr);
+    }
   } catch (err) {
     const errMsg = err && err.message ? err.message : String(err);
     db.prepare("UPDATE jobs SET status='failed', completed_at=datetime('now'), error=? WHERE id=?")
