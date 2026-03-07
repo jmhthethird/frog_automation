@@ -45,6 +45,18 @@
   #update-notes summary { font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; }
   #update-notes summary:hover { color: var(--text); }
   #update-notes pre { white-space: pre-wrap; font-family: inherit; font-size: 12px; line-height: 1.5; color: var(--text-dim); margin-top: 6px; max-height: 160px; overflow-y: auto; }
+  /* Version history section */
+  #version-history { flex-basis: 100%; margin-top: 2px; }
+  #version-history > summary { font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; }
+  #version-history > summary:hover { color: var(--text); }
+  #version-history-list { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+  .rel-item { display: flex; align-items: center; gap: 8px; padding: 5px 2px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .rel-item:last-child { border-bottom: none; }
+  .rel-ver { font-weight: 600; min-width: 70px; }
+  .rel-date { color: var(--text-dim); flex: 1; font-size: 11px; }
+  .rel-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #2a2a2a; color: var(--text-dim); white-space: nowrap; }
+  .rel-badge.is-current { background: #1a2a1a; color: var(--green); }
+  .rel-badge.is-newer { background: #1a2a3a; color: #6ab0f5; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
   @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
@@ -145,6 +157,10 @@
   <div id="update-actions"></div>
   <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="dismissUpdate()">✕ Dismiss</button>
   <details id="update-notes"><summary>What's new</summary><pre id="update-notes-body"></pre></details>
+  <details id="version-history" ontoggle="if(this.open)_loadVersionHistory()">
+    <summary>Version History</summary>
+    <div id="version-history-list"></div>
+  </details>
 </div>
 <main>
   <div class="grid">
@@ -508,12 +524,6 @@ function _renderUpdatePanel(state) {
     btn.className = '';
     return;
   }
-  if (state.status === 'up-to-date') {
-    panel.classList.remove('visible');
-    btn.className = '';
-    btn.title = 'App is up to date (v' + state.currentVersion + ')';
-    return;
-  }
   if (state.status === 'error') {
     panel.classList.remove('visible');
     btn.className = '';
@@ -526,7 +536,11 @@ function _renderUpdatePanel(state) {
   notesEl.style.display = 'none';
   notesEl.removeAttribute('open');
 
-  if (state.status === 'available') {
+  if (state.status === 'up-to-date') {
+    btn.className = '';
+    btn.title = 'App is up to date (v' + state.currentVersion + ')';
+    msgEl.innerHTML = `✓ v<strong>${escHtml(state.currentVersion)}</strong> is up to date`;
+  } else if (state.status === 'available') {
     btn.className = 'has-update';
     msgEl.innerHTML = `<strong>v${escHtml(state.latestVersion)}</strong> is available (you have v${escHtml(state.currentVersion)})`;
     if (state.downloadUrl) {
@@ -604,6 +618,81 @@ async function installUpdate() {
 
 function dismissUpdate() {
   document.getElementById('update-panel').classList.remove('visible');
+}
+
+// ── Version History ───────────────────────────────────────────────────────────
+let _releasesCache = null;
+
+async function _loadVersionHistory() {
+  if (_releasesCache) { _renderVersionHistory(_releasesCache); return; }
+  const listEl = document.getElementById('version-history-list');
+  if (listEl) listEl.textContent = 'Loading…';
+  try {
+    const r = await fetch('/api/update/releases');
+    _releasesCache = await r.json();
+    _renderVersionHistory(_releasesCache);
+  } catch {
+    if (listEl) listEl.textContent = 'Failed to load releases.';
+  }
+}
+
+function _renderVersionHistory(releases) {
+  const listEl = document.getElementById('version-history-list');
+  if (!listEl) return;
+  if (!Array.isArray(releases) || !releases.length) {
+    listEl.textContent = 'No releases found.';
+    return;
+  }
+  const currentVer = (document.getElementById('version-badge').textContent || '')
+    .replace(/^v/, '').trim();
+  listEl.innerHTML = releases.map(r => {
+    const isCurrent = r.version === currentVer;
+    const cmp       = _semverCompare(r.version, currentVer);
+    const badge     = isCurrent
+      ? `<span class="rel-badge is-current">current</span>`
+      : cmp > 0
+        ? `<span class="rel-badge is-newer">newer</span>`
+        : `<span class="rel-badge">older</span>`;
+    const date      = r.publishedAt ? r.publishedAt.split('T')[0] : '';
+    const actionBtn = r.downloadUrl
+      ? `<button class="btn btn-secondary" style="font-size:10px;padding:2px 8px;" onclick="selectAndDownload(${JSON.stringify(r.version)})">⬇ Install v${escHtml(r.version)}</button>`
+      : r.releaseUrl
+        ? `<a href="${escHtml(r.releaseUrl)}" target="_blank" class="btn btn-secondary" style="font-size:10px;padding:2px 8px;">Open Release</a>`
+        : '';
+    return `<div class="rel-item">
+      <span class="rel-ver">v${escHtml(r.version)}</span>
+      <span class="rel-date">${escHtml(date)}</span>
+      ${badge}
+      ${actionBtn}
+    </div>`;
+  }).join('');
+}
+
+function _semverCompare(a, b) {
+  const parse = v => String(v).replace(/^v/, '').split('.').map(Number);
+  const av = parse(a), bv = parse(b);
+  for (let i = 0; i < 3; i++) {
+    if ((av[i] || 0) !== (bv[i] || 0)) return (av[i] || 0) > (bv[i] || 0) ? 1 : -1;
+  }
+  return 0;
+}
+
+async function selectAndDownload(version) {
+  const release = _releasesCache && _releasesCache.find(r => r.version === version);
+  if (!release) return;
+  try {
+    await fetch('/api/update/select', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        version:      release.version,
+        downloadUrl:  release.downloadUrl,
+        releaseUrl:   release.releaseUrl,
+        releaseNotes: release.releaseNotes,
+      }),
+    });
+    await startDownload();
+  } catch {}
 }
 
 async function _initUpdateCheck() {

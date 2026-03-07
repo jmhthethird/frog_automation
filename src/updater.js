@@ -72,6 +72,14 @@ function getAppBundlePath() {
  * @property {string|null}  downloadPath
  * @property {number}       progress        0–100
  * @property {string|null}  error
+ *
+ * @typedef {Object} ReleaseInfo
+ * @property {string}      version
+ * @property {string}      tag
+ * @property {string|null} releaseUrl
+ * @property {string|null} releaseNotes
+ * @property {string|null} downloadUrl
+ * @property {string|null} publishedAt
  */
 
 const _state = {
@@ -90,6 +98,72 @@ function _patch(obj) { Object.assign(_state, obj); }
 /** @returns {UpdateState} */
 function getState() {
   return { ..._state, currentVersion: getCurrentVersion() };
+}
+
+// ── listAllReleases ───────────────────────────────────────────────────────────
+
+/**
+ * Fetch all GitHub releases and return them enriched with a per-arch download URL.
+ * Never rejects — returns an empty array on error.
+ *
+ * @returns {Promise<ReleaseInfo[]>}
+ */
+async function listAllReleases() {
+  let releases;
+  try {
+    releases = await _fetchJson(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`
+    );
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(releases)) return [];
+
+  const arch = process.arch;
+  return releases
+    .map(release => {
+      const version = (release.tag_name || '').replace(/^v/, '');
+      if (!version) return null;
+      const assets = Array.isArray(release.assets) ? release.assets : [];
+      const asset  = arch === 'arm64'
+        ? assets.find(a => a.name.endsWith('-arm64.dmg'))
+        : assets.find(a => a.name.endsWith('.dmg') && !a.name.includes('arm64'));
+      return {
+        version,
+        tag:          release.tag_name     || '',
+        releaseUrl:   release.html_url      || null,
+        releaseNotes: release.body          || null,
+        downloadUrl:  asset ? asset.browser_download_url : null,
+        publishedAt:  release.published_at  || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+// ── selectVersionForInstall ───────────────────────────────────────────────────
+
+/**
+ * Set a specific version as the installation target, regardless of whether it
+ * is newer or older than the currently-running version.  Places the updater
+ * into the 'available' state so the existing download / install flow can
+ * proceed unchanged.
+ *
+ * @param {string}      version
+ * @param {string|null} downloadUrl
+ * @param {string|null} releaseUrl
+ * @param {string|null} releaseNotes
+ */
+function selectVersionForInstall(version, downloadUrl, releaseUrl, releaseNotes) {
+  _patch({
+    status:        'available',
+    latestVersion: version,
+    downloadUrl:   downloadUrl  || null,
+    releaseUrl:    releaseUrl   || null,
+    releaseNotes:  releaseNotes || null,
+    downloadPath:  null,
+    progress:      0,
+    error:         null,
+  });
 }
 
 // ── checkForUpdate ────────────────────────────────────────────────────────────
@@ -358,6 +432,8 @@ function _fetchJson(url) {
 
 module.exports = {
   checkForUpdate,
+  listAllReleases,
+  selectVersionForInstall,
   downloadUpdate,
   installUpdate,
   getState,

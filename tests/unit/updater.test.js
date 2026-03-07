@@ -466,3 +466,135 @@ describe('installUpdate()', () => {
     expect(global.setTimeout).toHaveBeenCalled();
   });
 });
+
+// ─── listAllReleases ──────────────────────────────────────────────────────────
+
+describe('listAllReleases()', () => {
+  let updater;
+
+  beforeEach(() => { jest.resetModules(); updater = require('../../src/updater'); });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns an array of release objects with expected shape', async () => {
+    const origArch = process.arch;
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+    try {
+      makeHttpsSpy({
+        body: [
+          fakeRelease('v2.0.0', [
+            { name: 'Frog Automation-2.0.0-arm64.dmg', browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app-arm64.dmg' },
+          ], 'Release notes 2.0.0'),
+          fakeRelease('v1.0.0', [], null),
+        ],
+      });
+      const releases = await updater.listAllReleases();
+      expect(releases).toHaveLength(2);
+      expect(releases[0]).toMatchObject({
+        version:     '2.0.0',
+        tag:         'v2.0.0',
+        releaseUrl:  expect.any(String),
+        releaseNotes: 'Release notes 2.0.0',
+        downloadUrl: expect.stringContaining('arm64'),
+        publishedAt: null,
+      });
+      expect(releases[1]).toMatchObject({
+        version:     '1.0.0',
+        downloadUrl: null,
+      });
+    } finally {
+      Object.defineProperty(process, 'arch', { value: origArch, configurable: true });
+    }
+  });
+
+  it('picks x64 DMG for x64 architecture', async () => {
+    const origArch = process.arch;
+    Object.defineProperty(process, 'arch', { value: 'x64', configurable: true });
+    try {
+      makeHttpsSpy({
+        body: [
+          fakeRelease('v2.0.0', [
+            { name: 'Frog Automation-2.0.0-arm64.dmg', browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app-arm64.dmg' },
+            { name: 'Frog Automation-2.0.0.dmg',       browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg' },
+          ]),
+        ],
+      });
+      const releases = await updater.listAllReleases();
+      expect(releases[0].downloadUrl).not.toContain('arm64');
+    } finally {
+      Object.defineProperty(process, 'arch', { value: origArch, configurable: true });
+    }
+  });
+
+  it('returns an empty array on network error', async () => {
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      const req = {
+        on: jest.fn((event, handler) => {
+          if (event === 'error') process.nextTick(() => handler(new Error('ENOTFOUND')));
+          return req;
+        }),
+      };
+      return req;
+    });
+    const releases = await updater.listAllReleases();
+    expect(releases).toEqual([]);
+  });
+
+  it('returns an empty array when API returns a non-array', async () => {
+    makeHttpsSpy({ body: { message: 'Not Found' } });
+    const releases = await updater.listAllReleases();
+    expect(releases).toEqual([]);
+  });
+
+  it('filters out entries with no tag_name', async () => {
+    makeHttpsSpy({ body: [{ html_url: 'https://github.com' }] });
+    const releases = await updater.listAllReleases();
+    expect(releases).toEqual([]);
+  });
+});
+
+// ─── selectVersionForInstall ──────────────────────────────────────────────────
+
+describe('selectVersionForInstall()', () => {
+  let updater;
+
+  beforeEach(() => { jest.resetModules(); updater = require('../../src/updater'); });
+
+  it('sets status to available with the specified version', () => {
+    updater.selectVersionForInstall('1.2.3', 'https://github.com/jmhthethird/frog_automation/releases/download/v1.2.3/app.dmg', 'https://github.com/jmhthethird/frog_automation/releases/tag/v1.2.3', 'Notes');
+    const state = updater.getState();
+    expect(state.status).toBe('available');
+    expect(state.latestVersion).toBe('1.2.3');
+    expect(state.downloadUrl).toContain('1.2.3');
+    expect(state.releaseNotes).toBe('Notes');
+  });
+
+  it('allows selecting an older version (rollback)', () => {
+    const pkg = require('../../package.json');
+    // Select a version older than the current one.
+    updater.selectVersionForInstall('0.0.1', null, null, null);
+    const state = updater.getState();
+    expect(state.status).toBe('available');
+    expect(state.latestVersion).toBe('0.0.1');
+    // Current version is still correct.
+    expect(state.currentVersion).toBe(pkg.version);
+  });
+
+  it('resets downloadPath and progress when selecting a new version', async () => {
+    await driveToReady(updater);
+    expect(updater.getState().status).toBe('ready');
+    updater.selectVersionForInstall('0.5.0', null, null, null);
+    const state = updater.getState();
+    expect(state.status).toBe('available');
+    expect(state.downloadPath).toBeNull();
+    expect(state.progress).toBe(0);
+  });
+
+  it('treats null/undefined optional parameters gracefully', () => {
+    updater.selectVersionForInstall('1.0.0');
+    const state = updater.getState();
+    expect(state.status).toBe('available');
+    expect(state.downloadUrl).toBeNull();
+    expect(state.releaseUrl).toBeNull();
+    expect(state.releaseNotes).toBeNull();
+  });
+});
