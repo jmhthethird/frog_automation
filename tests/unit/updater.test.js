@@ -65,12 +65,13 @@ async function driveToReady(updater) {
 }
 
 /** Build a minimal GitHub releases API response. */
-function fakeRelease(tag, assets = [], body = null) {
+function fakeRelease(tag, assets = [], body = null, published_at = null) {
   return {
     tag_name: tag,
     html_url: `https://github.com/jmhthethird/frog_automation/releases/tag/${tag}`,
     body,
     assets,
+    published_at,
   };
 }
 

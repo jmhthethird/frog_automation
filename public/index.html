@@ -655,7 +655,7 @@ function _renderVersionHistory(releases) {
         : `<span class="rel-badge">older</span>`;
     const date      = r.publishedAt ? r.publishedAt.split('T')[0] : '';
     const actionBtn = r.downloadUrl
-      ? `<button class="btn btn-secondary" style="font-size:10px;padding:2px 8px;" onclick="selectAndDownload(${JSON.stringify(r.version)})">⬇ Install v${escHtml(r.version)}</button>`
+      ? `<button class="btn btn-secondary" style="font-size:10px;padding:2px 8px;" data-version="${escHtml(r.version)}" onclick="selectAndDownload(this.dataset.version)">⬇ Install v${escHtml(r.version)}</button>`
       : r.releaseUrl
         ? `<a href="${escHtml(r.releaseUrl)}" target="_blank" class="btn btn-secondary" style="font-size:10px;padding:2px 8px;">Open Release</a>`
         : '';
@@ -692,7 +692,10 @@ async function selectAndDownload(version) {
       }),
     });
     await startDownload();
-  } catch {}
+  } catch {
+    const msgEl = document.getElementById('update-msg');
+    if (msgEl) msgEl.textContent = 'Failed to start download — please try again.';
+  }
 }
 
 async function _initUpdateCheck() {
