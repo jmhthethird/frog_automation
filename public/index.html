@@ -112,6 +112,22 @@
   .diff-url-changed { color: var(--orange); }
   .diff-change-detail { font-size: 11px; color: var(--text-dim); margin-left: 12px; }
   #diff-section { margin-top: 16px; display: none; }
+  /* export-tabs UI */
+  .et-sub-label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: .05em; margin: 8px 0 4px; }
+  .et-all-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+  .et-all-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text); cursor: pointer; padding: 3px 8px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; white-space: nowrap; }
+  .et-all-item:hover { border-color: var(--blue); }
+  .et-all-item input[type=checkbox] { cursor: pointer; accent-color: var(--blue); margin: 0; }
+  .et-cat-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 5px; margin-bottom: 8px; }
+  .et-details { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .et-details summary { padding: 4px 8px; font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; list-style: none; }
+  .et-details summary::-webkit-details-marker { display: none; }
+  .et-details summary::before { content: '▶ '; font-size: 9px; }
+  .et-details[open] summary::before { content: '▼ '; }
+  .et-details summary:hover { color: var(--text); background: #ffffff08; }
+  .et-details[open] summary { border-bottom: 1px solid var(--border); color: var(--text); }
+  .et-indiv-select { width: 100%; min-height: 90px; padding: 2px; background: #0a0a1e; border: none; color: var(--text); font-size: 12px; display: block; }
+  .et-indiv-select option:checked { background: var(--surface2); }
 </style>
 </head>
 <body>
@@ -156,8 +172,13 @@
           <input type="file"  id="upload-file" accept=".seospiderconfig" style="margin-top:8px;"/>
         </div>
 
-        <label>Export Tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated)</span></label>
-        <textarea id="export-tabs">Internal:All</textarea>
+        <label style="margin-top:14px;">Export Tabs</label>
+        <div class="et-sub-label">:All flags</div>
+        <div id="et-all-grid" class="et-all-grid"></div>
+        <div class="et-sub-label">Individual options <span style="text-transform:none;letter-spacing:0;font-size:10px;">(expand a category · Ctrl/⌘+click for multi-select)</span></div>
+        <div id="et-cat-list" class="et-cat-list"></div>
+        <label style="margin-top:4px;">Selected tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated, editable)</span></label>
+        <textarea id="export-tabs" style="height:46px;">Internal:All</textarea>
 
         <label style="margin-top:14px;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span></label>
         <input type="text" id="cron-expression" placeholder="e.g. 0 2 * * * (daily at 02:00)" autocomplete="off"/>
@@ -625,7 +646,128 @@ function showMsg(el, text, type) {
   el.style.display = text ? 'inline-block' : 'none';
 }
 
+// ── Export Tabs UI ────────────────────────────────────────────────────────────
+const EXPORT_TABS_DATA = [
+  { key: 'AMP', items: ['AMP:Non-200 Response','AMP:Missing Non-AMP Return Link','AMP:Missing Canonical to Non-AMP','AMP:Non-Indexable Canonical','AMP:Indexable','AMP:Non-Indexable','AMP:Missing <html amp> Tag','AMP:Missing/Invalid <!doctype html> Tag','AMP:Missing <head> Tag','AMP:Missing <body> Tag','AMP:Missing Canonical','AMP:Missing/Invalid <meta charset> Tag','AMP:Missing/Invalid <meta viewport> Tag','AMP:Missing/Invalid AMP Script','AMP:Missing/Invalid AMP Boilerplate','AMP:Contains Disallowed HTML','AMP:Other Validation Errors'] },
+  { key: 'Analytics', items: ['Analytics:Sessions Above 0','Analytics:Bounce Rate Above 70%','Analytics:No GA Data','Analytics:Non-Indexable with GA Data','Analytics:Orphan URLs'] },
+  { key: 'Canonicals', items: ['Canonicals:Contains Canonical','Canonicals:Self Referencing','Canonicals:Canonicalised','Canonicals:Missing','Canonicals:Multiple','Canonicals:Non-Indexable Canonical','Canonicals:Multiple Conflicting','Canonicals:Canonical Is Relative','Canonicals:Unlinked','Canonicals:Outside <head>'] },
+  { key: 'Change Detection', items: ['Change Detection:Word Count','Change Detection:Crawl Depth','Change Detection:Indexability','Change Detection:Page Titles','Change Detection:H1','Change Detection:Meta Description','Change Detection:Inlinks','Change Detection:Unique Inlinks','Change Detection:Internal Outlinks','Change Detection:Unique Internal Outlinks','Change Detection:External Outlinks','Change Detection:Unique External Outlinks','Change Detection:Structured Data Unique Types','Change Detection:Content'] },
+  { key: 'Content', items: ['Content:Spelling Errors','Content:Grammar Errors','Content:Near Duplicates','Content:Exact Duplicates','Content:Low Content Pages','Content:Readability Difficult','Content:Readability Very Difficult','Content:Lorem Ipsum Placeholder','Content:Soft 404 Pages'] },
+  { key: 'Custom Extraction', items: ['Custom Extraction:Extractor 1','Custom Search:All','Custom Search:Filter 1'] },
+  { key: 'Directives', items: ['Directives:Index','Directives:Noindex','Directives:Follow','Directives:Nofollow','Directives:None','Directives:NoArchive','Directives:NoSnippet','Directives:Max-Snippet','Directives:Max-Image-Preview','Directives:Max-Video-Preview','Directives:NoODP','Directives:NoYDIR','Directives:NoImageIndex','Directives:NoTranslate','Directives:Unavailable_After','Directives:Refresh','Directives:Outside <head>'] },
+  { key: 'External', items: ['External:HTML','External:JavaScript','External:CSS','External:Images','External:PDF','External:Flash','External:Other','External:Unknown'] },
+  { key: 'H1', items: ['H1:Missing','H1:Duplicate','H1:Over X Characters','H1:Multiple','H1:Alt Text in H1','H1:Non-Sequential'] },
+  { key: 'H2', items: ['H2:Missing','H2:Duplicate','H2:Over X Characters','H2:Multiple','H2:Non-Sequential'] },
+  { key: 'Hreflang', items: ['Hreflang:Contains hreflang','Hreflang:Non-200 hreflang URLs','Hreflang:Unlinked hreflang URLs','Hreflang:Missing Return Links','Hreflang:Inconsistent Language & Region Return Links','Hreflang:Non-Canonical Return Links','Hreflang:Noindex Return Links','Hreflang:Incorrect Language & Region Codes','Hreflang:Multiple Entries','Hreflang:Missing Self Reference','Hreflang:Not Using Canonical','Hreflang:Missing X-Default','Hreflang:Missing','Hreflang:Outside <head>'] },
+  { key: 'Images', items: ['Images:Over X KB','Images:Missing Alt Text','Images:Missing Alt Attribute','Images:Alt Text Over X Characters','Images:Background Images','Images:Incorrectly Sized Images','Images:Missing Size Attributes'] },
+  { key: 'Internal', items: ['Internal:HTML','Internal:JavaScript','Internal:CSS','Internal:Images','Internal:PDF','Internal:Flash','Internal:Other','Internal:Unknown'] },
+  { key: 'JavaScript', items: ['JavaScript:Uses Old AJAX Crawling Scheme URLs','JavaScript:Uses Old AJAX Crawling Scheme Meta Fragment Tag','JavaScript:Page Title Only in Rendered HTML','JavaScript:Page Title Updated by JavaScript','JavaScript:H1 Only in Rendered HTML','JavaScript:H1 Updated by JavaScript','JavaScript:Meta Description Only in Rendered HTML','JavaScript:Meta Description Updated by JavaScript','JavaScript:Canonical Only in Rendered HTML','JavaScript:Canonical Mismatch','JavaScript:Noindex Only in Original HTML','JavaScript:Nofollow Only in Original HTML','JavaScript:Contains JavaScript Links','JavaScript:Contains JavaScript Content','JavaScript:Pages with Blocked Resources','JavaScript:Pages with JavaScript Errors','JavaScript:Pages with JavaScript Warnings','JavaScript:Pages with Chrome Issues'] },
+  { key: 'Link Metrics', items: [] },
+  { key: 'Links', items: ['Links:Pages Without Internal Outlinks','Links:Internal Nofollow Outlinks','Links:Internal Outlinks With No Anchor Text','Links:Non-Descriptive Anchor Text In Internal Outlinks','Links:Pages With High External Outlinks','Links:Pages With High Internal Outlinks','Links:Follow & Nofollow Internal Inlinks To Page','Links:Internal Nofollow Inlinks Only','Links:Pages With High Crawl Depth','Links:Outlinks To Localhost','Links:Non-Indexable Page Inlinks Only'] },
+  { key: 'Meta Description', items: ['Meta Description:Missing','Meta Description:Duplicate','Meta Description:Over X Characters','Meta Description:Below X Characters','Meta Description:Over X Pixels','Meta Description:Below X Pixels','Meta Description:Multiple','Meta Description:Outside <head>'] },
+  { key: 'Meta Keywords', items: ['Meta Keywords:Missing','Meta Keywords:Duplicate','Meta Keywords:Multiple'] },
+  { key: 'Page Titles', items: ['Page Titles:Missing','Page Titles:Duplicate','Page Titles:Over X Characters','Page Titles:Below X Characters','Page Titles:Over X Pixels','Page Titles:Below X Pixels','Page Titles:Same as H1','Page Titles:Multiple','Page Titles:Outside <head>'] },
+  { key: 'PageSpeed', items: ['PageSpeed:Eliminate Render-Blocking Resources','PageSpeed:Defer Offscreen Images','PageSpeed:Efficiently Encode Images','PageSpeed:Properly Size Images','PageSpeed:Minify CSS','PageSpeed:Minify JavaScript','PageSpeed:Reduce Unused CSS','PageSpeed:Reduce Unused JavaScript','PageSpeed:Serve Images in Next-Gen Formats','PageSpeed:Enable Text Compression','PageSpeed:Preconnect to Required Origins','PageSpeed:Reduce Server Response Times (TTFB)','PageSpeed:Avoid Multiple Page Redirects','PageSpeed:Preload Key Requests','PageSpeed:Use Video Formats for Animated Content','PageSpeed:Avoid Excessive DOM Size','PageSpeed:Reduce JavaScript Execution Time','PageSpeed:Serve Static Assets with an Efficient Cache Policy','PageSpeed:Minimize Main-Thread Work','PageSpeed:Ensure Text Remains Visible During Webfont Load','PageSpeed:Image Elements Do Not Have Explicit Width & Height','PageSpeed:Avoid Large Layout Shifts','PageSpeed:Avoid Serving Legacy JavaScript to Modern Browsers','PageSpeed:Request Errors'] },
+  { key: 'Pagination', items: ['Pagination:Contains Pagination','Pagination:First Page','Pagination:Paginated 2+ Pages','Pagination:Pagination URL Not in Anchor Tag','Pagination:Non-200 Pagination URLs','Pagination:Unlinked Pagination URLs','Pagination:Non-Indexable','Pagination:Multiple Pagination URLs','Pagination:Pagination Loop','Pagination:Sequence Error'] },
+  { key: 'Response Codes', items: ['Response Codes:Blocked by Robots.txt','Response Codes:Blocked Resource','Response Codes:No Response','Response Codes:Success (2xx)','Response Codes:Redirection (3xx)','Response Codes:Redirection (JavaScript)','Response Codes:Redirection (Meta Refresh)','Response Codes:Client Error (4xx)','Response Codes:Server Error (5xx)','Response Codes:Internal All','Response Codes:Internal Blocked by Robots.txt','Response Codes:Internal Blocked Resource','Response Codes:Internal No Response','Response Codes:Internal Success (2xx)','Response Codes:Internal Redirection (3xx)','Response Codes:Internal Redirection (JavaScript)','Response Codes:Internal Redirection (Meta Refresh)','Response Codes:Internal Redirect Chain','Response Codes:Internal Redirect Loop','Response Codes:Internal Client Error (4xx)','Response Codes:Internal Server Error (5xx)','Response Codes:External All','Response Codes:External Blocked by Robots.txt','Response Codes:External Blocked Resource','Response Codes:External No Response','Response Codes:External Success (2xx)','Response Codes:External Redirection (3xx)','Response Codes:External Redirection (JavaScript)','Response Codes:External Redirection (Meta Refresh)','Response Codes:External Client Error (4xx)','Response Codes:External Server Error (5xx)'] },
+  { key: 'Search Console', items: ['Search Console:Clicks Above 0','Search Console:No Search Analytics Data','Search Console:Non-Indexable with Search Analytics Data','Search Console:Orphan URLs','Search Console:URL is Not on Google','Search Console:Indexable URL Not Indexed','Search Console:URL is on Google But Has Issues','Search Console:User-Declared Canonical Not Selected','Search Console:Page is Not Mobile Friendly','Search Console:AMP URL Invalid','Search Console:Rich Result Invalid'] },
+  { key: 'Security', items: ['Security:HTTP URLs','Security:HTTPS URLs','Security:Mixed Content','Security:Form URL Insecure','Security:Form on HTTP URL','Security:Unsafe Cross-Origin Links','Security:Missing HSTS Header','Security:Bad Content Type','Security:Missing X-Content-Type-Options Header','Security:Missing X-Frame-Options Header','Security:Protocol-Relative Resource Links','Security:Missing Content-Security-Policy Header','Security:Missing Secure Referrer-Policy Header'] },
+  { key: 'Sitemaps', items: ['Sitemaps:URLs in Sitemap','Sitemaps:URLs not in Sitemap','Sitemaps:Orphan URLs','Sitemaps:Non-Indexable URLs in Sitemap','Sitemaps:URLs in Multiple Sitemaps','Sitemaps:XML Sitemap with over 50k URLs','Sitemaps:XML Sitemap over 50MB'] },
+  { key: 'Structured Data', items: ['Structured Data:Contains Structured Data','Structured Data:Missing','Structured Data:Validation Errors','Structured Data:Validation Warnings','Structured Data:Parse Errors','Structured Data:Microdata URLs','Structured Data:JSON-LD URLs','Structured Data:RDFa URLs','UNDEF:Unknown'] }, // 'UNDEF:Unknown' is the official SF value
+  { key: 'URL', items: ['URL:Non ASCII Characters','URL:Underscores','URL:Uppercase','URL:Parameters','URL:Over X Characters','URL:Multiple Slashes','URL:Repetitive Path','URL:Contains Space','URL:Broken Bookmark','URL:Internal Search','URL:GA Tracking Parameters'] },
+  { key: 'Validation', items: ['Validation:Invalid HTML Elements in Head','Validation:<head> Not First In <html> Element','Validation:Missing <head> Tag','Validation:Multiple <head> Tags','Validation:Missing <body> Tag','Validation:Multiple <body> Tags','Validation:HTML Document Over 15MB','Validation:<body> Element Preceding <html>'] },
+];
+
+function buildExportTabsUI() {
+  const allGrid = document.getElementById('et-all-grid');
+  const catList = document.getElementById('et-cat-list');
+
+  EXPORT_TABS_DATA.forEach(cat => {
+    const allTab = cat.key + ':All';
+
+    // :All checkbox
+    const lbl = document.createElement('label');
+    lbl.className = 'et-all-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'et-all-cb';
+    cb.dataset.tab = allTab;
+    cb.addEventListener('change', onExportTabsUIChange);
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(cat.key));
+    allGrid.appendChild(lbl);
+
+    // Individual options (only if there are items)
+    if (cat.items.length === 0) return;
+    const details = document.createElement('details');
+    details.className = 'et-details';
+    const summary = document.createElement('summary');
+    summary.textContent = cat.key;
+    details.appendChild(summary);
+    const sel = document.createElement('select');
+    sel.multiple = true;
+    sel.className = 'et-indiv-select';
+    sel.dataset.category = cat.key;
+    cat.items.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item;
+      opt.textContent = item;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', onExportTabsUIChange);
+    details.appendChild(sel);
+    catList.appendChild(details);
+  });
+}
+
+function onExportTabsUIChange(evt) {
+  const el = evt.target;
+  if (el.classList.contains('et-all-cb') && el.checked) {
+    // Checking :All clears the paired individual select
+    const cat = EXPORT_TABS_DATA.find(c => c.key + ':All' === el.dataset.tab);
+    if (cat) {
+      const sel = document.querySelector('.et-indiv-select[data-category="' + cat.key + '"]');
+      if (sel) Array.from(sel.options).forEach(o => { o.selected = false; });
+    }
+  } else if (el.classList.contains('et-indiv-select') && el.selectedOptions.length > 0) {
+    // Selecting an individual item unchecks :All for that category
+    const cb = document.querySelector('.et-all-cb[data-tab="' + el.dataset.category + ':All"]');
+    if (cb) cb.checked = false;
+  }
+  _rebuildExportTabsTextarea();
+}
+
+function _rebuildExportTabsTextarea() {
+  const selected = [];
+  EXPORT_TABS_DATA.forEach(cat => {
+    const cb = document.querySelector('.et-all-cb[data-tab="' + cat.key + ':All"]');
+    if (cb && cb.checked) {
+      selected.push(cat.key + ':All');
+    } else {
+      const sel = document.querySelector('.et-indiv-select[data-category="' + cat.key + '"]');
+      if (sel) Array.from(sel.selectedOptions).forEach(o => selected.push(o.value));
+    }
+  });
+  document.getElementById('export-tabs').value = selected.join(',') || DEFAULT_TABS;
+}
+
+function syncUIFromTextarea() {
+  const tabs = new Set(
+    document.getElementById('export-tabs').value
+      .split(',').map(t => t.trim()).filter(Boolean)
+  );
+  EXPORT_TABS_DATA.forEach(cat => {
+    const cb = document.querySelector('.et-all-cb[data-tab="' + cat.key + ':All"]');
+    if (cb) cb.checked = tabs.has(cat.key + ':All');
+    const sel = document.querySelector('.et-indiv-select[data-category="' + cat.key + '"]');
+    if (sel) Array.from(sel.options).forEach(o => { o.selected = tabs.has(o.value); });
+  });
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
+buildExportTabsUI();
+syncUIFromTextarea();
+document.getElementById('export-tabs').addEventListener('input', syncUIFromTextarea);
 checkHealth();
 loadProfiles();
 loadJobs();
