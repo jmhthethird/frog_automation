@@ -87,6 +87,7 @@ function spawnCrawl(job, outputDir, logStream) {
       '--output-folder', outputDir,
       '--export-tabs', exportTabs,
       '--overwrite',
+      '--save-crawl',
     ];
 
     if (job.profile_path) {
