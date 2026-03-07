@@ -1,0 +1,44 @@
+'use strict';
+
+const path = require('path');
+const fs = require('fs');
+const Database = require('better-sqlite3');
+
+const DATA_DIR = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(__dirname, '..', 'data');
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const DB_PATH = path.join(DATA_DIR, 'frog_automation.db');
+
+const db = new Database(DB_PATH);
+
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS profiles (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    filename   TEXT    NOT NULL,
+    filepath   TEXT    NOT NULL UNIQUE,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS jobs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    url          TEXT    NOT NULL,
+    profile_id   INTEGER REFERENCES profiles(id) ON DELETE SET NULL,
+    export_tabs  TEXT    NOT NULL,
+    status       TEXT    NOT NULL DEFAULT 'queued',
+    output_dir   TEXT,
+    zip_path     TEXT,
+    error        TEXT,
+    created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    started_at   TEXT,
+    completed_at TEXT
+  );
+`);
+
+module.exports = { db, DATA_DIR };

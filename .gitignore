@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Runtime data & uploads (created at runtime)
+data/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
