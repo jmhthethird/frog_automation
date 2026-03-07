@@ -125,11 +125,14 @@
   .diff-change-detail { font-size: 11px; color: var(--text-dim); margin-left: 12px; }
   #diff-section { margin-top: 16px; display: none; }
   /* export-tabs UI */
-  .et-sub-label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: .05em; margin: 8px 0 4px; }
-  .et-all-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
-  .et-all-item { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text); cursor: pointer; padding: 3px 8px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; white-space: nowrap; }
-  .et-all-item:hover { border-color: var(--blue); }
-  .et-all-item input[type=checkbox] { cursor: pointer; accent-color: var(--blue); margin: 0; }
+  .et-sub-label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: .05em; margin: 6px 0 3px; }
+  .et-all-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; margin-bottom: 6px; }
+  .et-all-item { position: relative; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-dim); cursor: pointer; padding: 3px 4px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; text-align: center; transition: border-color .12s, background .12s, color .12s; user-select: none; }
+  .et-all-item:hover { border-color: var(--blue); color: var(--text); }
+  .et-all-item:has(input:checked) { background: var(--blue); color: #000; border-color: var(--blue); font-weight: 600; }
+  .et-all-item:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .et-all-item .et-key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .et-all-item input[type=checkbox] { position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
   .et-cat-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 5px; margin-bottom: 8px; }
   .et-details { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
   .et-details summary { padding: 4px 8px; font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; list-style: none; }
@@ -786,7 +789,11 @@ function buildExportTabsUI() {
     cb.dataset.tab = allTab;
     cb.addEventListener('change', onExportTabsUIChange);
     lbl.appendChild(cb);
-    lbl.appendChild(document.createTextNode(cat.key));
+    const txt = document.createElement('span');
+    txt.className = 'et-key';
+    txt.textContent = cat.key;
+    lbl.title = cat.key;
+    lbl.appendChild(txt);
     allGrid.appendChild(lbl);
 
     // Individual options (only if there are items)
