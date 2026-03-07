@@ -1,8 +1,9 @@
 name: Build & Release
 
 # Runs on every push to main (i.e. every merged PR).
-# Bumps the patch version, builds macOS DMGs for Apple Silicon and Intel,
-# then publishes a GitHub Release with those artifacts.
+# First runs the CI test suite (via the reusable ci.yml workflow).
+# Only if all tests pass does it bump the version, build macOS DMGs, and
+# publish a GitHub Release.
 #
 # The version-bump commit includes "[skip ci]" so the bot push does NOT
 # trigger another run of this workflow.
@@ -12,8 +13,15 @@ on:
     branches: [main]
 
 jobs:
+  # ── Gate: run the full test suite before doing anything else ──────────────
+  test:
+    name: test          # must match the status-check name used in branch protection
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    uses: ./.github/workflows/ci.yml
+
+  # ── Release: only runs when all tests pass ────────────────────────────────
   release:
-    # Skip the version-bump commit the bot pushes back to main.
+    needs: test
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
     runs-on: macos-latest
@@ -111,3 +119,4 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

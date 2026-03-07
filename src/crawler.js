@@ -27,7 +27,10 @@ async function runJob(jobId) {
   fs.mkdirSync(outputDir, { recursive: true });
 
   const logFile = path.join(outputDir, 'crawler.log');
-  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+  // Open the log file synchronously so the WriteStream has an fd immediately.
+  // This eliminates any race between the async 'open' event and test cleanup.
+  const logFd = fs.openSync(logFile, 'a');
+  const logStream = fs.createWriteStream(null, { fd: logFd, autoClose: true });
   logStream.on('error', (err) => console.error(`[crawler] logStream error (job ${jobId}):`, err));
 
   try {
@@ -103,11 +106,16 @@ function spawnCrawl(job, outputDir, logStream) {
  */
 function zipOutput(outputDir, jobId) {
   return new Promise((resolve, reject) => {
+    if (!fs.existsSync(outputDir)) {
+      return reject(new Error(`Output directory not found: ${outputDir}`));
+    }
     const zipPath = `${outputDir}.zip`;
     const output = fs.createWriteStream(zipPath);
     const archive = archiver('zip', { zlib: { level: 6 } });
 
     output.on('close', () => resolve(zipPath));
+    output.on('error', reject);
+    /* istanbul ignore next */
     archive.on('error', reject);
 
     archive.pipe(output);

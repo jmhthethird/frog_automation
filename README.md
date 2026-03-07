@@ -207,7 +207,77 @@ data/
 
 ---
 
-## Troubleshooting
+## Testing
+
+### Unit + route tests (Jest)
+
+```bash
+npm test                  # run all unit/route/integration tests
+npm run test:coverage     # run with coverage report (thresholds enforced)
+```
+
+The 9 Screaming Frog integration tests are **skipped by default** because they require the SF binary and macOS. To opt-in:
+
+```bash
+RUN_SF_INTEGRATION=1 npm test
+```
+
+### End-to-end UI tests (Playwright)
+
+Playwright tests start the Express server automatically and drive a headless Chromium browser.
+
+```bash
+# First time only – download the Chromium browser binary
+npx playwright install chromium
+
+# Run all E2E tests
+npm run test:e2e
+
+# Open Playwright's interactive UI explorer
+npm run test:e2e:ui
+```
+
+### Run everything at once
+
+```bash
+npm run test:all     # jest --coverage && playwright test
+```
+
+---
+
+## CI and Branch Protection
+
+Every pull request runs all tests automatically via **GitHub Actions CI** (`.github/workflows/ci.yml`).  PRs **cannot be merged** until the `CI / test` status check passes.
+
+### Enabling branch protection (one-time admin step)
+
+After pushing this repository for the first time:
+
+1. Go to **Settings → Branches** in the GitHub repository.
+2. Click **Add branch protection rule**.
+3. Set **Branch name pattern** to `main`.
+4. Tick **Require status checks to pass before merging**.
+5. Search for and select **`CI / test`**.
+6. Optionally tick **Require branches to be up to date before merging**.
+7. Save.
+
+Or use the `gh` CLI (requires admin token):
+
+```bash
+gh api repos/{owner}/{repo}/branches/main/protection \
+  --method PUT \
+  --field 'required_status_checks[strict]=true' \
+  --field 'required_status_checks[contexts][]=CI / test' \
+  --field 'enforce_admins=false' \
+  --field 'required_pull_request_reviews=null' \
+  --field 'restrictions=null'
+```
+
+Once enabled, the merge button is automatically blocked until `CI / test` turns green.
+
+---
+
+
 
 | Symptom | Fix |
 |---------|-----|

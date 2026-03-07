@@ -12,7 +12,12 @@
     "electron": "electron .",
     "dist": "electron-builder --mac",
     "dist:arm64": "electron-builder --mac --arm64",
-    "dist:x64": "electron-builder --mac --x64"
+    "dist:x64": "electron-builder --mac --x64",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:all": "jest --coverage && playwright test"
   },
   "dependencies": {
     "archiver": "7.0.1",

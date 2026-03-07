@@ -25,6 +25,9 @@ beforeEach(() => {
   const dbMod = require('../../src/db');
   db = dbMod.db;
   crawler = require('../../src/crawler');
+
+  // Suppress expected console.error noise from the crawler's error handler.
+  jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -85,7 +88,19 @@ describe('zipOutput()', () => {
   it('rejects when the source directory does not exist', async () => {
     await expect(
       crawler.zipOutput(path.join(dataDir, 'nonexistent'), 1)
-    ).rejects.toThrow();
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it('rejects when the zip destination is not writable (archive error path)', async () => {
+    const srcDir = path.join(dataDir, 'archive-err-src');
+    fs.mkdirSync(srcDir);
+    fs.writeFileSync(path.join(srcDir, 'file.txt'), 'hello');
+
+    // Place a directory at the expected zip path so fs.createWriteStream fails.
+    const badZipPath = `${srcDir}.zip`;
+    fs.mkdirSync(badZipPath);
+
+    await expect(crawler.zipOutput(srcDir, 5)).rejects.toThrow();
   });
 });
 
