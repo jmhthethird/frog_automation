@@ -1,6 +1,6 @@
 {
   "name": "frog-automation",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "macOS LAN web app runner for Screaming Frog SEO Spider CLI",
   "main": "electron/main.js",
   "engines": {
