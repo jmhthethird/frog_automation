@@ -4,10 +4,36 @@ A macOS LAN-only web app that lets any computer on your local network submit
 crawl jobs to [Screaming Frog SEO Spider](https://www.screamingfrog.co.uk/seo-spider/)
 running headlessly on your Mac.
 
+Available as a **standalone Electron desktop app** (no Node.js installation
+required on the host machine) or as a plain **Node.js server**.
+
+---
+
+## Getting Started — Electron App (recommended)
+
+### Download a pre-built release
+
+Every merge to `main` automatically builds and publishes a new GitHub Release
+with signed `.dmg` installers for both Apple Silicon and Intel Macs.
+
+1. Go to [**Releases**](../../releases) and download the latest `.dmg`:
+   - **Apple Silicon (M1 / M2 / M3 / M4)** → `Frog Automation-x.y.z-arm64.dmg`
+   - **Intel Mac** → `Frog Automation-x.y.z.dmg`
+2. Open the DMG and drag **Frog Automation** to your Applications folder.
+3. On first launch macOS may warn *"app is from an unidentified developer"*.
+   Right-click the app → **Open** → **Open** to bypass Gatekeeper,
+   or go to **System Settings → Privacy & Security → Open Anyway**.
+4. The app starts the web server and opens the UI in a window automatically.
+5. A system-tray icon (🟢) lets you reopen the window, open in your system
+   browser, show the data folder, or quit.
+
+> **Requires:** Screaming Frog SEO Spider installed at `/Applications/Screaming Frog SEO Spider.app`
+
 ---
 
 ## Features
 
+- **Standalone Electron app** – no Node.js or npm needed on the destination Mac.
 - **Web UI** – submit crawl jobs, upload / manage saved config profiles, view job
   status and logs, download results as a ZIP.
 - **Single-worker queue** – jobs run one at a time; queued / running / completed /
@@ -17,8 +43,10 @@ running headlessly on your Mac.
 - **Configurable exports** – default tabs are pre-selected; customise per-job in
   the UI.
 - **Health page** – `/api/health` shows whether the SF launcher is found on disk.
+- **Auto-release CI** – every merge to `main` bumps the patch version and
+  publishes a new GitHub Release with macOS DMG installers.
 - **Security** – URL scheme validation, restricted file uploads, path-traversal
-  prevention; no internet exposure needed.
+  prevention, rate limiting; no internet exposure needed.
 
 ---
 

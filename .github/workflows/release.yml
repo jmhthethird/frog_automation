@@ -1,0 +1,113 @@
+name: Build & Release
+
+# Runs on every push to main (i.e. every merged PR).
+# Bumps the patch version, builds macOS DMGs for Apple Silicon and Intel,
+# then publishes a GitHub Release with those artifacts.
+#
+# The version-bump commit includes "[skip ci]" so the bot push does NOT
+# trigger another run of this workflow.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    # Skip the version-bump commit the bot pushes back to main.
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
+    runs-on: macos-latest
+
+    permissions:
+      contents: write   # needed to push the version-bump commit and create the release
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use the built-in token so the bot push doesn't retrigger the workflow.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Node ──────────────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── Version bump ──────────────────────────────────────────────────────
+      - name: Bump patch version
+        id: version
+        run: |
+          # Increment the patch segment in package.json (no git commit yet).
+          npm version patch --no-git-tag-version
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumped to $VERSION"
+
+      # ── Install ───────────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Build ─────────────────────────────────────────────────────────────
+      # electron-builder rebuilds native modules (better-sqlite3) for the
+      # target Electron Node ABI automatically via npmRebuild=true.
+
+      - name: Build macOS app – Apple Silicon (arm64)
+        run: npm run dist:arm64
+        env:
+          # Prevents electron-builder from trying to auto-publish to GitHub.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build macOS app – Intel (x64)
+        run: npm run dist:x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Commit version bump and tag ───────────────────────────────────────
+      - name: Commit version bump and push tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: release v${{ steps.version.outputs.version }} [skip ci]"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push --follow-tags
+
+      # ── GitHub Release ────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Frog Automation v${{ steps.version.outputs.version }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          body: |
+            ## 🐸 Frog Automation v${{ steps.version.outputs.version }}
+
+            ### Download the right DMG for your Mac
+
+            | Your Mac | File to download |
+            |---|---|
+            | **Apple Silicon** (M1 / M2 / M3 / M4) | `Frog Automation-${{ steps.version.outputs.version }}-arm64.dmg` |
+            | **Intel** | `Frog Automation-${{ steps.version.outputs.version }}.dmg` |
+
+            ### Installation
+
+            1. Download the `.dmg` for your architecture above.
+            2. Open the DMG and drag **Frog Automation** to your Applications folder.
+            3. On first launch macOS may show *"app is from an unidentified developer"*
+               – right-click the app → **Open** → **Open** to bypass Gatekeeper,
+               or go to **System Settings → Privacy & Security → Open Anyway**.
+            4. The app starts the web server and opens the UI automatically.
+            5. Other computers on your LAN can reach the UI at `http://<your-mac-ip>:3000`.
+
+            > **Requires:** Screaming Frog SEO Spider installed at `/Applications/Screaming Frog SEO Spider.app`
+            > and a valid headless/CLI licence.
+          files: dist/*.dmg
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

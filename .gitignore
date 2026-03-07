@@ -4,6 +4,10 @@ node_modules/
 # Runtime data & uploads (created at runtime)
 data/
 
+# Electron build output
+dist/
+out/
+
 # OS artefacts
 .DS_Store
 Thumbs.db
