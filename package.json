@@ -1,0 +1,78 @@
+{
+  "name": "frog-automation",
+  "version": "1.0.0",
+  "description": "macOS LAN web app runner for Screaming Frog SEO Spider CLI",
+  "main": "electron/main.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "electron": "electron .",
+    "dist": "electron-builder --mac",
+    "dist:arm64": "electron-builder --mac --arm64",
+    "dist:x64": "electron-builder --mac --x64",
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:all": "jest --coverage && playwright test"
+  },
+  "dependencies": {
+    "archiver": "7.0.1",
+    "better-sqlite3": "12.6.2",
+    "express": "5.2.1",
+    "express-rate-limit": "8.3.0",
+    "multer": "2.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "electron": "35.7.5",
+    "electron-builder": "26.8.1",
+    "jest": "^30.2.0",
+    "supertest": "^7.2.2"
+  },
+  "build": {
+    "appId": "com.frogautomation.app",
+    "productName": "Frog Automation",
+    "copyright": "MIT",
+    "directories": {
+      "output": "dist",
+      "buildResources": "electron/assets"
+    },
+    "files": [
+      "electron/main.js",
+      "src/**/*",
+      "public/**/*",
+      "index.js"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**",
+      "**/node_modules/bindings/**",
+      "**/node_modules/file-uri-to-path/**"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "electron/assets/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Frog Automation ${version}"
+    },
+    "npmRebuild": true
+  }
+}

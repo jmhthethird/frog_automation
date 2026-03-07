@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Runtime data & uploads (created at runtime)
+data/
+
+# Electron build output
+dist/
+out/
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,80 @@
+name: CI
+
+# ── Triggers ──────────────────────────────────────────────────────────────────
+# Run on every pull-request that targets main.
+# Also run on direct pushes to main so the release workflow can depend on this.
+# Exposed as a reusable workflow so release.yml can call it before building.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    # Skip the version-bump commit pushed by the release bot.
+    paths-ignore:
+      - '**'  # overridden below by the commit-message filter
+  workflow_call:  # called by release.yml
+
+# Each event-type may fire a separate run; avoid redundant concurrent runs on
+# the same ref by cancelling the older one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test
+    # Skip when the release bot pushes the version-bump commit.
+    # Always run when invoked via workflow_call (the caller handles filtering).
+    if: >-
+      ${{ github.event_name == 'workflow_call' ||
+          !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Node ─────────────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── Dependencies ─────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Unit & route tests with coverage ─────────────────────────────────
+      - name: Run Jest tests (unit + routes + integration)
+        run: npm run test:coverage
+
+      # ── Upload coverage report as an artifact ─────────────────────────────
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+      # ── Playwright browsers ───────────────────────────────────────────────
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # ── E2E UI tests ──────────────────────────────────────────────────────
+      - name: Run Playwright E2E tests
+        run: npm run test:e2e
+        env:
+          CI: 'true'
+
+      # ── Upload Playwright report on failure ───────────────────────────────
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

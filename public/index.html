@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Frog Automation – SEO Crawler Runner</title>
+<style>
+  :root {
+    --green: #2ecc71;
+    --red: #e74c3c;
+    --orange: #e67e22;
+    --blue: #3498db;
+    --gray: #95a5a6;
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --text: #e0e0e0;
+    --text-dim: #a0a0a0;
+    --border: #2a2a4e;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header { background: var(--surface2); padding: 14px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 20px; font-weight: 700; }
+  header span.emoji { font-size: 26px; }
+  #health-badge { margin-left: auto; font-size: 12px; padding: 4px 10px; border-radius: 20px; background: #333; }
+  #health-badge.ok { background: #1a4a2e; color: var(--green); }
+  #health-badge.warn { background: #4a3000; color: var(--orange); }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
+  @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ccc; }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; margin-top: 12px; }
+  label:first-child { margin-top: 0; }
+  input[type=text], input[type=url], select, textarea {
+    width: 100%; padding: 8px 10px; background: #0a0a1e; border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); font-size: 13px; outline: none;
+  }
+  input[type=text]:focus, input[type=url]:focus, select:focus, textarea:focus {
+    border-color: var(--blue);
+  }
+  textarea { resize: vertical; height: 70px; font-family: monospace; }
+  input[type=file] { color: var(--text-dim); font-size: 12px; }
+  .radio-group { display: flex; gap: 16px; margin-top: 4px; }
+  .radio-group label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-size: 13px; cursor: pointer; }
+  .btn { display: inline-block; padding: 9px 18px; border-radius: 4px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--green); color: #000; }
+  .btn-danger  { background: var(--red); color: #fff; font-size: 12px; padding: 4px 10px; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .form-footer { margin-top: 16px; display: flex; align-items: center; gap: 12px; }
+  .msg { font-size: 12px; padding: 6px 10px; border-radius: 4px; }
+  .msg-ok  { background: #1a4a2e; color: var(--green); }
+  .msg-err { background: #4a1a1a; color: var(--red); }
+  /* jobs table */
+  .jobs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .jobs-header h2 { font-size: 16px; font-weight: 600; color: #ccc; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; color: var(--text-dim); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13px; }
+  tr:hover td { background: #ffffff08; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  .badge-queued    { background: #2a2a4e; color: #aaa; }
+  .badge-running   { background: #1a3a5e; color: var(--blue); }
+  .badge-completed { background: #1a4a2e; color: var(--green); }
+  .badge-failed    { background: #4a1a1a; color: var(--red); }
+  /* detail panel */
+  #detail-panel { margin-top: 24px; display: none; }
+  #detail-panel .card { padding: 20px; }
+  #detail-panel h2 { font-size: 15px; margin-bottom: 12px; }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .detail-item label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; }
+  .detail-item span  { display: block; font-size: 13px; word-break: break-all; }
+  pre#log-output { background: #0a0a0a; color: #c8e6c9; font-family: monospace; font-size: 12px; line-height: 1.6; padding: 12px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; max-height: 350px; overflow-y: auto; }
+  .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; letter-spacing: .05em; }
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .url-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <span class="emoji">🐸</span>
+  <h1>Frog Automation</h1>
+  <div id="health-badge">checking…</div>
+</header>
+<main>
+  <div class="grid">
+    <!-- Submit Job -->
+    <div>
+      <div class="card">
+        <h2>Submit Crawl Job</h2>
+        <label>URL to Crawl</label>
+        <input type="url" id="job-url" placeholder="https://example.com" autocomplete="off"/>
+
+        <label style="margin-top:14px;">Profile</label>
+        <div class="radio-group">
+          <label><input type="radio" name="prof-src" value="existing" id="prof-existing" checked> Use saved profile</label>
+          <label><input type="radio" name="prof-src" value="upload"   id="prof-upload">  Upload new profile</label>
+          <label><input type="radio" name="prof-src" value="none"     id="prof-none">    No profile</label>
+        </div>
+
+        <div id="prof-existing-row" style="margin-top:8px;">
+          <select id="profile-select">
+            <option value="">— loading profiles —</option>
+          </select>
+        </div>
+        <div id="prof-upload-row" style="display:none; margin-top:8px;">
+          <input type="text"  id="upload-name" placeholder="Profile display name (optional)"/>
+          <input type="file"  id="upload-file" accept=".seospiderconfig" style="margin-top:8px;"/>
+        </div>
+
+        <label>Export Tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated)</span></label>
+        <textarea id="export-tabs">Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirects:All</textarea>
+
+        <div class="form-footer">
+          <button class="btn btn-primary" id="submit-btn" onclick="submitJob()">Run Crawl</button>
+          <span id="submit-msg" class="msg" style="display:none;"></span>
+        </div>
+      </div>
+
+      <!-- Profile Library -->
+      <div class="card" style="margin-top:20px;">
+        <h2>Profile Library</h2>
+        <div id="profile-list-area"><em style="color:var(--text-dim);">Loading…</em></div>
+      </div>
+    </div>
+
+    <!-- Jobs list -->
+    <div>
+      <div class="card">
+        <div class="jobs-header">
+          <h2>Jobs</h2>
+          <button class="btn btn-secondary" onclick="loadJobs()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
+        </div>
+        <div id="jobs-area"><em style="color:var(--text-dim);">Loading…</em></div>
+      </div>
+
+      <!-- Job detail -->
+      <div id="detail-panel">
+        <div class="card">
+          <h2 id="detail-title">Job Details</h2>
+          <div class="detail-grid" id="detail-grid"></div>
+          <div id="detail-download" style="margin-bottom:12px;"></div>
+          <hr class="sep"/>
+          <div class="section-label">Log (last 100 lines)</div>
+          <pre id="log-output">Select a job to view logs.</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const DEFAULT_TABS = 'Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirects:All';
+let autoRefreshTimer = null;
+
+// ── Health ───────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch('/api/health');
+    const d = await r.json();
+    const el = document.getElementById('health-badge');
+    if (d.launcher_found) {
+      el.textContent = '✓ SF Launcher found';
+      el.className = 'ok';
+    } else {
+      el.textContent = '⚠ SF Launcher not found';
+      el.className = 'warn';
+    }
+  } catch {}
+}
+
+// ── Profiles ─────────────────────────────────────────────────────────────────
+async function loadProfiles() {
+  const sel = document.getElementById('profile-select');
+  const listArea = document.getElementById('profile-list-area');
+  try {
+    const r = await fetch('/api/profiles');
+    const profiles = await r.json();
+    sel.innerHTML = profiles.length
+      ? profiles.map(p => `<option value="${p.id}">${escHtml(p.name)} (${escHtml(p.filename)})</option>`).join('')
+      : '<option value="">— no saved profiles —</option>';
+
+    if (profiles.length === 0) {
+      listArea.innerHTML = '<em style="color:var(--text-dim);">No profiles saved yet.</em>';
+    } else {
+      listArea.innerHTML = `<table>
+        <tr><th>Name</th><th>Filename</th><th>Saved</th><th></th></tr>
+        ${profiles.map(p => `<tr>
+          <td>${escHtml(p.name)}</td>
+          <td style="font-family:monospace;font-size:12px;">${escHtml(p.filename)}</td>
+          <td style="color:var(--text-dim);">${fmtDate(p.created_at)}</td>
+          <td><button class="btn btn-danger" onclick="deleteProfile(${p.id})">✕</button></td>
+        </tr>`).join('')}
+      </table>`;
+    }
+  } catch (e) {
+    listArea.innerHTML = '<span style="color:var(--red);">Failed to load profiles</span>';
+  }
+}
+
+async function deleteProfile(id) {
+  if (!confirm('Delete this profile?')) return;
+  await fetch('/api/profiles/' + id, { method: 'DELETE' });
+  loadProfiles();
+}
+
+// ── Profile source toggle ────────────────────────────────────────────────────
+document.querySelectorAll('input[name=prof-src]').forEach(r => r.addEventListener('change', () => {
+  const v = document.querySelector('input[name=prof-src]:checked').value;
+  document.getElementById('prof-existing-row').style.display = v === 'existing' ? '' : 'none';
+  document.getElementById('prof-upload-row').style.display   = v === 'upload'   ? '' : 'none';
+}));
+
+// ── Submit job ────────────────────────────────────────────────────────────────
+async function submitJob() {
+  const btn = document.getElementById('submit-btn');
+  const msgEl = document.getElementById('submit-msg');
+  const url = document.getElementById('job-url').value.trim();
+  const exportTabs = document.getElementById('export-tabs').value.trim() || DEFAULT_TABS;
+  const profSrc = document.querySelector('input[name=prof-src]:checked').value;
+
+  showMsg(msgEl, '', '');
+  if (!url) return showMsg(msgEl, 'URL is required', 'err');
+
+  btn.disabled = true;
+
+  try {
+    let profileId = null;
+
+    // Upload new profile first if needed
+    if (profSrc === 'upload') {
+      const file = document.getElementById('upload-file').files[0];
+      if (!file) { btn.disabled = false; return showMsg(msgEl, 'Please select a .seospiderconfig file', 'err'); }
+      const fd = new FormData();
+      fd.append('profile', file);
+      const nameVal = document.getElementById('upload-name').value.trim();
+      if (nameVal) fd.append('name', nameVal);
+      const pr = await fetch('/api/profiles', { method: 'POST', body: fd });
+      const pd = await pr.json();
+      if (!pr.ok) { btn.disabled = false; return showMsg(msgEl, pd.error || 'Profile upload failed', 'err'); }
+      profileId = pd.id;
+      loadProfiles();
+    } else if (profSrc === 'existing') {
+      const sel = document.getElementById('profile-select');
+      if (sel.value) profileId = parseInt(sel.value, 10);
+    }
+
+    const body = { url, export_tabs: exportTabs };
+    if (profileId) body.profile_id = profileId;
+
+    const r = await fetch('/api/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) { btn.disabled = false; return showMsg(msgEl, d.error || 'Failed to submit job', 'err'); }
+
+    showMsg(msgEl, `Job #${d.id} queued!`, 'ok');
+    document.getElementById('job-url').value = '';
+    loadJobs();
+    setTimeout(() => showJobDetail(d.id), 500);
+  } catch (e) {
+    showMsg(msgEl, 'Network error', 'err');
+  }
+  btn.disabled = false;
+}
+
+// ── Jobs ──────────────────────────────────────────────────────────────────────
+async function loadJobs() {
+  const area = document.getElementById('jobs-area');
+  try {
+    const r = await fetch('/api/jobs');
+    const jobs = await r.json();
+    if (jobs.length === 0) {
+      area.innerHTML = '<em style="color:var(--text-dim);">No jobs yet. Submit one above.</em>';
+      return;
+    }
+    area.innerHTML = `<table>
+      <tr><th>#</th><th>URL</th><th>Profile</th><th>Status</th><th>Created</th><th></th></tr>
+      ${jobs.map(j => `<tr>
+        <td>${j.id}</td>
+        <td class="url-cell" title="${escHtml(j.url)}">${escHtml(j.url)}</td>
+        <td style="color:var(--text-dim);">${escHtml(j.profile_name || '—')}</td>
+        <td><span class="badge badge-${j.status}">${j.status}</span></td>
+        <td style="color:var(--text-dim);white-space:nowrap;">${fmtDate(j.created_at)}</td>
+        <td><button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="showJobDetail(${j.id})">View</button></td>
+      </tr>`).join('')}
+    </table>`;
+  } catch {
+    area.innerHTML = '<span style="color:var(--red);">Failed to load jobs</span>';
+  }
+}
+
+async function showJobDetail(id) {
+  const panel = document.getElementById('detail-panel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  document.getElementById('detail-title').textContent = `Job #${id}`;
+  document.getElementById('detail-grid').innerHTML = '<em style="color:var(--text-dim);">Loading…</em>';
+  document.getElementById('log-output').textContent = 'Loading…';
+  document.getElementById('detail-download').innerHTML = '';
+
+  clearInterval(autoRefreshTimer);
+
+  const refresh = async () => {
+    try {
+      const r = await fetch('/api/jobs/' + id);
+      const j = await r.json();
+      if (!r.ok) return;
+
+      document.getElementById('detail-grid').innerHTML = `
+        <div class="detail-item"><label>Status</label><span><span class="badge badge-${j.status}">${j.status}</span></span></div>
+        <div class="detail-item"><label>URL</label><span>${escHtml(j.url)}</span></div>
+        <div class="detail-item"><label>Profile</label><span>${escHtml(j.profile_name || '—')}</span></div>
+        <div class="detail-item"><label>Created</label><span>${fmtDate(j.created_at)}</span></div>
+        <div class="detail-item"><label>Started</label><span>${j.started_at ? fmtDate(j.started_at) : '—'}</span></div>
+        <div class="detail-item"><label>Completed</label><span>${j.completed_at ? fmtDate(j.completed_at) : '—'}</span></div>
+        ${j.error ? `<div class="detail-item" style="grid-column:1/-1;"><label>Error</label><span style="color:var(--red);">${escHtml(j.error)}</span></div>` : ''}
+      `;
+
+      if (j.status === 'completed') {
+        document.getElementById('detail-download').innerHTML =
+          `<a href="/api/jobs/${j.id}/download" class="btn btn-primary" download>⬇ Download Results ZIP</a>`;
+        clearInterval(autoRefreshTimer);
+      } else if (j.status === 'failed') {
+        clearInterval(autoRefreshTimer);
+      }
+
+      if (j.log_tail !== null && j.log_tail !== undefined) {
+        const pre = document.getElementById('log-output');
+        pre.textContent = j.log_tail || '(no log output yet)';
+        pre.scrollTop = pre.scrollHeight;
+      }
+    } catch {}
+  };
+
+  await refresh();
+  autoRefreshTimer = setInterval(async () => {
+    await refresh();
+    loadJobs(); // also refresh jobs table
+  }, 3000);
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  return new Date(s.endsWith('Z') ? s : s + 'Z').toLocaleString();
+}
+function showMsg(el, text, type) {
+  el.textContent = text;
+  el.className = 'msg' + (type ? ' msg-' + type : '');
+  el.style.display = text ? 'inline-block' : 'none';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+checkHealth();
+loadProfiles();
+loadJobs();
+</script>
+</body>
+</html>
