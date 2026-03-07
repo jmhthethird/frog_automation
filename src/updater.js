@@ -1,0 +1,365 @@
+'use strict';
+
+/**
+ * updater.js — self-update logic for Frog Automation.
+ *
+ * Responsibilities:
+ *   1. checkForUpdate()  — queries the GitHub Releases API and compares versions.
+ *   2. downloadUpdate()  — streams the release asset (DMG) to a temp file with
+ *                          progress tracking.
+ *   3. installUpdate()   — mounts the DMG, copies the new .app bundle to the
+ *                          location of the currently-running bundle, unmounts,
+ *                          and restarts the app.  macOS only.
+ *   4. getState()        — returns a snapshot of the current update state.
+ */
+
+const https  = require('https');
+const http   = require('http');
+const fs     = require('fs');
+const path   = require('path');
+const os     = require('os');
+const cp     = require('child_process');
+
+const GITHUB_OWNER    = 'jmhthethird';
+const GITHUB_REPO     = 'frog_automation';
+/** Milliseconds to wait after resolving installUpdate() before restarting,
+ *  giving the HTTP response time to reach the client. */
+const RESTART_DELAY_MS = 800;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Read the current application version from package.json. */
+function getCurrentVersion() {
+  return require('../package.json').version;
+}
+
+/**
+ * Strict semver comparison (major.minor.patch, strips leading "v").
+ * Returns true if version string b is strictly greater than a.
+ */
+function isNewer(a, b) {
+  const parse = v => v.replace(/^v/, '').split('.').map(Number);
+  const av = parse(a);
+  const bv = parse(b);
+  for (let i = 0; i < 3; i++) {
+    if ((bv[i] || 0) !== (av[i] || 0)) return (bv[i] || 0) > (av[i] || 0);
+  }
+  return false;
+}
+
+/**
+ * Derive the .app bundle path from process.execPath when running in Electron.
+ * e.g. /Applications/Frog Automation.app/Contents/MacOS/Frog Automation
+ *      → /Applications/Frog Automation.app
+ */
+function getAppBundlePath() {
+  const m = process.execPath.match(/^(.*?\.app)\//);
+  return m ? m[1] : null;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+/**
+ * @typedef {'idle'|'checking'|'up-to-date'|'available'|'downloading'|'ready'|'installing'|'error'} UpdateStatus
+ *
+ * @typedef {Object} UpdateState
+ * @property {UpdateStatus} status
+ * @property {string}       currentVersion
+ * @property {string|null}  latestVersion
+ * @property {string|null}  releaseUrl
+ * @property {string|null}  downloadUrl
+ * @property {string|null}  downloadPath
+ * @property {number}       progress        0–100
+ * @property {string|null}  error
+ */
+
+const _state = {
+  status:        'idle',
+  latestVersion: null,
+  releaseUrl:    null,
+  downloadUrl:   null,
+  downloadPath:  null,
+  progress:      0,
+  error:         null,
+};
+
+function _patch(obj) { Object.assign(_state, obj); }
+
+/** @returns {UpdateState} */
+function getState() {
+  return { ..._state, currentVersion: getCurrentVersion() };
+}
+
+// ── checkForUpdate ────────────────────────────────────────────────────────────
+
+/**
+ * Query the GitHub Releases API and compare with the current version.
+ * Updates internal state and resolves with the current state.
+ * Never rejects — errors are captured in state.error.
+ *
+ * @returns {Promise<UpdateState>}
+ */
+async function checkForUpdate() {
+  _patch({ status: 'checking', error: null });
+
+  let release;
+  try {
+    release = await _fetchJson(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
+    );
+  } catch (err) {
+    _patch({ status: 'error', error: err.message });
+    return getState();
+  }
+
+  const latestVersion = (release.tag_name || '').replace(/^v/, '');
+  if (!latestVersion) {
+    _patch({ status: 'error', error: 'Unexpected GitHub API response' });
+    return getState();
+  }
+
+  _patch({ latestVersion, releaseUrl: release.html_url || null });
+
+  const current = getCurrentVersion();
+  if (!isNewer(current, latestVersion)) {
+    _patch({ status: 'up-to-date' });
+    return getState();
+  }
+
+  // Find the right DMG asset for the current architecture.
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const arch   = process.arch; // 'arm64' or 'x64'
+  const asset  = arch === 'arm64'
+    ? assets.find(a => a.name.endsWith('-arm64.dmg'))
+    : assets.find(a => a.name.endsWith('.dmg') && !a.name.includes('arm64'));
+
+  _patch({
+    status:      'available',
+    downloadUrl: asset ? asset.browser_download_url : null,
+  });
+  return getState();
+}
+
+// ── downloadUpdate ────────────────────────────────────────────────────────────
+
+/**
+ * Stream the release DMG to a temp file, tracking progress.
+ * Resolves with the local file path on success.
+ *
+ * @param {string} url  Must be a github.com or githubusercontent.com URL.
+ * @returns {Promise<string>}
+ */
+function downloadUpdate(url) {
+  if (_state.status === 'downloading') {
+    return Promise.reject(new Error('Download already in progress'));
+  }
+
+  // Security: only allow GitHub-hosted assets.
+  let parsed;
+  try { parsed = new URL(url); } catch { return Promise.reject(new Error('Invalid download URL')); }
+  const allowedHosts = [
+    'github.com',
+    'objects.githubusercontent.com',
+    'github-releases.githubusercontent.com',
+  ];
+  if (!allowedHosts.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) {
+    return Promise.reject(new Error('Download URL must be from github.com'));
+  }
+
+  _patch({ status: 'downloading', progress: 0, downloadPath: null, error: null });
+
+  return new Promise((resolve, reject) => {
+    const filename = parsed.pathname.split('/').pop() || 'update.dmg';
+    const destPath = path.join(os.tmpdir(), `frog-update-${filename}`);
+
+    function get(u) {
+      const proto = u.startsWith('https') ? https : http;
+      proto.get(u, { headers: { 'User-Agent': `FrogAutomation/${getCurrentVersion()}` } }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          // Follow one redirect (GitHub CDN).
+          get(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          const err = new Error(`HTTP ${res.statusCode}`);
+          _patch({ status: 'error', error: err.message });
+          reject(err);
+          return;
+        }
+        const total    = parseInt(res.headers['content-length'] || '0', 10);
+        let   received = 0;
+        const file     = fs.createWriteStream(destPath);
+
+        res.on('data', chunk => {
+          received += chunk.length;
+          if (total > 0) _patch({ progress: Math.round(received / total * 100) });
+        });
+
+        res.pipe(file);
+        file.on('finish', () => {
+          file.close(() => {
+            _patch({ status: 'ready', downloadPath: destPath, progress: 100 });
+            resolve(destPath);
+          });
+        });
+        res.on('error', err => {
+          fs.unlink(destPath, () => {});
+          _patch({ status: 'error', error: err.message });
+          reject(err);
+        });
+        file.on('error', err => {
+          fs.unlink(destPath, () => {});
+          _patch({ status: 'error', error: err.message });
+          reject(err);
+        });
+      }).on('error', err => {
+        _patch({ status: 'error', error: err.message });
+        reject(err);
+      });
+    }
+    get(url);
+  });
+}
+
+// ── installUpdate ─────────────────────────────────────────────────────────────
+
+/**
+ * Mount the downloaded DMG, copy the new .app bundle over the running one,
+ * unmount the volume, then restart the application.  macOS only.
+ *
+ * @returns {Promise<void>}  Resolves just before the restart is triggered.
+ */
+function installUpdate() {
+  if (_state.status !== 'ready' || !_state.downloadPath) {
+    return Promise.reject(new Error('No update ready to install'));
+  }
+  if (process.platform !== 'darwin') {
+    return Promise.reject(new Error('Automatic install is only supported on macOS'));
+  }
+
+  _patch({ status: 'installing', error: null });
+
+  return new Promise((resolve, reject) => {
+    const dmgPath = _state.downloadPath;
+
+    // Mount the DMG silently (no Finder window, no auto-open).
+    cp.execFile('hdiutil', ['attach', '-nobrowse', '-noautoopen', dmgPath], (err, stdout) => {
+      if (err) {
+        _patch({ status: 'error', error: 'Failed to mount update: ' + err.message });
+        reject(new Error(_state.error));
+        return;
+      }
+
+      // hdiutil stdout format (tab-separated):  disk3s1\t<type>\t/Volumes/Frog…
+      const mountPoint = stdout.split('\n')
+        .map(l => l.split('\t').map(s => s.trim()))
+        .map(parts => parts[parts.length - 1])
+        .find(s => s.startsWith('/Volumes/'));
+
+      if (!mountPoint) {
+        _patch({ status: 'error', error: 'Could not find mounted volume' });
+        reject(new Error(_state.error));
+        return;
+      }
+
+      let files;
+      try { files = fs.readdirSync(mountPoint); } catch (e) {
+        _detach(mountPoint);
+        _patch({ status: 'error', error: 'Cannot read mounted volume: ' + e.message });
+        reject(new Error(_state.error));
+        return;
+      }
+
+      const appName = files.find(f => f.endsWith('.app'));
+      if (!appName) {
+        _detach(mountPoint);
+        _patch({ status: 'error', error: 'No .app bundle found in DMG' });
+        reject(new Error(_state.error));
+        return;
+      }
+
+      const srcApp  = path.join(mountPoint, appName);
+      // Install to the same location as the currently-running bundle (or fall
+      // back to /Applications if we are not inside an .app bundle, e.g. dev).
+      const bundlePath = getAppBundlePath();
+      const destApp    = bundlePath || path.join('/Applications', appName);
+
+      // ditto preserves code signing and extended attributes.
+      cp.execFile('ditto', [srcApp, destApp], (err) => {
+        _detach(mountPoint);
+        if (err) {
+          _patch({ status: 'error', error: 'Failed to install update: ' + err.message });
+          reject(new Error(_state.error));
+          return;
+        }
+        resolve();
+        setTimeout(_restartApp, RESTART_DELAY_MS);
+      });
+    });
+  });
+}
+
+/* istanbul ignore next */
+function _detach(mountPoint) {
+  cp.execFile('hdiutil', ['detach', mountPoint, '-force'], () => {});
+}
+
+/* istanbul ignore next */
+function _restartApp() {
+  try {
+    // Available when running inside the Electron process.
+    const { app } = require('electron');
+    app.relaunch();
+    app.quit();
+  } catch {
+    process.exit(0);
+  }
+}
+
+// ── JSON fetch helper ─────────────────────────────────────────────────────────
+
+/**
+ * Fetch a URL and parse the response as JSON.  Follows one redirect.
+ *
+ * @param {string} url
+ * @returns {Promise<object>}
+ */
+function _fetchJson(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, {
+      headers: {
+        'User-Agent': `FrogAutomation/${getCurrentVersion()}`,
+        'Accept':     'application/vnd.github.v3+json',
+      },
+    }, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        _fetchJson(res.headers.location).then(resolve, reject);
+        return;
+      }
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.message) reject(new Error(`GitHub API: ${json.message}`));
+          else resolve(json);
+        } catch (e) {
+          reject(new Error('Failed to parse GitHub API response'));
+        }
+      });
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+// ── Exports ───────────────────────────────────────────────────────────────────
+
+module.exports = {
+  checkForUpdate,
+  downloadUpdate,
+  installUpdate,
+  getState,
+  // Exported for testing
+  isNewer,
+  getCurrentVersion,
+};
