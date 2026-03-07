@@ -65,10 +65,11 @@ async function driveToReady(updater) {
 }
 
 /** Build a minimal GitHub releases API response. */
-function fakeRelease(tag, assets = []) {
+function fakeRelease(tag, assets = [], body = null) {
   return {
     tag_name: tag,
     html_url: `https://github.com/jmhthethird/frog_automation/releases/tag/${tag}`,
+    body,
     assets,
   };
 }
@@ -112,6 +113,7 @@ describe('getState()', () => {
       currentVersion: expect.any(String),
       latestVersion:  null,
       releaseUrl:     null,
+      releaseNotes:   null,
       downloadUrl:    null,
       downloadPath:   null,
       progress:       0,
@@ -177,6 +179,29 @@ describe('checkForUpdate()', () => {
     const state = await updater.checkForUpdate();
     expect(state.status).toBe('available');
     expect(state.downloadUrl).toBeNull();
+  });
+
+  it('captures release notes from the API body when update is available', async () => {
+    const notes = '- feat: add feature list to releases\n- fix: improve update panel UI';
+    makeHttpsSpy({ body: fakeRelease('v999.0.0', [], notes) });
+    const state = await updater.checkForUpdate();
+    expect(state.status).toBe('available');
+    expect(state.releaseNotes).toBe(notes);
+  });
+
+  it('sets releaseNotes to null when the API body field is absent', async () => {
+    makeHttpsSpy({ body: fakeRelease('v999.0.0') });
+    const state = await updater.checkForUpdate();
+    expect(state.releaseNotes).toBeNull();
+  });
+
+  it('captures release notes even when version is up-to-date', async () => {
+    const pkg = require('../../package.json');
+    const notes = '- chore: maintenance';
+    makeHttpsSpy({ body: fakeRelease(`v${pkg.version}`, [], notes) });
+    const state = await updater.checkForUpdate();
+    expect(state.status).toBe('up-to-date');
+    expect(state.releaseNotes).toBe(notes);
   });
 
   it('sets status to error on network failure', async () => {

@@ -67,6 +67,7 @@ function getAppBundlePath() {
  * @property {string}       currentVersion
  * @property {string|null}  latestVersion
  * @property {string|null}  releaseUrl
+ * @property {string|null}  releaseNotes
  * @property {string|null}  downloadUrl
  * @property {string|null}  downloadPath
  * @property {number}       progress        0–100
@@ -77,6 +78,7 @@ const _state = {
   status:        'idle',
   latestVersion: null,
   releaseUrl:    null,
+  releaseNotes:  null,
   downloadUrl:   null,
   downloadPath:  null,
   progress:      0,
@@ -118,7 +120,7 @@ async function checkForUpdate() {
     return getState();
   }
 
-  _patch({ latestVersion, releaseUrl: release.html_url || null });
+  _patch({ latestVersion, releaseUrl: release.html_url || null, releaseNotes: release.body || null });
 
   const current = getCurrentVersion();
   if (!isNewer(current, latestVersion)) {
