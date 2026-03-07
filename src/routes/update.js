@@ -3,11 +3,13 @@
 /**
  * update.js — Express routes for the self-update feature.
  *
- *   GET  /api/update         — current state + version info
- *   POST /api/update/check   — trigger a fresh check against the GitHub Releases API
- *   POST /api/update/download — start downloading the available release asset
- *   GET  /api/update/status  — poll download / install progress
- *   POST /api/update/install — install the downloaded update and restart
+ *   GET  /api/update            — current state + version info
+ *   POST /api/update/check      — trigger a fresh check against the GitHub Releases API
+ *   POST /api/update/download   — start downloading the available release asset
+ *   GET  /api/update/status     — poll download / install progress
+ *   POST /api/update/install    — install the downloaded update and restart
+ *   GET  /api/update/releases   — list all GitHub releases (for rollback support)
+ *   POST /api/update/select     — select a specific version for installation
  */
 
 const express = require('express');
@@ -75,6 +77,33 @@ router.post('/install', (req, res) => {
   updater.installUpdate().catch(() => {
     // Errors are captured in updater state; client can check /api/update/status
   });
+});
+
+// ── GET /api/update/releases ──────────────────────────────────────────────────
+// Returns all GitHub releases for version selection (supports rollback).
+router.get('/releases', async (req, res) => {
+  try {
+    const releases = await updater.listAllReleases();
+    res.json(releases);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/update/select ───────────────────────────────────────────────────
+// Select a specific version for installation, including older versions (rollback).
+router.post('/select', (req, res) => {
+  const { version, downloadUrl, releaseUrl, releaseNotes } = req.body || {};
+  if (!version) {
+    return res.status(400).json({ error: 'version is required' });
+  }
+  updater.selectVersionForInstall(
+    version,
+    downloadUrl  || null,
+    releaseUrl   || null,
+    releaseNotes || null
+  );
+  res.json(updater.getState());
 });
 
 module.exports = router;

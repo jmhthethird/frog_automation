@@ -40,6 +40,8 @@ beforeEach(() => {
   updater.checkForUpdate.mockResolvedValue({ ...defaultState(), status: 'up-to-date', latestVersion: '1.0.0' });
   updater.downloadUpdate.mockResolvedValue('/tmp/frog-update-test.dmg');
   updater.installUpdate.mockResolvedValue();
+  updater.listAllReleases.mockResolvedValue([]);
+  updater.selectVersionForInstall.mockImplementation(() => {});
 });
 
 // ─── GET /api/update ──────────────────────────────────────────────────────────
@@ -191,5 +193,74 @@ describe('POST /api/update/install', () => {
     });
     const res = await ctx.request.post('/api/update/install').expect(200);
     expect(res.body.installing).toBe(true);
+  });
+});
+
+// ─── GET /api/update/releases ─────────────────────────────────────────────────
+
+describe('GET /api/update/releases', () => {
+  it('returns 200 with an array of releases', async () => {
+    const fakeReleases = [
+      { version: '2.0.0', tag: 'v2.0.0', releaseUrl: 'https://github.com/jmhthethird/frog_automation/releases/tag/v2.0.0', releaseNotes: null, downloadUrl: 'https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg', publishedAt: '2025-01-01T00:00:00Z' },
+      { version: '1.0.0', tag: 'v1.0.0', releaseUrl: 'https://github.com/jmhthethird/frog_automation/releases/tag/v1.0.0', releaseNotes: null, downloadUrl: null, publishedAt: '2024-01-01T00:00:00Z' },
+    ];
+    updater.listAllReleases.mockResolvedValue(fakeReleases);
+    const res = await ctx.request.get('/api/update/releases').expect(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0].version).toBe('2.0.0');
+  });
+
+  it('returns 200 with an empty array when no releases exist', async () => {
+    updater.listAllReleases.mockResolvedValue([]);
+    const res = await ctx.request.get('/api/update/releases').expect(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns 500 when listAllReleases throws', async () => {
+    updater.listAllReleases.mockRejectedValue(new Error('Network failure'));
+    const res = await ctx.request.get('/api/update/releases').expect(500);
+    expect(res.body.error).toMatch(/Network failure/);
+  });
+});
+
+// ─── POST /api/update/select ──────────────────────────────────────────────────
+
+describe('POST /api/update/select', () => {
+  it('returns 400 when version is missing', async () => {
+    const res = await ctx.request.post('/api/update/select').send({}).expect(400);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('calls selectVersionForInstall and returns the new state', async () => {
+    updater.getState.mockReturnValue({
+      ...defaultState(),
+      status:        'available',
+      latestVersion: '0.9.0',
+      downloadUrl:   'https://github.com/jmhthethird/frog_automation/releases/download/v0.9.0/app.dmg',
+    });
+    const res = await ctx.request.post('/api/update/select')
+      .send({ version: '0.9.0', downloadUrl: 'https://github.com/jmhthethird/frog_automation/releases/download/v0.9.0/app.dmg', releaseUrl: null, releaseNotes: null })
+      .expect(200);
+    expect(updater.selectVersionForInstall).toHaveBeenCalledWith(
+      '0.9.0',
+      'https://github.com/jmhthethird/frog_automation/releases/download/v0.9.0/app.dmg',
+      null,
+      null
+    );
+    expect(res.body.status).toBe('available');
+    expect(res.body.latestVersion).toBe('0.9.0');
+  });
+
+  it('allows rollback — accepts versions older than current', async () => {
+    updater.getState.mockReturnValue({
+      ...defaultState(),
+      status:        'available',
+      latestVersion: '0.5.0',
+    });
+    const res = await ctx.request.post('/api/update/select')
+      .send({ version: '0.5.0' })
+      .expect(200);
+    expect(res.body.status).toBe('available');
   });
 });
