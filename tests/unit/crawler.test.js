@@ -202,19 +202,91 @@ describe('runJob()', () => {
     expect(spawnArgs).toContain('--config');
     expect(spawnArgs).toContain(profilePath);
   });
+
+  it('diff is scoped to same-URL jobs – prev_job_id matches the earlier same-URL job, not a different-URL job', async () => {
+    const TARGET_URL = 'https://url-a.example.com';
+    const OTHER_URL  = 'https://url-b.example.com';
+    const csv        = 'Address,Status Code\nhttps://url-a.example.com/page,200\n';
+
+    // A completed job for the target URL (this is the one the diff should reference).
+    const prevJobId = insertJob(db, dataDir, { url: TARGET_URL, status: 'completed' });
+    const prevJob   = db.prepare('SELECT * FROM jobs WHERE id = ?').get(prevJobId);
+    fs.mkdirSync(prevJob.output_dir, { recursive: true });
+    fs.writeFileSync(path.join(prevJob.output_dir, 'internal_all.csv'), csv);
+
+    // Several completed jobs for a DIFFERENT URL inserted after the target-URL job.
+    // These must never be chosen as the diff baseline.
+    for (let i = 0; i < 3; i++) {
+      const otherId  = insertJob(db, dataDir, { url: OTHER_URL, status: 'completed' });
+      const otherJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(otherId);
+      fs.mkdirSync(otherJob.output_dir, { recursive: true });
+      fs.writeFileSync(path.join(otherJob.output_dir, 'internal_all.csv'),
+        'Address,Status Code\nhttps://url-b.example.com/page,200\n');
+    }
+
+    // New job for the target URL.  Pre-populate its output dir so computeDiff
+    // has CSV rows to compare (the mocked spawn produces no real files).
+    const jobId  = insertJob(db, dataDir, { url: TARGET_URL });
+    const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    fs.mkdirSync(newJob.output_dir, { recursive: true });
+    fs.writeFileSync(path.join(newJob.output_dir, 'internal_all.csv'), csv);
+
+    fakeProcExit(cp, 0);
+    await crawler.runJob(jobId);
+
+    const result = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(result.status).toBe('completed');
+    expect(result.diff_summary).not.toBeNull();
+
+    const diff = JSON.parse(result.diff_summary);
+    // Must reference the same-URL job, not any of the different-URL jobs.
+    expect(diff.prev_job_id).toBe(prevJobId);
+  });
+
+  it('does not set diff_summary when only different-URL completed jobs exist', async () => {
+    const TARGET_URL = 'https://url-a-only.example.com';
+    const OTHER_URL  = 'https://url-b-only.example.com';
+
+    // Several completed jobs for a DIFFERENT URL – no prior same-URL job exists.
+    for (let i = 0; i < 3; i++) {
+      const otherId  = insertJob(db, dataDir, { url: OTHER_URL, status: 'completed' });
+      const otherJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(otherId);
+      fs.mkdirSync(otherJob.output_dir, { recursive: true });
+      fs.writeFileSync(path.join(otherJob.output_dir, 'internal_all.csv'),
+        'Address,Status Code\nhttps://url-b.example.com/page,200\n');
+    }
+
+    // New job for the target URL with no prior same-URL job in the DB.
+    const jobId  = insertJob(db, dataDir, { url: TARGET_URL });
+    const newJob = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    fs.mkdirSync(newJob.output_dir, { recursive: true });
+    fs.writeFileSync(path.join(newJob.output_dir, 'internal_all.csv'),
+      'Address,Status Code\nhttps://url-a.example.com/page,200\n');
+
+    fakeProcExit(cp, 0);
+    await crawler.runJob(jobId);
+
+    const result = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(result.status).toBe('completed');
+    // No previous crawl exists for this URL, so no diff should be stored.
+    expect(result.diff_summary).toBeNull();
+  });
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Insert a minimal job row and return its id. */
 function insertJob(database, baseDir, extra = {}) {
-  const outputDir = path.join(baseDir, 'jobs', String(Date.now()));
+  const outputDir = path.join(baseDir, 'jobs', `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const url    = extra.url    || 'https://example.com';
+  const status = extra.status || 'queued';
   const row = database.prepare(`
     INSERT INTO jobs (url, export_tabs, status, output_dir, profile_id)
-    VALUES (?, ?, 'queued', ?, ?)
+    VALUES (?, ?, ?, ?, ?)
   `).run(
-    'https://example.com',
+    url,
     'Internal:All',
+    status,
     outputDir,
     extra.profile_id || null,
   );
