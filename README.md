@@ -160,7 +160,7 @@ SF_LAUNCHER="/opt/ScreamingFrog/ScreamingFrogSEOSpiderLauncher" PORT=8080 npm st
 | `Internal:All`                        |
 | `Response Codes:All`                  |
 | `Response Codes:Client Error (4xx)`   |
-| `Redirects:All`                       |
+| `Redirect Chains:All`                 |
 
 ---
 
