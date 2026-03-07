@@ -79,7 +79,7 @@ async function runJob(jobId) {
  */
 function spawnCrawl(job, outputDir, logStream) {
   return new Promise((resolve, reject) => {
-    const exportTabs = job.export_tabs || 'Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirect Chains:All';
+    const exportTabs = job.export_tabs || 'Internal:All';
 
     const args = [
       '--headless',
@@ -110,8 +110,22 @@ function spawnCrawl(job, outputDir, logStream) {
       return reject(new Error(`Failed to spawn crawler: ${spawnErr.message}`));
     }
 
-    proc.stdout.on('data', (d) => logLine('STDOUT', d));
-    proc.stderr.on('data', (d) => logLine('STDERR', d));
+    // Accumulate output lines so we can detect FATAL errors reported by SF even
+    // when the process exits with code 0 (a known SF quirk for bad --export-tabs).
+    let fatalMessage = null;
+
+    const handleData = (prefix, data) => {
+      const text = data.toString();
+      logLine(prefix, data);
+      for (const line of text.split('\n')) {
+        if (/\bFATAL\b/.test(line) && fatalMessage === null) {
+          fatalMessage = line.trim();
+        }
+      }
+    };
+
+    proc.stdout.on('data', (d) => handleData('STDOUT', d));
+    proc.stderr.on('data', (d) => handleData('STDERR', d));
 
     proc.on('error', (err) => {
       reject(new Error(`Crawler process error: ${err.message}`));
@@ -119,7 +133,9 @@ function spawnCrawl(job, outputDir, logStream) {
 
     proc.on('close', (code) => {
       if (logStream.writable) logStream.write(`[INFO] Process exited with code ${code}\n`);
-      if (code === 0) {
+      if (fatalMessage) {
+        reject(new Error(`Screaming Frog fatal error: ${fatalMessage}`));
+      } else if (code === 0) {
         resolve();
       } else {
         reject(new Error(`Screaming Frog exited with non-zero code: ${code}`));

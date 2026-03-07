@@ -142,16 +142,16 @@ describe('POST /api/jobs', () => {
       .set('Content-Type', 'application/json')
       .expect(201);
 
-    expect(res.body.export_tabs).toContain('Internal:All');
+    expect(res.body.export_tabs).toBe('Internal:All');
   });
 
   it('uses custom export tabs when provided', async () => {
     const res = await ctx.request.post('/api/jobs')
-      .send({ url: 'https://custom.example.com', export_tabs: 'Redirect Chains:All' })
+      .send({ url: 'https://custom.example.com', export_tabs: 'Internal:All,Response Codes:All' })
       .set('Content-Type', 'application/json')
       .expect(201);
 
-    expect(res.body.export_tabs).toBe('Redirect Chains:All');
+    expect(res.body.export_tabs).toBe('Internal:All,Response Codes:All');
   });
 
   it('creates a job with a valid profile_id', async () => {

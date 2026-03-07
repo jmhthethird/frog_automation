@@ -28,6 +28,7 @@ const defaultState = () => ({
   currentVersion: '1.0.0',
   latestVersion:  null,
   releaseUrl:     null,
+  releaseNotes:   null,
   downloadUrl:    null,
   downloadPath:   null,
   progress:       0,

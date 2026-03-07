@@ -45,6 +45,31 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # ── Changelog ─────────────────────────────────────────────────────────
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Collect commit subjects since the previous release tag.
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log "${PREV_TAG}..HEAD" --no-merges --pretty=format:"%s" \
+              | grep -v '\[skip ci\]' || true)
+          else
+            COMMITS=$(git log --no-merges --pretty=format:"%s" \
+              | grep -v '\[skip ci\]' || true)
+          fi
+          if [ -n "$COMMITS" ]; then
+            FEATURE_LIST=$(echo "$COMMITS" | sed 's/^/- /')
+          else
+            FEATURE_LIST="- No changes listed"
+          fi
+          {
+            echo "changelog<<EOF"
+            echo "$FEATURE_LIST"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+
       # ── Version bump ──────────────────────────────────────────────────────
       - name: Bump patch version
         id: version
@@ -95,6 +120,11 @@ jobs:
           generate_release_notes: false
           body: |
             ## 🐸 Frog Automation v${{ steps.version.outputs.version }}
+
+            ### What's new
+
+            ${{ steps.changelog.outputs.changelog }}
+
 
             ### Download the right DMG for your Mac
 

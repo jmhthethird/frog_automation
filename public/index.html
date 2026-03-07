@@ -41,6 +41,10 @@
   #update-progress { width: 180px; height: 6px; border-radius: 3px; background: #333; overflow: hidden; display: none; }
   #update-progress-bar { height: 100%; width: 0%; background: var(--green); border-radius: 3px; transition: width .3s; }
   #update-actions { display: flex; gap: 8px; align-items: center; }
+  #update-notes { flex-basis: 100%; display: none; }
+  #update-notes summary { font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; }
+  #update-notes summary:hover { color: var(--text); }
+  #update-notes pre { white-space: pre-wrap; font-family: inherit; font-size: 12px; line-height: 1.5; color: var(--text-dim); margin-top: 6px; max-height: 160px; overflow-y: auto; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
   @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
@@ -124,6 +128,7 @@
   <div id="update-progress"><div id="update-progress-bar"></div></div>
   <div id="update-actions"></div>
   <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="dismissUpdate()">✕ Dismiss</button>
+  <details id="update-notes"><summary>What's new</summary><pre id="update-notes-body"></pre></details>
 </div>
 <main>
   <div class="grid">
@@ -152,7 +157,7 @@
         </div>
 
         <label>Export Tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated)</span></label>
-        <textarea id="export-tabs">Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirect Chains:All</textarea>
+        <textarea id="export-tabs">Internal:All</textarea>
 
         <label style="margin-top:14px;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span></label>
         <input type="text" id="cron-expression" placeholder="e.g. 0 2 * * * (daily at 02:00)" autocomplete="off"/>
@@ -202,7 +207,7 @@
 </main>
 
 <script>
-const DEFAULT_TABS = 'Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirect Chains:All';
+const DEFAULT_TABS = 'Internal:All';
 let autoRefreshTimer = null;
 
 // ── Health ───────────────────────────────────────────────────────────────────
@@ -468,6 +473,8 @@ function _renderUpdatePanel(state) {
   const progWrap = document.getElementById('update-progress');
   const progBar  = document.getElementById('update-progress-bar');
   const btn      = document.getElementById('update-btn');
+  const notesEl  = document.getElementById('update-notes');
+  const notesBody = document.getElementById('update-notes-body');
 
   // Always reflect current version.
   if (state.currentVersion) {
@@ -495,6 +502,8 @@ function _renderUpdatePanel(state) {
   panel.classList.add('visible');
   progWrap.style.display = 'none';
   actEl.innerHTML = '';
+  notesEl.style.display = 'none';
+  notesEl.removeAttribute('open');
 
   if (state.status === 'available') {
     btn.className = 'has-update';
@@ -503,6 +512,10 @@ function _renderUpdatePanel(state) {
       actEl.innerHTML = `<button class="btn btn-primary" style="font-size:11px;padding:5px 14px;" onclick="startDownload()">⬇ Download</button>`;
     } else if (state.releaseUrl) {
       actEl.innerHTML = `<a href="${escHtml(state.releaseUrl)}" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:5px 14px;">Open Release Page</a>`;
+    }
+    if (state.releaseNotes) {
+      notesBody.textContent = state.releaseNotes;
+      notesEl.style.display = 'block';
     }
   } else if (state.status === 'downloading') {
     btn.className = 'has-update';
@@ -597,6 +610,8 @@ async function _initUpdateCheck() {
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
+
+function escHtml(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

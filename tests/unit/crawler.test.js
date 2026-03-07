@@ -148,6 +148,20 @@ describe('runJob()', () => {
     expect(job.error).toMatch(/non-zero code: 2/i);
   });
 
+  it('marks the job as "failed" when Screaming Frog outputs a FATAL error (exits 0)', async () => {
+    // Screaming Frog outputs a FATAL message and exits with code 0 when given
+    // an unknown --export-tabs value (e.g. the old "Redirect Chains:All" tab).
+    const jobId = insertJob(db, dataDir);
+    const fatalOutput = '2026-03-06 19:08:08,857 [8915] [main] FATAL - Problems with --export-tabs:\nUnknown tab: Redirect Chains';
+    fakeProcExit(cp, 0, fatalOutput, '');
+
+    await crawler.runJob(jobId);
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('failed');
+    expect(job.error).toMatch(/fatal/i);
+  });
+
   it('marks the job as "completed" and creates a ZIP when process exits 0', async () => {
     const jobId = insertJob(db, dataDir);
     fakeProcExit(cp, 0, 'crawl complete', '');
