@@ -69,7 +69,6 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-
       # ── Version bump ──────────────────────────────────────────────────────
       - name: Bump patch version
         id: version
@@ -124,7 +123,6 @@ jobs:
             ### What's new
 
             ${{ steps.changelog.outputs.changelog }}
-
 
             ### Download the right DMG for your Mac
 

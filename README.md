@@ -166,8 +166,6 @@ SF_LAUNCHER="/opt/ScreamingFrog/ScreamingFrogSEOSpiderLauncher" PORT=8080 npm st
 |---------------------------------------|
 | `Internal:All`                        |
 
-
-
 ---
 
 ## API Reference
