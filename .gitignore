@@ -8,6 +8,11 @@ data/
 dist/
 out/
 
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
 # OS artefacts
 .DS_Store
 Thumbs.db
