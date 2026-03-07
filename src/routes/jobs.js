@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const rateLimit = require('express-rate-limit');
 const { db, DATA_DIR } = require('../db');
+const { validateCronExpression, computeNextRun } = require('../scheduler');
 
 const router = express.Router();
 
@@ -52,7 +53,7 @@ router.get('/:id', readLimit, (req, res) => {
 
 // ─── Submit job ───────────────────────────────────────────────────────────────
 router.post('/', writeLimit, (req, res) => {
-  const { url, profile_id, export_tabs } = req.body;
+  const { url, profile_id, export_tabs, cron_expression } = req.body;
 
   // Validate URL
   if (!url || typeof url !== 'string') {
@@ -74,18 +75,35 @@ router.post('/', writeLimit, (req, res) => {
     if (!profile) return res.status(400).json({ error: 'Profile not found' });
   }
 
+  // Validate cron_expression if provided
+  let cronExpr = null;
+  let nextRunAt = null;
+  if (cron_expression !== undefined && cron_expression !== null && cron_expression !== '') {
+    if (typeof cron_expression !== 'string' || !validateCronExpression(cron_expression)) {
+      return res.status(400).json({ error: 'Invalid cron expression' });
+    }
+    cronExpr = cron_expression.trim();
+    nextRunAt = computeNextRun(cronExpr);
+  }
+
   const tabs = (export_tabs && export_tabs.trim())
     ? export_tabs.trim()
     : 'Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirect Chains:All';
 
+  // Cron jobs start in 'scheduled' state; regular jobs go straight to 'queued'.
+  const initialStatus = cronExpr ? 'scheduled' : 'queued';
+
   // Create output dir path (will be created when job runs)
   const jobRow = db.prepare(`
-    INSERT INTO jobs (url, profile_id, export_tabs, status)
-    VALUES (?, ?, ?, 'queued')
+    INSERT INTO jobs (url, profile_id, export_tabs, status, cron_expression, next_run_at)
+    VALUES (?, ?, ?, ?, ?, ?)
   `).run(
     url,
     profile_id || null,
     tabs,
+    initialStatus,
+    cronExpr,
+    nextRunAt,
   );
 
   const jobId = jobRow.lastInsertRowid;
@@ -94,8 +112,13 @@ router.post('/', writeLimit, (req, res) => {
   // Store the output dir path
   db.prepare('UPDATE jobs SET output_dir = ? WHERE id = ?').run(outputDir, jobId);
 
-  // Enqueue the job
-  req.app.get('queue').push(jobId);
+  if (cronExpr) {
+    // Register the cron task; job will be pushed to queue when the schedule fires.
+    req.app.get('scheduler').register(jobId, cronExpr);
+  } else {
+    // Enqueue immediately.
+    req.app.get('queue').push(jobId);
+  }
 
   const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
   res.status(201).json(job);

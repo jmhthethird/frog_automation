@@ -25,6 +25,10 @@ describe('startServer()', () => {
     if (server && server.listening) {
       await new Promise((r) => server.close(r));
     }
+    // Stop cron tasks so the event loop drains.
+    const { app } = require('../../index.js');
+    const s = app.get('scheduler');
+    if (s) s.destroy();
     delete process.env.DATA_DIR;
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
@@ -62,6 +66,10 @@ describe('startServer() – stale job re-queuing', () => {
     if (server && server.listening) {
       await new Promise((r) => server.close(r));
     }
+    // Stop cron tasks so the event loop drains.
+    const { app } = require('../../index.js');
+    const s = app.get('scheduler');
+    if (s) s.destroy();
     delete process.env.DATA_DIR;
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
@@ -105,6 +113,9 @@ describe('queue error handler', () => {
     if (server && server.listening) {
       await new Promise((r) => server.close(r));
     }
+    const { app } = require('../../index.js');
+    const s = app.get('scheduler');
+    if (s) s.destroy();
     delete process.env.DATA_DIR;
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
