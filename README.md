@@ -38,6 +38,8 @@ with signed `.dmg` installers for both Apple Silicon and Intel Macs.
   status and logs, download results as a ZIP.
 - **Single-worker queue** – jobs run one at a time; queued / running / completed /
   failed states are visible in the UI.
+- **Cron scheduling** – attach a standard cron expression to any job to delay its
+  first run or repeat it automatically on a schedule.
 - **Profile library** – upload `.seospiderconfig` files once and reuse them across
   jobs.  Metadata is persisted in SQLite.
 - **Configurable exports** – default tabs are pre-selected; customise per-job in
@@ -147,9 +149,14 @@ SF_LAUNCHER="/opt/ScreamingFrog/ScreamingFrogSEOSpiderLauncher" PORT=8080 npm st
      the profile library for future use.
    - **No profile** – use Screaming Frog defaults.
 4. Optionally edit the export tabs (comma-separated `Tab:Report` pairs).
-5. Click **Run Crawl**.
-6. Watch the job progress in the **Jobs** table.  Click **View** to see the log tail.
-7. When the job completes, click **⬇ Download Results ZIP**.
+5. Optionally enter a **Cron Schedule** expression to delay or repeat the crawl:
+   - Leave blank to run immediately.
+   - Enter a 5-field cron expression (e.g. `0 2 * * *` for daily at 02:00) to
+     schedule the job for a future time and repeat it on that schedule.
+   - The job status will show as **scheduled** until the next cron tick fires it.
+6. Click **Run Crawl**.
+7. Watch the job progress in the **Jobs** table.  Click **View** to see the log tail.
+8. When the job completes, click **⬇ Download Results ZIP**.
 
 ---
 
@@ -183,11 +190,18 @@ SF_LAUNCHER="/opt/ScreamingFrog/ScreamingFrogSEOSpiderLauncher" PORT=8080 npm st
 {
   "url": "https://example.com",
   "profile_id": 1,
-  "export_tabs": "Internal:All,Response Codes:All"
+  "export_tabs": "Internal:All,Response Codes:All",
+  "cron_expression": "0 2 * * *"
 }
 ```
 
-`profile_id` and `export_tabs` are optional.
+`profile_id`, `export_tabs`, and `cron_expression` are optional.
+
+When `cron_expression` is omitted (or empty) the job is queued and runs
+immediately.  When a valid 5-field cron expression is provided the job starts
+in `scheduled` status and is pushed to the worker queue each time the cron
+fires.  After each run completes the job automatically resets to `scheduled` so
+it repeats on the defined schedule.
 
 ---
 

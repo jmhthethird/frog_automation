@@ -178,6 +178,51 @@ describe('POST /api/jobs', () => {
 
     expect(res.body.output_dir).toContain(dataDir);
   });
+
+  it('returns 400 when cron_expression is invalid', async () => {
+    const res = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://cron.example.com', cron_expression: 'not-a-cron' })
+      .set('Content-Type', 'application/json')
+      .expect(400);
+    expect(res.body.error).toMatch(/cron/i);
+  });
+
+  it('creates a scheduled job when a valid cron_expression is provided', async () => {
+    const res = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://cron.example.com', cron_expression: '0 * * * *' })
+      .set('Content-Type', 'application/json')
+      .expect(201);
+
+    expect(res.body).toMatchObject({
+      url: 'https://cron.example.com',
+      status: 'scheduled',
+      cron_expression: '0 * * * *',
+      id: expect.any(Number),
+    });
+    expect(res.body.next_run_at).toBeTruthy();
+    expect(new Date(res.body.next_run_at).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('does not immediately queue a scheduled cron job', async () => {
+    const res = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://cron-delayed.example.com', cron_expression: '0 0 1 1 *' })
+      .set('Content-Type', 'application/json')
+      .expect(201);
+
+    // Job must stay in 'scheduled' state – not pushed to the queue.
+    const detail = await ctx.request.get(`/api/jobs/${res.body.id}`).expect(200);
+    expect(detail.body.status).toBe('scheduled');
+  });
+
+  it('treats an empty string cron_expression as no cron (queued immediately)', async () => {
+    const res = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://no-cron.example.com', cron_expression: '' })
+      .set('Content-Type', 'application/json')
+      .expect(201);
+
+    expect(res.body.status).toBe('queued');
+    expect(res.body.cron_expression).toBeFalsy();
+  });
 });
 
 // ─── GET /api/jobs/:id/download ───────────────────────────────────────────────
