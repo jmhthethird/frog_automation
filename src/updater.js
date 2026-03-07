@@ -20,8 +20,11 @@ const path   = require('path');
 const os     = require('os');
 const cp     = require('child_process');
 
-const GITHUB_OWNER = 'jmhthethird';
-const GITHUB_REPO  = 'frog_automation';
+const GITHUB_OWNER    = 'jmhthethird';
+const GITHUB_REPO     = 'frog_automation';
+/** Milliseconds to wait after resolving installUpdate() before restarting,
+ *  giving the HTTP response time to reach the client. */
+const RESTART_DELAY_MS = 800;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -290,8 +293,7 @@ function installUpdate() {
           return;
         }
         resolve();
-        // Give the HTTP response time to reach the client before restarting.
-        setTimeout(_restartApp, 800);
+        setTimeout(_restartApp, RESTART_DELAY_MS);
       });
     });
   });

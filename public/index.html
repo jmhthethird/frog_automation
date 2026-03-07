@@ -394,18 +394,18 @@ function _renderUpdatePanel(state) {
   // Hide the panel for non-actionable states.
   if (state.status === 'idle' || state.status === 'checking') {
     panel.classList.remove('visible');
-    btn.className = 'update-btn';
+    btn.className = '';
     return;
   }
   if (state.status === 'up-to-date') {
     panel.classList.remove('visible');
-    btn.className = 'update-btn';
+    btn.className = '';
     btn.title = 'App is up to date (v' + state.currentVersion + ')';
     return;
   }
   if (state.status === 'error') {
     panel.classList.remove('visible');
-    btn.className = 'update-btn';
+    btn.className = '';
     return;
   }
 
@@ -414,7 +414,7 @@ function _renderUpdatePanel(state) {
   actEl.innerHTML = '';
 
   if (state.status === 'available') {
-    btn.className = 'update-btn has-update';
+    btn.className = 'has-update';
     msgEl.innerHTML = `<strong>v${escHtml(state.latestVersion)}</strong> is available (you have v${escHtml(state.currentVersion)})`;
     if (state.downloadUrl) {
       actEl.innerHTML = `<button class="btn btn-primary" style="font-size:11px;padding:5px 14px;" onclick="startDownload()">⬇ Download</button>`;
@@ -422,19 +422,19 @@ function _renderUpdatePanel(state) {
       actEl.innerHTML = `<a href="${escHtml(state.releaseUrl)}" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:5px 14px;">Open Release Page</a>`;
     }
   } else if (state.status === 'downloading') {
-    btn.className = 'update-btn has-update';
+    btn.className = 'has-update';
     msgEl.innerHTML = `Downloading v<strong>${escHtml(state.latestVersion)}</strong>… ${state.progress}%`;
     progWrap.style.display = 'block';
     progBar.style.width    = state.progress + '%';
     _startPollIfNeeded();
   } else if (state.status === 'ready') {
-    btn.className = 'update-btn has-update';
+    btn.className = 'has-update';
     msgEl.innerHTML = `v<strong>${escHtml(state.latestVersion)}</strong> downloaded — ready to install`;
     progWrap.style.display = 'block';
     progBar.style.width    = '100%';
     actEl.innerHTML = `<button class="btn btn-primary" style="font-size:11px;padding:5px 14px;" onclick="installUpdate()">⚡ Install &amp; Restart</button>`;
   } else if (state.status === 'installing') {
-    btn.className = 'update-btn has-update';
+    btn.className = 'has-update';
     msgEl.textContent = 'Installing update — the app will restart shortly…';
     progWrap.style.display = 'block';
     progBar.style.width    = '100%';
