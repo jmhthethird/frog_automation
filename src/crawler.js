@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const archiver = require('archiver');
 const { db } = require('./db');
 const { computeDiff } = require('./differ');
+const { scheduler } = require('./scheduler');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -66,6 +67,10 @@ async function runJob(jobId) {
       .run(errMsg, jobId);
   } finally {
     logStream.end();
+    // For recurring cron jobs, reset back to 'scheduled' so the next tick can run.
+    if (job.cron_expression) {
+      scheduler.reschedule(jobId, job.cron_expression);
+    }
   }
 }
 

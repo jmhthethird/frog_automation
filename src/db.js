@@ -27,26 +27,29 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS jobs (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    url          TEXT    NOT NULL,
-    profile_id   INTEGER REFERENCES profiles(id) ON DELETE SET NULL,
-    export_tabs  TEXT    NOT NULL,
-    status       TEXT    NOT NULL DEFAULT 'queued',
-    output_dir   TEXT,
-    zip_path     TEXT,
-    error        TEXT,
-    created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-    started_at   TEXT,
-    completed_at TEXT,
-    diff_summary TEXT
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    url             TEXT    NOT NULL,
+    profile_id      INTEGER REFERENCES profiles(id) ON DELETE SET NULL,
+    export_tabs     TEXT    NOT NULL,
+    status          TEXT    NOT NULL DEFAULT 'queued',
+    output_dir      TEXT,
+    zip_path        TEXT,
+    error           TEXT,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    started_at      TEXT,
+    completed_at    TEXT,
+    cron_expression TEXT,
+    next_run_at     TEXT,
+    diff_summary    TEXT
   );
 `);
 
-// Migration: add diff_summary to existing databases that predate the column.
-{
-  const cols = db.prepare('PRAGMA table_info(jobs)').all();
-  if (!cols.some(c => c.name === 'diff_summary')) {
-    db.exec('ALTER TABLE jobs ADD COLUMN diff_summary TEXT');
+// Idempotent migrations for databases created before cron/diff support was added.
+for (const col of ['cron_expression TEXT', 'next_run_at TEXT', 'diff_summary TEXT']) {
+  try {
+    db.exec(`ALTER TABLE jobs ADD COLUMN ${col}`);
+  } catch {
+    // Column already exists – safe to ignore.
   }
 }
 

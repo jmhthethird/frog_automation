@@ -46,6 +46,11 @@ function makeApp(label = 'app') {
     startServer,
     dataDir,
     cleanup() {
+      // Stop all active cron tasks so the event loop can drain cleanly.
+      const appScheduler = app.get('scheduler');
+      if (appScheduler && typeof appScheduler.destroy === 'function') {
+        appScheduler.destroy();
+      }
       delete process.env.DATA_DIR;
       try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch { /* already gone */ }
     },

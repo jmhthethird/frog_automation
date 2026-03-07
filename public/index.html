@@ -29,6 +29,18 @@
   #health-badge { margin-left: auto; font-size: 12px; padding: 4px 10px; border-radius: 20px; background: #333; }
   #health-badge.ok { background: #1a4a2e; color: var(--green); }
   #health-badge.warn { background: #4a3000; color: var(--orange); }
+  #version-badge { font-size: 11px; padding: 3px 9px; border-radius: 20px; background: #222; color: var(--text-dim); }
+  #update-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
+  #update-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  #update-btn.has-update { border-color: var(--green); color: var(--green); font-weight: 600; }
+  /* Update notification panel */
+  #update-panel { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; display: none; align-items: center; gap: 14px; flex-wrap: wrap; }
+  #update-panel.visible { display: flex; }
+  #update-panel .upd-msg { font-size: 13px; color: var(--text); flex: 1; }
+  #update-panel .upd-msg strong { color: var(--green); }
+  #update-progress { width: 180px; height: 6px; border-radius: 3px; background: #333; overflow: hidden; display: none; }
+  #update-progress-bar { height: 100%; width: 0%; background: var(--green); border-radius: 3px; transition: width .3s; }
+  #update-actions { display: flex; gap: 8px; align-items: center; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
   @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
@@ -69,6 +81,7 @@
   .badge-running   { background: #1a3a5e; color: var(--blue); }
   .badge-completed { background: #1a4a2e; color: var(--green); }
   .badge-failed    { background: #4a1a1a; color: var(--red); }
+  .badge-scheduled { background: #2a1a4e; color: #c9a0ff; }
   /* detail panel */
   #detail-panel { margin-top: 24px; display: none; }
   #detail-panel .card { padding: 20px; }
@@ -101,8 +114,17 @@
 <header>
   <span class="emoji">🐸</span>
   <h1>Frog Automation</h1>
+  <div id="version-badge">v…</div>
+  <button id="update-btn" onclick="checkForUpdates()" title="Check for updates">↻ Updates</button>
   <div id="health-badge">checking…</div>
 </header>
+<!-- Update notification panel (shown when an update is available or in-progress) -->
+<div id="update-panel">
+  <div class="upd-msg" id="update-msg">Checking…</div>
+  <div id="update-progress"><div id="update-progress-bar"></div></div>
+  <div id="update-actions"></div>
+  <button class="btn btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="dismissUpdate()">✕ Dismiss</button>
+</div>
 <main>
   <div class="grid">
     <!-- Submit Job -->
@@ -131,6 +153,10 @@
 
         <label>Export Tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated)</span></label>
         <textarea id="export-tabs">Internal:All,Response Codes:All,Response Codes:Client Error (4xx),Redirect Chains:All</textarea>
+
+        <label style="margin-top:14px;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span></label>
+        <input type="text" id="cron-expression" placeholder="e.g. 0 2 * * * (daily at 02:00)" autocomplete="off"/>
+        <div id="cron-hint" style="font-size:11px; color:var(--text-dim); margin-top:4px; display:none;"></div>
 
         <div class="form-footer">
           <button class="btn btn-primary" id="submit-btn" onclick="submitJob()">Run Crawl</button>
@@ -244,6 +270,7 @@ async function submitJob() {
   const url = document.getElementById('job-url').value.trim();
   const exportTabs = document.getElementById('export-tabs').value.trim() || DEFAULT_TABS;
   const profSrc = document.querySelector('input[name=prof-src]:checked').value;
+  const cronExpression = document.getElementById('cron-expression').value.trim();
 
   showMsg(msgEl, '', '');
   if (!url) return showMsg(msgEl, 'URL is required', 'err');
@@ -273,6 +300,7 @@ async function submitJob() {
 
     const body = { url, export_tabs: exportTabs };
     if (profileId) body.profile_id = profileId;
+    if (cronExpression) body.cron_expression = cronExpression;
 
     const r = await fetch('/api/jobs', {
       method: 'POST',
@@ -282,8 +310,11 @@ async function submitJob() {
     const d = await r.json();
     if (!r.ok) { btn.disabled = false; return showMsg(msgEl, d.error || 'Failed to submit job', 'err'); }
 
-    showMsg(msgEl, `Job #${d.id} queued!`, 'ok');
+    const isScheduled = d.status === 'scheduled';
+    showMsg(msgEl, isScheduled ? `Job #${d.id} scheduled! Next run: ${fmtDate(d.next_run_at)}` : `Job #${d.id} queued!`, 'ok');
     document.getElementById('job-url').value = '';
+    document.getElementById('cron-expression').value = '';
+    document.getElementById('cron-hint').style.display = 'none';
     loadJobs();
     setTimeout(() => showJobDetail(d.id), 500);
   } catch (e) {
@@ -345,16 +376,18 @@ async function showJobDetail(id) {
         <div class="detail-item"><label>Created</label><span>${fmtDate(j.created_at)}</span></div>
         <div class="detail-item"><label>Started</label><span>${j.started_at ? fmtDate(j.started_at) : '—'}</span></div>
         <div class="detail-item"><label>Completed</label><span>${j.completed_at ? fmtDate(j.completed_at) : '—'}</span></div>
+        ${j.cron_expression ? `<div class="detail-item"><label>Cron Schedule</label><span style="font-family:monospace;">${escHtml(j.cron_expression)}</span></div>` : ''}
+        ${j.next_run_at ? `<div class="detail-item"><label>Next Run</label><span>${fmtDate(j.next_run_at)}</span></div>` : ''}
         ${j.error ? `<div class="detail-item" style="grid-column:1/-1;"><label>Error</label><span style="color:var(--red);">${escHtml(j.error)}</span></div>` : ''}
       `;
 
       if (j.status === 'completed') {
         document.getElementById('detail-download').innerHTML =
           `<a href="/api/jobs/${j.id}/download" class="btn btn-primary" download>⬇ Download Results ZIP</a>`;
-        clearInterval(autoRefreshTimer);
+        if (!j.cron_expression) clearInterval(autoRefreshTimer);
         loadDiff(j.id);
       } else if (j.status === 'failed') {
-        clearInterval(autoRefreshTimer);
+        if (!j.cron_expression) clearInterval(autoRefreshTimer);
       }
 
       if (j.log_tail !== null && j.log_tail !== undefined) {
@@ -420,8 +453,150 @@ async function loadDiff(jobId) {
   } catch { /* non-critical */ }
 }
 
+// ── Updates ───────────────────────────────────────────────────────────────────
+let _updatePollTimer = null;
+
+async function _getUpdateState() {
+  const r = await fetch('/api/update/status');
+  return r.json();
+}
+
+function _renderUpdatePanel(state) {
+  const panel    = document.getElementById('update-panel');
+  const msgEl    = document.getElementById('update-msg');
+  const actEl    = document.getElementById('update-actions');
+  const progWrap = document.getElementById('update-progress');
+  const progBar  = document.getElementById('update-progress-bar');
+  const btn      = document.getElementById('update-btn');
+
+  // Always reflect current version.
+  if (state.currentVersion) {
+    document.getElementById('version-badge').textContent = 'v' + state.currentVersion;
+  }
+
+  // Hide the panel for non-actionable states.
+  if (state.status === 'idle' || state.status === 'checking') {
+    panel.classList.remove('visible');
+    btn.className = '';
+    return;
+  }
+  if (state.status === 'up-to-date') {
+    panel.classList.remove('visible');
+    btn.className = '';
+    btn.title = 'App is up to date (v' + state.currentVersion + ')';
+    return;
+  }
+  if (state.status === 'error') {
+    panel.classList.remove('visible');
+    btn.className = '';
+    return;
+  }
+
+  panel.classList.add('visible');
+  progWrap.style.display = 'none';
+  actEl.innerHTML = '';
+
+  if (state.status === 'available') {
+    btn.className = 'has-update';
+    msgEl.innerHTML = `<strong>v${escHtml(state.latestVersion)}</strong> is available (you have v${escHtml(state.currentVersion)})`;
+    if (state.downloadUrl) {
+      actEl.innerHTML = `<button class="btn btn-primary" style="font-size:11px;padding:5px 14px;" onclick="startDownload()">⬇ Download</button>`;
+    } else if (state.releaseUrl) {
+      actEl.innerHTML = `<a href="${escHtml(state.releaseUrl)}" target="_blank" class="btn btn-secondary" style="font-size:11px;padding:5px 14px;">Open Release Page</a>`;
+    }
+  } else if (state.status === 'downloading') {
+    btn.className = 'has-update';
+    msgEl.innerHTML = `Downloading v<strong>${escHtml(state.latestVersion)}</strong>… ${state.progress}%`;
+    progWrap.style.display = 'block';
+    progBar.style.width    = state.progress + '%';
+    _startPollIfNeeded();
+  } else if (state.status === 'ready') {
+    btn.className = 'has-update';
+    msgEl.innerHTML = `v<strong>${escHtml(state.latestVersion)}</strong> downloaded — ready to install`;
+    progWrap.style.display = 'block';
+    progBar.style.width    = '100%';
+    actEl.innerHTML = `<button class="btn btn-primary" style="font-size:11px;padding:5px 14px;" onclick="installUpdate()">⚡ Install &amp; Restart</button>`;
+  } else if (state.status === 'installing') {
+    btn.className = 'has-update';
+    msgEl.textContent = 'Installing update — the app will restart shortly…';
+    progWrap.style.display = 'block';
+    progBar.style.width    = '100%';
+  }
+}
+
+function _startPollIfNeeded() {
+  if (_updatePollTimer) return;
+  _updatePollTimer = setInterval(async () => {
+    try {
+      const s = await _getUpdateState();
+      _renderUpdatePanel(s);
+      if (s.status !== 'downloading' && s.status !== 'installing') {
+        clearInterval(_updatePollTimer);
+        _updatePollTimer = null;
+      }
+    } catch {}
+  }, 1500);
+}
+
+async function checkForUpdates() {
+  const btn = document.getElementById('update-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/update/check', { method: 'POST' });
+    const s = await r.json();
+    _renderUpdatePanel(s);
+  } catch {}
+  btn.disabled = false;
+}
+
+async function startDownload() {
+  try {
+    await fetch('/api/update/download', { method: 'POST' });
+    _startPollIfNeeded();
+    const s = await _getUpdateState();
+    _renderUpdatePanel(s);
+  } catch {}
+}
+
+async function installUpdate() {
+  try {
+    await fetch('/api/update/install', { method: 'POST' });
+    // Poll for a few seconds to show "Installing…" state before the app restarts.
+    _startPollIfNeeded();
+    const s = await _getUpdateState();
+    _renderUpdatePanel(s);
+  } catch {}
+}
+
+function dismissUpdate() {
+  document.getElementById('update-panel').classList.remove('visible');
+}
+
+async function _initUpdateCheck() {
+  // Silently fetch the current state (version display), then auto-check once.
+  try {
+    const s = await _getUpdateState();
+    if (s.currentVersion) {
+      document.getElementById('version-badge').textContent = 'v' + s.currentVersion;
+    }
+    // Only auto-check if in idle state (don't interrupt an in-progress download).
+    if (s.status === 'idle') {
+      const r = await fetch('/api/update/check', { method: 'POST' });
+      const s2 = await r.json();
+      _renderUpdatePanel(s2);
+      if (s2.status === 'downloading' || s2.status === 'installing') {
+        _startPollIfNeeded();
+      }
+    } else {
+      _renderUpdatePanel(s);
+      if (s.status === 'downloading' || s.status === 'installing') {
+        _startPollIfNeeded();
+      }
+    }
+  } catch {}
+}
+
 // ── Utilities ─────────────────────────────────────────────────────────────────
-function escHtml(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -439,6 +614,7 @@ function showMsg(el, text, type) {
 checkHealth();
 loadProfiles();
 loadJobs();
+_initUpdateCheck();
 </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 {
   "name": "frog-automation",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "macOS LAN web app runner for Screaming Frog SEO Spider CLI",
   "main": "electron/main.js",
   "engines": {
@@ -22,9 +22,11 @@
   "dependencies": {
     "archiver": "7.0.1",
     "better-sqlite3": "12.6.2",
+    "cron-parser": "^5.5.0",
     "express": "5.2.1",
     "express-rate-limit": "8.3.0",
-    "multer": "2.1.1"
+    "multer": "2.1.1",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
