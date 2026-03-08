@@ -151,6 +151,33 @@
   .et-details[open] summary { border-bottom: 1px solid var(--border); color: var(--text); }
   .et-indiv-select { width: 100%; min-height: 90px; padding: 2px; background: #0a0a1e; border: none; color: var(--text); font-size: 12px; display: block; }
   .et-indiv-select option:checked { background: var(--surface2); }
+  /* Cron modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: flex; align-items: center; justify-content: center; z-index: 999; }
+  .modal-overlay.hidden { display: none; }
+  .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; width: 420px; max-width: calc(100vw - 32px); }
+  .modal-box h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #ccc; }
+  .modal-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .modal-tab { padding: 6px 14px; font-size: 12px; cursor: pointer; color: var(--text-dim); border-bottom: 2px solid transparent; margin-bottom: -1px; user-select: none; background: none; border-top: none; border-left: none; border-right: none; }
+  .modal-tab:hover { color: var(--text); }
+  .modal-tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+  .modal-pane { display: none; }
+  .modal-pane.active { display: block; }
+  .preset-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .preset-btn { padding: 8px 10px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; cursor: pointer; text-align: left; transition: border-color .12s, background .12s; }
+  .preset-btn:hover { border-color: var(--blue); background: #0a0a2e; }
+  .preset-btn .preset-label { display: block; font-weight: 600; font-size: 12px; }
+  .preset-btn .preset-expr  { display: block; font-family: monospace; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .cron-builder { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .cron-field label { font-size: 10px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 3px; }
+  .cron-field input { width: 100%; padding: 5px 6px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-size: 12px; font-family: monospace; outline: none; }
+  .cron-field input:focus { border-color: var(--blue); }
+  .cron-preview { margin-top: 12px; padding: 8px 10px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+  .cron-preview-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 3px; }
+  .cron-preview-expr { font-family: monospace; font-size: 13px; color: var(--green); }
+  .cron-preview-desc { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+  .modal-footer { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
+  .cron-help-btn { background: none; border: 1px solid var(--border); border-radius: 3px; color: var(--text-dim); font-size: 11px; padding: 2px 7px; cursor: pointer; margin-left: 6px; vertical-align: middle; transition: color .12s, border-color .12s; }
+  .cron-help-btn:hover { color: var(--blue); border-color: var(--blue); }
 </style>
 </head>
 <body>
@@ -179,7 +206,21 @@
     <div>
       <div class="card">
         <h2>Submit Crawl Job</h2>
-        <label>URL to Crawl</label>
+
+        <label style="margin-top:0;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span>
+          <button type="button" class="cron-help-btn" onclick="openCronModal()" title="Help me build a cron expression">? Schedule Helper</button>
+        </label>
+        <input type="text" id="cron-expression" placeholder="e.g. 0 2 * * * (daily at 02:00)" autocomplete="off"/>
+        <div id="cron-hint" style="font-size:11px; color:var(--text-dim); margin-top:4px; display:none;"></div>
+
+        <div class="form-footer" style="margin-top:14px;">
+          <button class="btn btn-primary" id="submit-btn" onclick="submitJob()">Run Crawl</button>
+          <span id="submit-msg" class="msg" style="display:none;"></span>
+        </div>
+
+        <hr class="sep" style="margin:18px 0 14px;"/>
+
+        <label style="margin-top:0;">URL to Crawl</label>
         <input type="url" id="job-url" placeholder="https://example.com" autocomplete="off"/>
 
         <label style="margin-top:14px;">Profile</label>
@@ -206,15 +247,6 @@
         <div id="et-cat-list" class="et-cat-list"></div>
         <label style="margin-top:4px;">Selected tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated, editable)</span></label>
         <textarea id="export-tabs" style="height:46px;">Internal:All</textarea>
-
-        <label style="margin-top:14px;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span></label>
-        <input type="text" id="cron-expression" placeholder="e.g. 0 2 * * * (daily at 02:00)" autocomplete="off"/>
-        <div id="cron-hint" style="font-size:11px; color:var(--text-dim); margin-top:4px; display:none;"></div>
-
-        <div class="form-footer">
-          <button class="btn btn-primary" id="submit-btn" onclick="submitJob()">Run Crawl</button>
-          <span id="submit-msg" class="msg" style="display:none;"></span>
-        </div>
       </div>
 
       <!-- Profile Library -->
@@ -259,6 +291,94 @@
     </div>
   </div>
 </main>
+
+<!-- Cron Schedule Helper Modal -->
+<div id="cron-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCronModal()">
+  <div class="modal-box">
+    <h3>🕐 Schedule Helper</h3>
+    <div class="modal-tabs">
+      <button class="modal-tab active" data-tab="presets" onclick="switchCronTab('presets')">Quick Presets</button>
+      <button class="modal-tab" data-tab="builder" onclick="switchCronTab('builder')">Custom Builder</button>
+    </div>
+
+    <!-- Presets pane -->
+    <div id="cron-pane-presets" class="modal-pane active">
+      <div class="preset-list">
+        <button class="preset-btn" onclick="applyCronPreset('')">
+          <span class="preset-label">Run immediately</span>
+          <span class="preset-expr">(no schedule)</span>
+        </button>
+        <button class="preset-btn" onclick="applyCronPreset('0 * * * *')">
+          <span class="preset-label">Every hour</span>
+          <span class="preset-expr">0 * * * *</span>
+        </button>
+        <button class="preset-btn" onclick="applyCronPreset('0 */6 * * *')">
+          <span class="preset-label">Every 6 hours</span>
+          <span class="preset-expr">0 */6 * * *</span>
+        </button>
+        <button class="preset-btn" onclick="applyCronPreset('0 0 * * *')">
+          <span class="preset-label">Daily at midnight</span>
+          <span class="preset-expr">0 0 * * *</span>
+        </button>
+        <button class="preset-btn" onclick="applyCronPreset('0 2 * * *')">
+          <span class="preset-label">Daily at 2 AM</span>
+          <span class="preset-expr">0 2 * * *</span>
+        </button>
+        <button class="preset-btn" onclick="applyCronPreset('0 9 * * 1')">
+          <span class="preset-label">Weekly (Mon 9 AM)</span>
+          <span class="preset-expr">0 9 * * 1</span>
+        </button>
+        <button class="preset-btn" onclick="applyCronPreset('0 0 1 * *')">
+          <span class="preset-label">Monthly (1st, midnight)</span>
+          <span class="preset-expr">0 0 1 * *</span>
+        </button>
+        <button class="preset-btn" onclick="applyCronPreset('0 0 * * 0')">
+          <span class="preset-label">Weekly (Sunday midnight)</span>
+          <span class="preset-expr">0 0 * * 0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Builder pane -->
+    <div id="cron-pane-builder" class="modal-pane">
+      <div class="cron-builder">
+        <div class="cron-field">
+          <label>Minute</label>
+          <input type="text" id="cb-min" value="0" oninput="updateCronPreview()" placeholder="0-59"/>
+        </div>
+        <div class="cron-field">
+          <label>Hour</label>
+          <input type="text" id="cb-hour" value="*" oninput="updateCronPreview()" placeholder="0-23"/>
+        </div>
+        <div class="cron-field">
+          <label>Day (month)</label>
+          <input type="text" id="cb-dom" value="*" oninput="updateCronPreview()" placeholder="1-31"/>
+        </div>
+        <div class="cron-field">
+          <label>Month</label>
+          <input type="text" id="cb-month" value="*" oninput="updateCronPreview()" placeholder="1-12"/>
+        </div>
+        <div class="cron-field">
+          <label>Day (week)</label>
+          <input type="text" id="cb-dow" value="*" oninput="updateCronPreview()" placeholder="0-6"/>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-top:6px;">
+        Use * for any · */n for every n · ranges like 1-5 · lists like 1,3,5
+      </div>
+      <div class="cron-preview" id="cron-builder-preview">
+        <div class="cron-preview-label">Expression</div>
+        <div class="cron-preview-expr" id="cb-expr">0 * * * *</div>
+        <div class="cron-preview-desc" id="cb-desc"></div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeCronModal()">Cancel</button>
+      <button class="btn btn-primary" id="cron-apply-btn" onclick="applyBuilderCron()">Apply</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const DEFAULT_TABS = 'Internal:All';
@@ -932,6 +1052,92 @@ checkHealth();
 loadProfiles();
 loadJobs();
 _initUpdateCheck();
+
+// ── Cron Modal ────────────────────────────────────────────────────────────────
+let _cronActiveTab = 'presets';
+
+function openCronModal() {
+  document.getElementById('cron-modal').classList.remove('hidden');
+  switchCronTab('presets');
+}
+
+function closeCronModal() {
+  document.getElementById('cron-modal').classList.add('hidden');
+}
+
+function switchCronTab(tab) {
+  _cronActiveTab = tab;
+  document.querySelectorAll('.modal-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.getElementById('cron-pane-presets').classList.toggle('active', tab === 'presets');
+  document.getElementById('cron-pane-builder').classList.toggle('active', tab === 'builder');
+  if (tab === 'builder') updateCronPreview();
+}
+
+function applyCronPreset(expr) {
+  document.getElementById('cron-expression').value = expr;
+  closeCronModal();
+}
+
+function updateCronPreview() {
+  const min   = (document.getElementById('cb-min').value   || '*').trim();
+  const hour  = (document.getElementById('cb-hour').value  || '*').trim();
+  const dom   = (document.getElementById('cb-dom').value   || '*').trim();
+  const month = (document.getElementById('cb-month').value || '*').trim();
+  const dow   = (document.getElementById('cb-dow').value   || '*').trim();
+  const expr = `${min} ${hour} ${dom} ${month} ${dow}`;
+  document.getElementById('cb-expr').textContent = expr;
+  document.getElementById('cb-desc').textContent = _describeCron(min, hour, dom, month, dow);
+}
+
+function applyBuilderCron() {
+  const expr = document.getElementById('cb-expr').textContent.trim();
+  document.getElementById('cron-expression').value = expr;
+  closeCronModal();
+}
+
+function _describeCron(min, hour, dom, month, dow) {
+  try {
+    const parts = [];
+    const hourStr  = hour  === '*' ? 'every hour'  : `hour ${hour}`;
+    const minStr   = min   === '*' ? 'every minute' : `minute ${min}`;
+    const domStr   = dom   === '*' ? null : `day ${dom} of the month`;
+    const dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const dowStr   = dow   === '*' ? null : `on ${(dow.split(',').map(d => dowNames[+d] !== undefined ? dowNames[+d] : d)).join('/')}`;
+    const monStr   = month === '*' ? null : `in month ${month}`;
+
+    if (min === '*' && hour === '*') {
+      parts.push('Every minute');
+    } else if (min.startsWith('*/')) {
+      parts.push(`Every ${min.slice(2)} minutes`);
+    } else if (hour === '*') {
+      parts.push(`At minute ${min} of every hour`);
+    } else if (hour.startsWith('*/')) {
+      parts.push(`Every ${hour.slice(2)} hours at minute ${min}`);
+    } else {
+      const h = parseInt(hour, 10);
+      const m = parseInt(min, 10);
+      if (!isNaN(h) && !isNaN(m)) {
+        const ampm = h < 12 ? 'AM' : 'PM';
+        const h12  = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        parts.push(`At ${h12}:${String(m).padStart(2,'0')} ${ampm}`);
+      } else {
+        parts.push(`At ${hourStr}, ${minStr}`);
+      }
+    }
+    if (dowStr) parts.push(dowStr);
+    else if (domStr) parts.push(domStr);
+    if (monStr) parts.push(monStr);
+    return parts.join(', ');
+  } catch {
+    return '';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeCronModal();
+});
 </script>
 </body>
 </html>
