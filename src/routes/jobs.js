@@ -90,7 +90,7 @@ router.post('/', writeLimit, (req, res) => {
 
   const tabs = (export_tabs && export_tabs.trim())
     ? export_tabs.trim()
-    : 'Internal:All';
+    : 'AMP:All,Analytics:All,Canonicals:All,Change Detection:All,Content:All,Custom Extraction:All,Directives:All,External:All,H1:All,H2:All,Hreflang:All,Images:All,Internal:All,JavaScript:All,Link Metrics:All,Links:All,Meta Description:All,Meta Keywords:All,Page Titles:All,PageSpeed:All,Pagination:All,Response Codes:All,Search Console:All,Security:All,Sitemaps:All,Structured Data:All,URL:All,Validation:All';
 
   // Cron jobs start in 'scheduled' state; regular jobs go straight to 'queued'.
   const initialStatus = cronExpr ? 'scheduled' : 'queued';

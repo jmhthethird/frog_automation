@@ -111,7 +111,7 @@ async function runJob(jobId) {
  */
 function spawnCrawl(job, outputDir, logStream) {
   return new Promise((resolve, reject) => {
-    const exportTabs = job.export_tabs || 'Internal:All';
+    const exportTabs = job.export_tabs || 'AMP:All,Analytics:All,Canonicals:All,Change Detection:All,Content:All,Custom Extraction:All,Directives:All,External:All,H1:All,H2:All,Hreflang:All,Images:All,Internal:All,JavaScript:All,Link Metrics:All,Links:All,Meta Description:All,Meta Keywords:All,Page Titles:All,PageSpeed:All,Pagination:All,Response Codes:All,Search Console:All,Security:All,Sitemaps:All,Structured Data:All,URL:All,Validation:All';
 
     const args = [
       '--headless',
