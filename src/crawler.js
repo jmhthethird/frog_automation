@@ -13,6 +13,26 @@ const SF_LAUNCHER =
   '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher';
 
 /**
+ * Map from api_credentials.service to the CLI flag that enables it, plus
+ * any extra credential flags to append.
+ *
+ * extraArgs(creds) returns an array of additional CLI arguments derived from
+ * the stored credentials object.  Returns [] when no extras are needed.
+ */
+const API_SERVICE_FLAGS = {
+  google_search_console: { flag: '--use-google-search-console', extraArgs: () => [] },
+  pagespeed:             {
+    flag: '--use-pagespeed',
+    extraArgs: (creds) => (creds.api_key ? ['--ps-api-key', creds.api_key] : []),
+  },
+  majestic:              { flag: '--use-majestic',              extraArgs: () => [] },
+  mozscape:              { flag: '--use-mozscape',              extraArgs: () => [] },
+  ahrefs:                { flag: '--use-ahrefs',                extraArgs: () => [] },
+  google_analytics:      { flag: '--use-google-analytics',      extraArgs: () => [] },
+  google_analytics_4:    { flag: '--use-google-analytics-4',    extraArgs: () => [] },
+};
+
+/**
  * Return the path of the first `.seospider` file found in `dir`, or `null`.
  * @param {string} dir
  * @returns {string|null}
@@ -124,6 +144,27 @@ function spawnCrawl(job, outputDir, logStream) {
 
     if (job.profile_path) {
       args.push('--config', job.profile_path);
+    }
+
+    // Append --use-* flags for enabled API integrations.
+    try {
+      const enabledServices = db
+        .prepare("SELECT service, credentials FROM api_credentials WHERE enabled = 1")
+        .all();
+      for (const row of enabledServices) {
+        const svcCfg = API_SERVICE_FLAGS[row.service];
+        if (!svcCfg) continue;
+        args.push(svcCfg.flag);
+        const creds = JSON.parse(row.credentials || '{}');
+        for (const extra of svcCfg.extraArgs(creds)) {
+          args.push(extra);
+        }
+      }
+    } catch (credErr) {
+      // Non-critical: log and proceed without API flags.
+      if (logStream.writable) {
+        logStream.write(`[WARN] Could not read API credentials: ${credErr.message}\n`);
+      }
     }
 
     const logLine = (prefix, data) => {
