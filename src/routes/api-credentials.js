@@ -89,13 +89,14 @@ router.put('/:service', writeLimit, (req, res) => {
 
   const newEnabled = enabled !== undefined ? (enabled ? 1 : 0) : existingEnabled;
 
-  // Merge credentials: if a field value contains only ● characters (masked value),
-  // keep the existing value; otherwise update with the new value.
+  // Merge credentials: if a field value contains any ● (bullet) characters it is
+  // a masked display value returned by the GET endpoint – keep the existing stored
+  // value instead of overwriting it.  An empty string clears the value.
   const newCreds = Object.assign({}, existingCreds);
   if (credentials) {
     for (const [key, val] of Object.entries(credentials)) {
-      if (typeof val === 'string' && val !== '' && /^[●•]+$/.test(val)) {
-        // Pure mask string – keep existing
+      if (typeof val === 'string' && /[●•]/.test(val)) {
+        // Contains mask characters – keep existing
       } else {
         newCreds[key] = val || '';
       }

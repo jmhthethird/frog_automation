@@ -131,16 +131,18 @@ describe('PUT /api/api-credentials/:service', () => {
     expect(maj.credentials.api_key).toMatch(/●/);
   });
 
-  it('preserves existing credential values when a pure mask is sent', async () => {
+  it('preserves existing credential values when a masked value (prefix+bullets) is sent back', async () => {
     // Set a real value first
     await ctx.request.put('/api/api-credentials/ahrefs')
       .send({ enabled: true, credentials: { api_key: 'real-secret-value' } })
       .expect(200);
 
-    // GET to obtain the masked value
+    // GET to obtain the masked value (format: "real●●●●●●●●" - prefix + bullets)
     const getRes = await ctx.request.get('/api/api-credentials').expect(200);
     const masked = getRes.body.find(s => s.service === 'ahrefs').credentials.api_key;
     expect(masked).toMatch(/●/);
+    // The mask should have the first 4 chars of the real value as a prefix
+    expect(masked.startsWith('real')).toBe(true);
 
     // Now PUT with the masked value back – the real value should be preserved
     const res2 = await ctx.request.put('/api/api-credentials/ahrefs')
@@ -148,6 +150,7 @@ describe('PUT /api/api-credentials/:service', () => {
       .expect(200);
     // The response mask should still show the same prefix/length pattern
     expect(res2.body.credentials.api_key).toMatch(/●/);
+    expect(res2.body.credentials.api_key.startsWith('real')).toBe(true);
   });
 
   it('can store mozscape access_id and secret_key', async () => {
