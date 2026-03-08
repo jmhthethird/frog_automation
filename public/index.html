@@ -207,9 +207,8 @@
       <div class="card">
         <h2>Submit Crawl Job</h2>
 
-        <label style="margin-top:0;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span>
-          <button type="button" class="cron-help-btn" onclick="openCronModal()" title="Help me build a cron expression">? Schedule Helper</button>
-        </label>
+        <label for="cron-expression" style="margin-top:0;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span></label>
+        <button type="button" class="cron-help-btn" onclick="openCronModal()" title="Help me build a cron expression">? Schedule Helper</button>
         <input type="text" id="cron-expression" placeholder="e.g. 0 2 * * * (daily at 02:00)" autocomplete="off"/>
         <div id="cron-hint" style="font-size:11px; color:var(--text-dim); margin-top:4px; display:none;"></div>
 
@@ -293,9 +292,9 @@
 </main>
 
 <!-- Cron Schedule Helper Modal -->
-<div id="cron-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCronModal()">
-  <div class="modal-box">
-    <h3>🕐 Schedule Helper</h3>
+<div id="cron-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="cron-modal-title" onclick="if(event.target===this)closeCronModal()">
+  <div class="modal-box" tabindex="-1">
+    <h3 id="cron-modal-title">🕐 Schedule Helper</h3>
     <div class="modal-tabs">
       <button class="modal-tab active" data-tab="presets" onclick="switchCronTab('presets')">Quick Presets</button>
       <button class="modal-tab" data-tab="builder" onclick="switchCronTab('builder')">Custom Builder</button>
@@ -1054,24 +1053,28 @@ loadJobs();
 _initUpdateCheck();
 
 // ── Cron Modal ────────────────────────────────────────────────────────────────
-let _cronActiveTab = 'presets';
+let _cronModalOpener = null;
 
 function openCronModal() {
-  document.getElementById('cron-modal').classList.remove('hidden');
+  _cronModalOpener = document.activeElement;
+  const modal = document.getElementById('cron-modal');
+  modal.classList.remove('hidden');
   switchCronTab('presets');
+  modal.querySelector('.modal-box').focus();
 }
 
 function closeCronModal() {
   document.getElementById('cron-modal').classList.add('hidden');
+  if (_cronModalOpener) { _cronModalOpener.focus(); _cronModalOpener = null; }
 }
 
 function switchCronTab(tab) {
-  _cronActiveTab = tab;
   document.querySelectorAll('.modal-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
   document.getElementById('cron-pane-presets').classList.toggle('active', tab === 'presets');
   document.getElementById('cron-pane-builder').classList.toggle('active', tab === 'builder');
+  document.getElementById('cron-apply-btn').style.display = tab === 'builder' ? '' : 'none';
   if (tab === 'builder') updateCronPreview();
 }
 
@@ -1118,7 +1121,7 @@ function _describeCron(min, hour, dom, month, dow) {
     } else {
       const h = parseInt(hour, 10);
       const m = parseInt(min, 10);
-      if (!isNaN(h) && !isNaN(m)) {
+      if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
         const ampm = h < 12 ? 'AM' : 'PM';
         const h12  = h === 0 ? 12 : h > 12 ? h - 12 : h;
         parts.push(`At ${h12}:${String(m).padStart(2,'0')} ${ampm}`);
@@ -1136,7 +1139,24 @@ function _describeCron(min, hour, dom, month, dow) {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeCronModal();
+  const modal = document.getElementById('cron-modal');
+  if (modal.classList.contains('hidden')) return;
+
+  if (e.key === 'Escape') { closeCronModal(); return; }
+
+  if (e.key === 'Tab') {
+    const focusable = Array.from(
+      modal.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex="0"]')
+    ).filter(el => el.offsetParent !== null && !el.closest('.modal-pane:not(.active)'));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last  = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+    }
+  }
 });
 </script>
 </body>
