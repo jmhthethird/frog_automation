@@ -142,7 +142,15 @@ describe('POST /api/jobs', () => {
       .set('Content-Type', 'application/json')
       .expect(201);
 
-    expect(res.body.export_tabs).toBe('Internal:All');
+    const exportTabs = res.body.export_tabs.split(',');
+    expect(exportTabs.length).toBeGreaterThan(0);
+    expect(exportTabs).toEqual(expect.arrayContaining([
+      'AMP:All',
+      'Analytics:All',
+      'Internal:All',
+      'Response Codes:All',
+      'URL:All',
+    ]));
   });
 
   it('uses custom export tabs when provided', async () => {

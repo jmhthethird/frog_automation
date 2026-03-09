@@ -7,6 +7,7 @@ const archiver = require('archiver');
 const { db } = require('./db');
 const { computeDiff } = require('./differ');
 const { scheduler } = require('./scheduler');
+const { DEFAULT_EXPORT_TABS } = require('./constants/exportTabs');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -111,7 +112,7 @@ async function runJob(jobId) {
  */
 function spawnCrawl(job, outputDir, logStream) {
   return new Promise((resolve, reject) => {
-    const exportTabs = job.export_tabs || 'Internal:All';
+    const exportTabs = job.export_tabs || DEFAULT_EXPORT_TABS;
 
     const args = [
       '--headless',

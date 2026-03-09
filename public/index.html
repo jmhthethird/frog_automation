@@ -380,7 +380,8 @@
 </div>
 
 <script>
-const DEFAULT_TABS = 'Internal:All';
+const DEFAULT_TABS = 'AMP:All,Analytics:All,Canonicals:All,Change Detection:All,Content:All,Custom Extraction:All,Directives:All,External:All,H1:All,H2:All,Hreflang:All,Images:All,Internal:All,JavaScript:All,Link Metrics:All,Links:All,Meta Description:All,Meta Keywords:All,Page Titles:All,PageSpeed:All,Pagination:All,Response Codes:All,Search Console:All,Security:All,Sitemaps:All,Structured Data:All,URL:All,Validation:All';
+window.DEFAULT_EXPORT_TABS = DEFAULT_TABS;
 let autoRefreshTimer = null;
 
 // ── Health ───────────────────────────────────────────────────────────────────
@@ -1045,6 +1046,7 @@ function syncUIFromTextarea() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildExportTabsUI();
+document.getElementById('export-tabs').value = DEFAULT_TABS;
 syncUIFromTextarea();
 document.getElementById('export-tabs').addEventListener('input', syncUIFromTextarea);
 checkHealth();

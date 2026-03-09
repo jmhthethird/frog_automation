@@ -83,7 +83,8 @@ test.describe('Submit form – static elements', () => {
     const ta = page.locator('#export-tabs');
     await expect(ta).toBeVisible();
     const value = await ta.inputValue();
-    expect(value).toBe('Internal:All');
+    const defaultTabs = await page.evaluate(() => window.DEFAULT_EXPORT_TABS);
+    expect(value).toBe(defaultTabs);
   });
 
   test('Run Crawl button is visible and enabled', async ({ page }) => {

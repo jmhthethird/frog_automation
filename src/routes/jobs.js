@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const { db, DATA_DIR } = require('../db');
 const { validateCronExpression, computeNextRun } = require('../scheduler');
 const { parseCSV } = require('../differ');
+const { DEFAULT_EXPORT_TABS } = require('../constants/exportTabs');
 
 const router = express.Router();
 
@@ -90,7 +91,7 @@ router.post('/', writeLimit, (req, res) => {
 
   const tabs = (export_tabs && export_tabs.trim())
     ? export_tabs.trim()
-    : 'Internal:All';
+    : DEFAULT_EXPORT_TABS;
 
   // Cron jobs start in 'scheduled' state; regular jobs go straight to 'queued'.
   const initialStatus = cronExpr ? 'scheduled' : 'queued';
