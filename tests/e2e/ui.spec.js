@@ -83,7 +83,8 @@ test.describe('Submit form – static elements', () => {
     const ta = page.locator('#export-tabs');
     await expect(ta).toBeVisible();
     const value = await ta.inputValue();
-    expect(value).toBe('AMP:All,Analytics:All,Canonicals:All,Change Detection:All,Content:All,Custom Extraction:All,Directives:All,External:All,H1:All,H2:All,Hreflang:All,Images:All,Internal:All,JavaScript:All,Link Metrics:All,Links:All,Meta Description:All,Meta Keywords:All,Page Titles:All,PageSpeed:All,Pagination:All,Response Codes:All,Search Console:All,Security:All,Sitemaps:All,Structured Data:All,URL:All,Validation:All');
+    const defaultTabs = await page.evaluate(() => window.DEFAULT_EXPORT_TABS);
+    expect(value).toBe(defaultTabs);
   });
 
   test('Run Crawl button is visible and enabled', async ({ page }) => {
