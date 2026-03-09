@@ -294,6 +294,54 @@ describe('runJob()', () => {
     expect(spawnArgs).toContain('--save-crawl');
   });
 
+  it('passes --use-pagespeed when pagespeed integration is enabled', async () => {
+    db.prepare("UPDATE api_credentials SET enabled = 1 WHERE service = 'pagespeed'").run();
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    const spawnArgs = cp.spawn.mock.calls[0][1];
+    expect(spawnArgs).toContain('--use-pagespeed');
+  });
+
+  it('passes --ps-api-key when pagespeed has an api_key stored', async () => {
+    db.prepare("UPDATE api_credentials SET enabled = 1, credentials = ? WHERE service = 'pagespeed'")
+      .run(JSON.stringify({ api_key: 'my-ps-api-key' }));
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    const spawnArgs = cp.spawn.mock.calls[0][1];
+    expect(spawnArgs).toContain('--use-pagespeed');
+    expect(spawnArgs).toContain('--ps-api-key');
+    expect(spawnArgs).toContain('my-ps-api-key');
+  });
+
+  it('does not pass --use-pagespeed when pagespeed integration is disabled', async () => {
+    db.prepare("UPDATE api_credentials SET enabled = 0 WHERE service = 'pagespeed'").run();
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    const spawnArgs = cp.spawn.mock.calls[0][1];
+    expect(spawnArgs).not.toContain('--use-pagespeed');
+  });
+
+  it('passes multiple --use-* flags when multiple integrations are enabled', async () => {
+    db.prepare("UPDATE api_credentials SET enabled = 1 WHERE service IN ('majestic', 'ahrefs')").run();
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    const spawnArgs = cp.spawn.mock.calls[0][1];
+    expect(spawnArgs).toContain('--use-majestic');
+    expect(spawnArgs).toContain('--use-ahrefs');
+  });
+
   it('runs a job that has a profile_path', async () => {
     // Insert a profile and attach it to the job.
     const profilePath = path.join(dataDir, 'test.seospiderconfig');

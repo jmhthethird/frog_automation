@@ -33,6 +33,37 @@
   #update-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
   #update-btn:hover { color: var(--text); border-color: var(--text-dim); }
   #update-btn.has-update { border-color: var(--green); color: var(--green); font-weight: 600; }
+  /* API Settings drawer */
+  #api-drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: none; }
+  #api-drawer-backdrop.open { display: block; }
+  #api-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100vw; background: var(--surface); border-left: 1px solid var(--border); z-index: 201; transform: translateX(100%); transition: transform .25s ease; overflow-y: auto; display: flex; flex-direction: column; }
+  #api-drawer.open { transform: translateX(0); }
+  #api-drawer-header { padding: 16px 20px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 1; }
+  #api-drawer-header h2 { font-size: 15px; font-weight: 700; flex: 1; }
+  #api-drawer-close { background: transparent; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  #api-drawer-close:hover { color: var(--text); background: #ffffff12; }
+  #api-drawer-body { padding: 16px; flex: 1; }
+  .api-svc-card { background: #0f0f2a; border: 1px solid var(--border); border-radius: 6px; padding: 14px; margin-bottom: 12px; }
+  .api-svc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .api-svc-name { font-size: 13px; font-weight: 600; flex: 1; }
+  .api-svc-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .api-toggle-switch { position: relative; display: inline-block; width: 34px; height: 18px; flex-shrink: 0; }
+  .api-toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .api-toggle-slider { position: absolute; inset: 0; background: #333; border-radius: 18px; cursor: pointer; transition: background .2s; }
+  .api-toggle-slider::before { content: ''; position: absolute; width: 12px; height: 12px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .2s; }
+  .api-toggle-switch input:checked + .api-toggle-slider { background: var(--green); }
+  .api-toggle-switch input:checked + .api-toggle-slider::before { transform: translateX(16px); }
+  .api-svc-note { font-size: 11px; color: var(--text-dim); background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; margin-bottom: 10px; line-height: 1.5; }
+  .api-svc-note strong { color: var(--blue); }
+  .api-svc-fields label { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; margin-top: 8px; display: block; }
+  .api-svc-fields label:first-child { margin-top: 0; }
+  .api-svc-fields input[type=text], .api-svc-fields input[type=password] { width: 100%; padding: 7px 9px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; font-family: monospace; outline: none; }
+  .api-svc-fields input:focus { border-color: var(--blue); }
+  .api-svc-save-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+  .api-svc-msg { font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+  #api-settings-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
+  #api-settings-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  #api-settings-btn.has-enabled { border-color: var(--blue); color: var(--blue); }
   /* Update notification panel */
   #update-panel { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; display: none; align-items: center; gap: 14px; flex-wrap: wrap; }
   #update-panel.visible { display: flex; }
@@ -186,8 +217,25 @@
   <h1>Frog Automation</h1>
   <div id="version-badge">v…</div>
   <button id="update-btn" onclick="checkForUpdates()" title="Check for updates">↻ Updates</button>
+  <button id="api-settings-btn" onclick="openApiDrawer()" title="API Integration settings">🔑 API Settings</button>
   <div id="health-badge">checking…</div>
 </header>
+<!-- API Settings Drawer -->
+<div id="api-drawer-backdrop" onclick="closeApiDrawer()"></div>
+<div id="api-drawer" role="dialog" aria-modal="true" aria-label="API Integration Settings">
+  <div id="api-drawer-header">
+    <h2>🔑 API Integrations</h2>
+    <button id="api-drawer-close" onclick="closeApiDrawer()" title="Close" aria-label="Close">✕</button>
+  </div>
+  <div id="api-drawer-body">
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.6;">
+      Enable integrations to automatically include their <code style="font-size:11px;">--use-*</code> flags when running
+      crawls. Credentials stored here that cannot be passed via CLI must also be configured in
+      <strong>Screaming Frog → Configuration → API Access</strong>.
+    </p>
+    <div id="api-services-list"><em style="color:var(--text-dim);">Loading…</em></div>
+  </div>
+</div>
 <!-- Update notification panel (shown when an update is available or in-progress) -->
 <div id="update-panel">
   <div class="upd-msg" id="update-msg">Checking…</div>
@@ -1044,6 +1092,189 @@ function syncUIFromTextarea() {
   });
 }
 
+// ── API Integrations Drawer ───────────────────────────────────────────────────
+
+const API_SERVICE_META = {
+  google_search_console: {
+    label: 'Google Search Console',
+    note: '<strong>OAuth-based.</strong> Credentials are managed via OAuth in Screaming Frog (Configuration → API Access → Google Search Console). Enable here to pass <code>--use-google-search-console</code> when crawling.',
+  },
+  pagespeed: {
+    label: 'PageSpeed Insights',
+    note: 'Optionally enter a Google PageSpeed Insights API key to avoid public rate limits. Without a key, SF uses anonymous access (slower for large crawls).',
+  },
+  majestic: {
+    label: 'Majestic',
+    note: '<strong>API key required in SF.</strong> Enter your Majestic API key for reference. You must also add it in Screaming Frog (Configuration → API Access → Majestic) for it to be used during crawls. Enable here to pass <code>--use-majestic</code>.',
+  },
+  mozscape: {
+    label: 'Mozscape (Moz)',
+    note: '<strong>Credentials required in SF.</strong> Enter your Moz Access ID and Secret Key for reference. You must also add them in Screaming Frog (Configuration → API Access → Mozscape). Enable here to pass <code>--use-mozscape</code>.',
+  },
+  ahrefs: {
+    label: 'Ahrefs',
+    note: '<strong>API key required in SF.</strong> Enter your Ahrefs API key for reference. You must also add it in Screaming Frog (Configuration → API Access → Ahrefs). Enable here to pass <code>--use-ahrefs</code>.',
+  },
+  google_analytics: {
+    label: 'Google Analytics (UA)',
+    note: '<strong>OAuth-based.</strong> Configure via Screaming Frog (Configuration → API Access → Google Analytics). Enable here to pass <code>--use-google-analytics</code> when crawling.',
+  },
+  google_analytics_4: {
+    label: 'Google Analytics 4',
+    note: '<strong>OAuth-based.</strong> Configure via Screaming Frog (Configuration → API Access → Google Analytics 4). Enable here to pass <code>--use-google-analytics-4</code> when crawling.',
+  },
+};
+
+let _apiCredentialsCache = null;
+
+function openApiDrawer() {
+  document.getElementById('api-drawer').classList.add('open');
+  document.getElementById('api-drawer-backdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  loadApiCredentials();
+}
+
+function closeApiDrawer() {
+  document.getElementById('api-drawer').classList.remove('open');
+  document.getElementById('api-drawer-backdrop').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+async function loadApiCredentials() {
+  const list = document.getElementById('api-services-list');
+  try {
+    const r = await fetch('/api/api-credentials');
+    if (!r.ok) throw new Error('Failed to load');
+    _apiCredentialsCache = await r.json();
+    renderApiServicesList(_apiCredentialsCache);
+    _updateApiSettingsBtn(_apiCredentialsCache);
+  } catch {
+    list.innerHTML = '<span style="color:var(--red);">Failed to load API credentials</span>';
+  }
+}
+
+function renderApiServicesList(services) {
+  const list = document.getElementById('api-services-list');
+  list.innerHTML = services.map(svc => {
+    const meta = API_SERVICE_META[svc.service] || { label: svc.service, note: '' };
+    const fieldRows = (svc.fields || []).map(f => `
+      <label>${escHtml(f.label)}${f.sensitive ? ' <span style="color:var(--text-dim);">(stored securely)</span>' : ''}</label>
+      <input type="${f.sensitive ? 'password' : 'text'}"
+             id="api-field-${escHtml(svc.service)}-${escHtml(f.name)}"
+             placeholder="${escHtml(f.sensitive ? '••••••••' : '')}"
+             value="${escHtml(svc.credentials[f.name] || '')}"
+             autocomplete="off"
+             spellcheck="false"/>
+    `).join('');
+
+    return `<div class="api-svc-card" id="api-svc-${escHtml(svc.service)}">
+      <div class="api-svc-header">
+        <span class="api-svc-name">${escHtml(meta.label)}</span>
+        <div class="api-svc-toggle">
+          <label class="api-toggle-switch" title="${svc.enabled ? 'Enabled' : 'Disabled'}">
+            <input type="checkbox" id="api-toggle-${escHtml(svc.service)}"
+                   ${svc.enabled ? 'checked' : ''}
+                   onchange="onApiToggle('${escHtml(svc.service)}', this.checked)"/>
+            <span class="api-toggle-slider"></span>
+          </label>
+          <span id="api-toggle-label-${escHtml(svc.service)}" style="color:${svc.enabled ? 'var(--green)' : 'var(--text-dim)'};">
+            ${svc.enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+      </div>
+      ${meta.note ? `<div class="api-svc-note">${meta.note}</div>` : ''}
+      ${fieldRows ? `<div class="api-svc-fields">${fieldRows}</div>` : ''}
+      <div class="api-svc-save-row">
+        <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
+                onclick="saveApiCredential('${escHtml(svc.service)}')">Save</button>
+        <span id="api-svc-msg-${escHtml(svc.service)}" class="api-svc-msg" style="display:none;"></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function onApiToggle(service, enabled) {
+  const labelEl = document.getElementById('api-toggle-label-' + service);
+  if (labelEl) {
+    labelEl.textContent = enabled ? 'Enabled' : 'Disabled';
+    labelEl.style.color = enabled ? 'var(--green)' : 'var(--text-dim)';
+  }
+}
+
+async function saveApiCredential(service) {
+  const msgEl = document.getElementById('api-svc-msg-' + service);
+  const toggleEl = document.getElementById('api-toggle-' + service);
+  const enabled = toggleEl ? toggleEl.checked : false;
+
+  // Collect credential field values
+  const svcData = _apiCredentialsCache && _apiCredentialsCache.find(s => s.service === service);
+  const credentials = {};
+  if (svcData && svcData.fields) {
+    for (const f of svcData.fields) {
+      const input = document.getElementById(`api-field-${service}-${f.name}`);
+      if (input) credentials[f.name] = input.value;
+    }
+  }
+
+  try {
+    const r = await fetch('/api/api-credentials/' + encodeURIComponent(service), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, credentials }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      _showApiMsg(msgEl, d.error || 'Save failed', 'err');
+      return;
+    }
+    // Update cache and re-render this card's field values with masked output
+    if (_apiCredentialsCache) {
+      const idx = _apiCredentialsCache.findIndex(s => s.service === service);
+      if (idx >= 0) _apiCredentialsCache[idx] = d;
+    }
+    // Update masked field values
+    if (d.fields && d.credentials) {
+      for (const f of d.fields) {
+        const input = document.getElementById(`api-field-${service}-${f.name}`);
+        if (input && f.sensitive) input.value = d.credentials[f.name] || '';
+      }
+    }
+    _showApiMsg(msgEl, '✓ Saved', 'ok');
+    _updateApiSettingsBtn(_apiCredentialsCache);
+  } catch {
+    _showApiMsg(msgEl, 'Network error', 'err');
+  }
+}
+
+function _showApiMsg(el, text, type) {
+  if (!el) return;
+  el.textContent = text;
+  el.style.background = type === 'ok' ? '#1a4a2e' : '#4a1a1a';
+  el.style.color = type === 'ok' ? 'var(--green)' : 'var(--red)';
+  el.style.display = 'inline-block';
+  setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
+}
+
+function _updateApiSettingsBtn(services) {
+  const btn = document.getElementById('api-settings-btn');
+  if (!btn || !services) return;
+  const anyEnabled = services.some(s => s.enabled);
+  btn.classList.toggle('has-enabled', anyEnabled);
+  btn.title = anyEnabled
+    ? 'API Integrations (' + services.filter(s => s.enabled).length + ' enabled)'
+    : 'API Integration settings';
+}
+
+async function _initApiSettingsBtn() {
+  try {
+    const r = await fetch('/api/api-credentials');
+    if (r.ok) {
+      const services = await r.json();
+      _updateApiSettingsBtn(services);
+    }
+  } catch { /* non-critical */ }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildExportTabsUI();
 document.getElementById('export-tabs').value = DEFAULT_TABS;
@@ -1052,6 +1283,7 @@ document.getElementById('export-tabs').addEventListener('input', syncUIFromTexta
 checkHealth();
 loadProfiles();
 loadJobs();
+_initApiSettingsBtn();
 _initUpdateCheck();
 
 // ── Cron Modal ────────────────────────────────────────────────────────────────

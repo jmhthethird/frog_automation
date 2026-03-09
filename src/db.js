@@ -53,4 +53,29 @@ for (const col of ['cron_expression TEXT', 'next_run_at TEXT', 'diff_summary TEX
   }
 }
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS api_credentials (
+    service     TEXT    PRIMARY KEY,
+    enabled     INTEGER NOT NULL DEFAULT 0,
+    credentials TEXT    NOT NULL DEFAULT '{}'
+  );
+`);
+
+// Seed a row for every known integration so GET always returns the full list.
+const API_SERVICES = [
+  'google_search_console',
+  'pagespeed',
+  'majestic',
+  'mozscape',
+  'ahrefs',
+  'google_analytics',
+  'google_analytics_4',
+];
+const seedStmt = db.prepare(
+  "INSERT OR IGNORE INTO api_credentials (service, enabled, credentials) VALUES (?, 0, '{}')"
+);
+for (const svc of API_SERVICES) {
+  seedStmt.run(svc);
+}
+
 module.exports = { db, DATA_DIR };
