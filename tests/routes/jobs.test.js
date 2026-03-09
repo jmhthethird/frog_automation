@@ -79,6 +79,71 @@ describe('GET /api/jobs/:id', () => {
       expect(res2.body.log_tail).toContain('line1');
     }
   });
+
+  it('does not include duration_seconds when job has no started_at or completed_at', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status)
+      VALUES ('https://no-duration.example.com', 'Internal:All', 'queued')
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.get(`/api/jobs/${id}`).expect(200);
+    expect(res.body.duration_seconds).toBeUndefined();
+  });
+
+  it('includes duration_seconds when both started_at and completed_at are set', async () => {
+    const { db } = getDb();
+    // Simulate a completed job with known timestamps (30-second run)
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, started_at, completed_at)
+      VALUES ('https://duration-test.example.com', 'Internal:All', 'completed',
+              datetime('now', '-30 seconds'), datetime('now'))
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.get(`/api/jobs/${id}`).expect(200);
+    expect(res.body.duration_seconds).toBeGreaterThanOrEqual(29);
+    expect(res.body.duration_seconds).toBeLessThanOrEqual(31);
+  });
+
+  it('includes prev_duration_seconds when a previous completed crawl exists for the same URL', async () => {
+    const { db } = getDb();
+    const url = 'https://prev-duration-test.example.com';
+
+    // Insert an older completed crawl (45-second run)
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, started_at, completed_at)
+      VALUES (?, 'Internal:All', 'completed',
+              datetime('now', '-120 seconds'), datetime('now', '-75 seconds'))
+    `).run(url);
+
+    // Insert the current (newer) completed crawl
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, started_at, completed_at)
+      VALUES (?, 'Internal:All', 'completed',
+              datetime('now', '-30 seconds'), datetime('now'))
+    `).run(url);
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.get(`/api/jobs/${id}`).expect(200);
+    expect(res.body.prev_duration_seconds).toBeGreaterThanOrEqual(44);
+    expect(res.body.prev_duration_seconds).toBeLessThanOrEqual(46);
+    expect(res.body.prev_completed_at).toBeTruthy();
+  });
+
+  it('does not include prev_duration_seconds when no previous crawl exists for the URL', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status)
+      VALUES ('https://no-prev-crawl.example.com', 'Internal:All', 'queued')
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.get(`/api/jobs/${id}`).expect(200);
+    expect(res.body.prev_duration_seconds).toBeUndefined();
+    expect(res.body.prev_completed_at).toBeUndefined();
+  });
 });
 
 // ─── POST /api/jobs ───────────────────────────────────────────────────────────

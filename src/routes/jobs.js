@@ -51,6 +51,27 @@ router.get('/:id', readLimit, (req, res) => {
     }
   }
 
+  // Compute duration for completed/failed jobs
+  if (job.started_at && job.completed_at) {
+    const startMs = new Date(job.started_at + 'Z').getTime();
+    const endMs   = new Date(job.completed_at + 'Z').getTime();
+    job.duration_seconds = Math.round((endMs - startMs) / 1000);
+  }
+
+  // Look up the most recent previous completed crawl for the same URL
+  const prevJob = db.prepare(`
+    SELECT started_at, completed_at FROM jobs
+    WHERE url = ? AND status = 'completed' AND id != ?
+    ORDER BY id DESC LIMIT 1
+  `).get(job.url, job.id);
+
+  if (prevJob && prevJob.started_at && prevJob.completed_at) {
+    const startMs = new Date(prevJob.started_at + 'Z').getTime();
+    const endMs   = new Date(prevJob.completed_at + 'Z').getTime();
+    job.prev_duration_seconds = Math.round((endMs - startMs) / 1000);
+    job.prev_completed_at = prevJob.completed_at;
+  }
+
   res.json(job);
 });
 
