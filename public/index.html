@@ -434,6 +434,7 @@ let autoRefreshTimer = null;
 let runningTimer = null;
 
 function fmtDuration(seconds) {
+  seconds = Math.max(0, seconds);
   if (seconds < 60) return `${seconds}s`;
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -618,7 +619,7 @@ async function showJobDetail(id) {
         <div class="detail-item"><label>Completed</label><span>${j.completed_at ? fmtDate(j.completed_at) : '—'}</span></div>
         ${j.status === 'running' && j.started_at ? `<div class="detail-item"><label>Duration</label><span id="live-duration">—</span></div>` : ''}
         ${j.duration_seconds !== undefined && (j.status === 'completed' || j.status === 'failed') ? `<div class="detail-item"><label>Duration</label><span>${fmtDuration(j.duration_seconds)}</span></div>` : ''}
-        ${j.prev_duration_seconds !== undefined ? `<div class="detail-item"><label>Previous Crawl</label><span title="Completed ${fmtDate(j.prev_completed_at)}">${fmtDuration(j.prev_duration_seconds)}</span></div>` : ''}
+        ${j.prev_duration_seconds !== undefined ? `<div class="detail-item"><label>Previous Crawl</label><span title="Completed ${escHtml(fmtDate(j.prev_completed_at))}">${fmtDuration(j.prev_duration_seconds)}</span></div>` : ''}
         ${j.cron_expression ? `<div class="detail-item"><label>Cron Schedule</label><span style="font-family:monospace;">${escHtml(j.cron_expression)}</span></div>` : ''}
         ${j.next_run_at ? `<div class="detail-item"><label>Next Run</label><span>${fmtDate(j.next_run_at)}</span></div>` : ''}
         ${j.error ? `<div class="detail-item" style="grid-column:1/-1;"><label>Error</label><span style="color:var(--red);">${escHtml(j.error)}</span></div>` : ''}

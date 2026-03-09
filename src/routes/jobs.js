@@ -51,7 +51,7 @@ router.get('/:id', readLimit, (req, res) => {
     }
   }
 
-  // Compute duration for completed/failed jobs
+  // Compute duration whenever both timestamps are available
   if (job.started_at && job.completed_at) {
     const startMs = new Date(job.started_at + 'Z').getTime();
     const endMs   = new Date(job.completed_at + 'Z').getTime();
