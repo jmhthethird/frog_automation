@@ -431,6 +431,15 @@
 const DEFAULT_TABS = 'AMP:All,Analytics:All,Canonicals:All,Change Detection:All,Content:All,Custom Extraction:All,Directives:All,External:All,H1:All,H2:All,Hreflang:All,Images:All,Internal:All,JavaScript:All,Link Metrics:All,Links:All,Meta Description:All,Meta Keywords:All,Page Titles:All,PageSpeed:All,Pagination:All,Response Codes:All,Search Console:All,Security:All,Sitemaps:All,Structured Data:All,URL:All,Validation:All';
 window.DEFAULT_EXPORT_TABS = DEFAULT_TABS;
 let autoRefreshTimer = null;
+let runningTimer = null;
+
+function fmtDuration(seconds) {
+  seconds = Math.max(0, seconds);
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s < 10 ? '0' + s : s}s`;
+}
 
 // ── Health ───────────────────────────────────────────────────────────────────
 async function checkHealth() {
@@ -592,6 +601,8 @@ async function showJobDetail(id) {
   document.getElementById('compare-actions').innerHTML = '';
 
   clearInterval(autoRefreshTimer);
+  clearInterval(runningTimer);
+  runningTimer = null;
 
   const refresh = async () => {
     try {
@@ -606,10 +617,26 @@ async function showJobDetail(id) {
         <div class="detail-item"><label>Created</label><span>${fmtDate(j.created_at)}</span></div>
         <div class="detail-item"><label>Started</label><span>${j.started_at ? fmtDate(j.started_at) : '—'}</span></div>
         <div class="detail-item"><label>Completed</label><span>${j.completed_at ? fmtDate(j.completed_at) : '—'}</span></div>
+        ${j.status === 'running' && j.started_at ? `<div class="detail-item"><label>Duration</label><span id="live-duration">—</span></div>` : ''}
+        ${j.duration_seconds !== undefined && (j.status === 'completed' || j.status === 'failed') ? `<div class="detail-item"><label>Duration</label><span>${fmtDuration(j.duration_seconds)}</span></div>` : ''}
+        ${j.prev_duration_seconds !== undefined ? `<div class="detail-item"><label>Previous Crawl</label><span title="Completed ${escHtml(fmtDate(j.prev_completed_at))}">${fmtDuration(j.prev_duration_seconds)}</span></div>` : ''}
         ${j.cron_expression ? `<div class="detail-item"><label>Cron Schedule</label><span style="font-family:monospace;">${escHtml(j.cron_expression)}</span></div>` : ''}
         ${j.next_run_at ? `<div class="detail-item"><label>Next Run</label><span>${fmtDate(j.next_run_at)}</span></div>` : ''}
         ${j.error ? `<div class="detail-item" style="grid-column:1/-1;"><label>Error</label><span style="color:var(--red);">${escHtml(j.error)}</span></div>` : ''}
       `;
+
+      // Start or maintain live elapsed-time display for running jobs
+      clearInterval(runningTimer);
+      runningTimer = null;
+      if (j.status === 'running' && j.started_at) {
+        const startMs = new Date(j.started_at + 'Z').getTime();
+        const tick = () => {
+          const el = document.getElementById('live-duration');
+          if (el) el.textContent = fmtDuration(Math.round((Date.now() - startMs) / 1000));
+        };
+        tick();
+        runningTimer = setInterval(tick, 1000);
+      }
 
       if (j.status === 'completed') {
         document.getElementById('detail-download').innerHTML =
