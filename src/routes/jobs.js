@@ -62,7 +62,7 @@ router.get('/:id', readLimit, (req, res) => {
   const prevJob = db.prepare(`
     SELECT started_at, completed_at FROM jobs
     WHERE url = ? AND status = 'completed' AND id != ?
-    ORDER BY id DESC LIMIT 1
+    ORDER BY completed_at DESC LIMIT 1
   `).get(job.url, job.id);
 
   if (prevJob && prevJob.started_at && prevJob.completed_at) {
