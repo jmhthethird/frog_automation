@@ -1101,6 +1101,113 @@ checkHealth();
 loadProfiles();
 loadJobs();
 _initUpdateCheck();
+// ── Cron Modal ────────────────────────────────────────────────────────────────
+let _cronModalOpener = null;
+
+function openCronModal() {
+  _cronModalOpener = document.activeElement;
+  const modal = document.getElementById('cron-modal');
+  modal.classList.remove('hidden');
+  switchCronTab('presets');
+  modal.querySelector('.modal-box').focus();
+}
+
+function closeCronModal() {
+  document.getElementById('cron-modal').classList.add('hidden');
+  if (_cronModalOpener) { _cronModalOpener.focus(); _cronModalOpener = null; }
+}
+
+function switchCronTab(tab) {
+  document.querySelectorAll('.modal-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.getElementById('cron-pane-presets').classList.toggle('active', tab === 'presets');
+  document.getElementById('cron-pane-builder').classList.toggle('active', tab === 'builder');
+  document.getElementById('cron-apply-btn').style.display = tab === 'builder' ? '' : 'none';
+  if (tab === 'builder') updateCronPreview();
+}
+
+function applyCronPreset(expr) {
+  document.getElementById('cron-expression').value = expr;
+  closeCronModal();
+}
+
+function updateCronPreview() {
+  const min   = (document.getElementById('cb-min').value   || '*').trim();
+  const hour  = (document.getElementById('cb-hour').value  || '*').trim();
+  const dom   = (document.getElementById('cb-dom').value   || '*').trim();
+  const month = (document.getElementById('cb-month').value || '*').trim();
+  const dow   = (document.getElementById('cb-dow').value   || '*').trim();
+  const expr = `${min} ${hour} ${dom} ${month} ${dow}`;
+  document.getElementById('cb-expr').textContent = expr;
+  document.getElementById('cb-desc').textContent = _describeCron(min, hour, dom, month, dow);
+}
+
+function applyBuilderCron() {
+  const expr = document.getElementById('cb-expr').textContent.trim();
+  document.getElementById('cron-expression').value = expr;
+  closeCronModal();
+}
+
+function _describeCron(min, hour, dom, month, dow) {
+  try {
+    const parts = [];
+    const hourStr  = hour  === '*' ? 'every hour'  : `hour ${hour}`;
+    const minStr   = min   === '*' ? 'every minute' : `minute ${min}`;
+    const domStr   = dom   === '*' ? null : `day ${dom} of the month`;
+    const dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const dowStr   = dow   === '*' ? null : `on ${(dow.split(',').map(d => dowNames[+d] !== undefined ? dowNames[+d] : d)).join('/')}`;
+    const monStr   = month === '*' ? null : `in month ${month}`;
+
+    if (min === '*' && hour === '*') {
+      parts.push('Every minute');
+    } else if (min.startsWith('*/')) {
+      parts.push(`Every ${min.slice(2)} minutes`);
+    } else if (hour === '*') {
+      parts.push(`At minute ${min} of every hour`);
+    } else if (hour.startsWith('*/')) {
+      parts.push(`Every ${hour.slice(2)} hours at minute ${min}`);
+    } else {
+      const h = parseInt(hour, 10);
+      const m = parseInt(min, 10);
+      if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+        const ampm = h < 12 ? 'AM' : 'PM';
+        const h12  = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        parts.push(`At ${h12}:${String(m).padStart(2,'0')} ${ampm}`);
+      } else {
+        parts.push(`At ${hourStr}, ${minStr}`);
+      }
+    }
+    if (dowStr) parts.push(dowStr);
+    else if (domStr) parts.push(domStr);
+    if (monStr) parts.push(monStr);
+    return parts.join(', ');
+  } catch {
+    return '';
+  }
+}
+
+document.addEventListener('keydown', e => {
+  const modal = document.getElementById('cron-modal');
+  if (modal.classList.contains('hidden')) return;
+
+  if (e.key === 'Escape') { closeCronModal(); return; }
+
+  if (e.key === 'Tab') {
+    const focusable = Array.from(
+      modal.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex="0"]')
+    ).filter(el => el.offsetParent !== null && !el.closest('.modal-pane:not(.active)'));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last  = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+    }
+  }
+});
+
 _initApiSettingsBtn();
 
 // ── API Integrations Drawer ───────────────────────────────────────────────────
@@ -1286,112 +1393,6 @@ async function _initApiSettingsBtn() {
   } catch { /* non-critical */ }
 }
 
-// ── Cron Modal ────────────────────────────────────────────────────────────────
-let _cronModalOpener = null;
-
-function openCronModal() {
-  _cronModalOpener = document.activeElement;
-  const modal = document.getElementById('cron-modal');
-  modal.classList.remove('hidden');
-  switchCronTab('presets');
-  modal.querySelector('.modal-box').focus();
-}
-
-function closeCronModal() {
-  document.getElementById('cron-modal').classList.add('hidden');
-  if (_cronModalOpener) { _cronModalOpener.focus(); _cronModalOpener = null; }
-}
-
-function switchCronTab(tab) {
-  document.querySelectorAll('.modal-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab);
-  });
-  document.getElementById('cron-pane-presets').classList.toggle('active', tab === 'presets');
-  document.getElementById('cron-pane-builder').classList.toggle('active', tab === 'builder');
-  document.getElementById('cron-apply-btn').style.display = tab === 'builder' ? '' : 'none';
-  if (tab === 'builder') updateCronPreview();
-}
-
-function applyCronPreset(expr) {
-  document.getElementById('cron-expression').value = expr;
-  closeCronModal();
-}
-
-function updateCronPreview() {
-  const min   = (document.getElementById('cb-min').value   || '*').trim();
-  const hour  = (document.getElementById('cb-hour').value  || '*').trim();
-  const dom   = (document.getElementById('cb-dom').value   || '*').trim();
-  const month = (document.getElementById('cb-month').value || '*').trim();
-  const dow   = (document.getElementById('cb-dow').value   || '*').trim();
-  const expr = `${min} ${hour} ${dom} ${month} ${dow}`;
-  document.getElementById('cb-expr').textContent = expr;
-  document.getElementById('cb-desc').textContent = _describeCron(min, hour, dom, month, dow);
-}
-
-function applyBuilderCron() {
-  const expr = document.getElementById('cb-expr').textContent.trim();
-  document.getElementById('cron-expression').value = expr;
-  closeCronModal();
-}
-
-function _describeCron(min, hour, dom, month, dow) {
-  try {
-    const parts = [];
-    const hourStr  = hour  === '*' ? 'every hour'  : `hour ${hour}`;
-    const minStr   = min   === '*' ? 'every minute' : `minute ${min}`;
-    const domStr   = dom   === '*' ? null : `day ${dom} of the month`;
-    const dowNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const dowStr   = dow   === '*' ? null : `on ${(dow.split(',').map(d => dowNames[+d] !== undefined ? dowNames[+d] : d)).join('/')}`;
-    const monStr   = month === '*' ? null : `in month ${month}`;
-
-    if (min === '*' && hour === '*') {
-      parts.push('Every minute');
-    } else if (min.startsWith('*/')) {
-      parts.push(`Every ${min.slice(2)} minutes`);
-    } else if (hour === '*') {
-      parts.push(`At minute ${min} of every hour`);
-    } else if (hour.startsWith('*/')) {
-      parts.push(`Every ${hour.slice(2)} hours at minute ${min}`);
-    } else {
-      const h = parseInt(hour, 10);
-      const m = parseInt(min, 10);
-      if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-        const ampm = h < 12 ? 'AM' : 'PM';
-        const h12  = h === 0 ? 12 : h > 12 ? h - 12 : h;
-        parts.push(`At ${h12}:${String(m).padStart(2,'0')} ${ampm}`);
-      } else {
-        parts.push(`At ${hourStr}, ${minStr}`);
-      }
-    }
-    if (dowStr) parts.push(dowStr);
-    else if (domStr) parts.push(domStr);
-    if (monStr) parts.push(monStr);
-    return parts.join(', ');
-  } catch {
-    return '';
-  }
-}
-
-document.addEventListener('keydown', e => {
-  const modal = document.getElementById('cron-modal');
-  if (modal.classList.contains('hidden')) return;
-
-  if (e.key === 'Escape') { closeCronModal(); return; }
-
-  if (e.key === 'Tab') {
-    const focusable = Array.from(
-      modal.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex="0"]')
-    ).filter(el => el.offsetParent !== null && !el.closest('.modal-pane:not(.active)'));
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last  = focusable[focusable.length - 1];
-    if (e.shiftKey) {
-      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-    } else {
-      if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
-    }
-  }
-});
 </script>
 </body>
 </html>
