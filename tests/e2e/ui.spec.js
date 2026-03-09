@@ -295,7 +295,101 @@ test.describe('Profile library', () => {
   });
 });
 
-// ─── Export tabs ──────────────────────────────────────────────────────────────
+// ─── Cron modal ───────────────────────────────────────────────────────────────
+test.describe('Cron schedule modal', () => {
+  test.beforeEach(async ({ page }) => { await page.goto('/'); });
+
+  test('modal is hidden on page load', async ({ page }) => {
+    await expect(page.locator('#cron-modal')).toBeHidden();
+  });
+
+  test('clicking "? Schedule Helper" opens the modal', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await expect(page.locator('#cron-modal')).toBeVisible();
+  });
+
+  test('modal has correct ARIA attributes', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    const modal = page.locator('#cron-modal');
+    await expect(modal).toHaveAttribute('role', 'dialog');
+    await expect(modal).toHaveAttribute('aria-modal', 'true');
+    await expect(modal).toHaveAttribute('aria-labelledby', 'cron-modal-title');
+    await expect(page.locator('#cron-modal-title')).toBeVisible();
+  });
+
+  test('pressing Escape closes the modal', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await expect(page.locator('#cron-modal')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#cron-modal')).toBeHidden();
+  });
+
+  test('clicking the backdrop closes the modal', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await expect(page.locator('#cron-modal')).toBeVisible();
+    await page.locator('#cron-modal').click({ position: { x: 5, y: 5 } });
+    await expect(page.locator('#cron-modal')).toBeHidden();
+  });
+
+  test('Cancel button closes the modal', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await page.locator('#cron-modal button', { hasText: 'Cancel' }).click();
+    await expect(page.locator('#cron-modal')).toBeHidden();
+  });
+
+  test('Quick Presets tab is active and Apply button is hidden on open', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await expect(page.locator('#cron-pane-presets')).toHaveClass(/active/);
+    await expect(page.locator('#cron-pane-builder')).not.toHaveClass(/active/);
+    await expect(page.locator('#cron-apply-btn')).toBeHidden();
+  });
+
+  test('switching to Custom Builder tab shows builder pane and Apply button', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await page.locator('.modal-tab[data-tab="builder"]').click();
+    await expect(page.locator('#cron-pane-builder')).toHaveClass(/active/);
+    await expect(page.locator('#cron-pane-presets')).not.toHaveClass(/active/);
+    await expect(page.locator('#cron-apply-btn')).toBeVisible();
+  });
+
+  test('clicking a preset writes expression and closes modal', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await page.locator('.preset-btn', { hasText: 'Daily at 2 AM' }).click();
+    await expect(page.locator('#cron-modal')).toBeHidden();
+    await expect(page.locator('#cron-expression')).toHaveValue('0 2 * * *');
+  });
+
+  test('"Run immediately" preset clears the cron expression', async ({ page }) => {
+    await page.locator('#cron-expression').fill('0 2 * * *');
+    await page.locator('.cron-help-btn').click();
+    await page.locator('.preset-btn', { hasText: 'Run immediately' }).click();
+    await expect(page.locator('#cron-expression')).toHaveValue('');
+  });
+
+  test('Custom Builder live-previews the expression', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await page.locator('.modal-tab[data-tab="builder"]').click();
+    await page.locator('#cb-min').fill('30');
+    await page.locator('#cb-hour').fill('6');
+    await expect(page.locator('#cb-expr')).toHaveText('30 6 * * *');
+  });
+
+  test('Custom Builder Apply button writes expression and closes modal', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await page.locator('.modal-tab[data-tab="builder"]').click();
+    await page.locator('#cb-min').fill('0');
+    await page.locator('#cb-hour').fill('9');
+    await page.locator('#cron-apply-btn').click();
+    await expect(page.locator('#cron-modal')).toBeHidden();
+    await expect(page.locator('#cron-expression')).toHaveValue('0 9 * * *');
+  });
+
+  test('focus is restored to the helper button after modal closes', async ({ page }) => {
+    await page.locator('.cron-help-btn').click();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.cron-help-btn')).toBeFocused();
+  });
+});
 test.describe('Export tabs customisation', () => {
   test('export tabs textarea can be edited', async ({ page }) => {
     await page.goto('/');
