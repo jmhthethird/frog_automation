@@ -341,6 +341,9 @@ describe('GET /api/jobs/:id/download', () => {
 
     const res = await ctx.request.get(`/api/jobs/${lastId}/download`).expect(200);
     expect(res.headers['content-disposition']).toMatch(/attachment/i);
+    // Filename format: {domain}_{YYYY-MM-DD}_{HH-MM[AM|PM]}-job{id}.zip
+    // Domain from "zip.example.com" → "example"
+    expect(res.headers['content-disposition']).toMatch(/example_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}[AP]M-job\d+\.zip/);
   });
 });
 

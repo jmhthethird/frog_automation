@@ -146,7 +146,10 @@ describe('GET /api/jobs/:id/compare/download', () => {
 
     const res = await ctx.request.get(`/api/jobs/${lastId}/compare/download`).expect(200);
     expect(res.headers['content-type']).toMatch(/zip/i);
-    expect(res.headers['content-disposition']).toMatch(new RegExp(`job-${lastId}-compare\\.zip`));
+    // Filename format: {domain}_{YYYY-MM-DD}_{HH-MM[AM|PM]}-job{id}-compare.zip
+    // Domain from "compare-dl-data.example.com" → "example"
+    expect(res.headers['content-disposition']).toMatch(/attachment/i);
+    expect(res.headers['content-disposition']).toMatch(/example_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}[AP]M-job\d+-compare\.zip/);
     expect(Buffer.isBuffer(res.body) || res.body).toBeTruthy();
   });
 });

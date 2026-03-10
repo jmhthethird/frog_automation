@@ -9,6 +9,7 @@ const { db, DATA_DIR } = require('../db');
 const { validateCronExpression, computeNextRun } = require('../scheduler');
 const { parseCSV } = require('../differ');
 const { DEFAULT_EXPORT_TABS } = require('../constants/exportTabs');
+const { buildJobLabel } = require('../utils');
 
 const router = express.Router();
 
@@ -183,7 +184,7 @@ router.get('/:id/download', readLimit, (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  res.download(realZip, `job-${job.id}-results.zip`);
+  res.download(realZip, `${buildJobLabel(job.url, job.completed_at, job.id)}.zip`);
 });
 
 // ─── SF Compare summary ───────────────────────────────────────────────────────
@@ -238,7 +239,7 @@ router.get('/:id/compare', readLimit, (req, res) => {
 
 // ─── SF Compare download (zip of compare CSVs) ───────────────────────────────
 router.get('/:id/compare/download', readLimit, (req, res) => {
-  const job = db.prepare('SELECT id, status, output_dir FROM jobs WHERE id = ?').get(req.params.id);
+  const job = db.prepare('SELECT id, status, url, completed_at, output_dir FROM jobs WHERE id = ?').get(req.params.id);
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
   if (job.status !== 'completed') {
@@ -258,7 +259,8 @@ router.get('/:id/compare/download', readLimit, (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  res.setHeader('Content-Disposition', `attachment; filename="job-${job.id}-compare.zip"`);
+  const label = buildJobLabel(job.url, job.completed_at, job.id);
+  res.setHeader('Content-Disposition', `attachment; filename="${label}-compare.zip"`);
   res.setHeader('Content-Type', 'application/zip');
 
   const archive = archiver('zip', { zlib: { level: 6 } });
@@ -268,7 +270,7 @@ router.get('/:id/compare/download', readLimit, (req, res) => {
     else res.destroy(err);
   });
   archive.pipe(res);
-  archive.directory(compareDir, `job-${job.id}-compare`);
+  archive.directory(compareDir, `${label}-compare`);
   archive.finalize();
 });
 
