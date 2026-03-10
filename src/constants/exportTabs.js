@@ -30,7 +30,7 @@ const DEFAULT_EXPORT_TABS =
   'Content:Near Duplicates,Content:Exact Duplicates,Content:Low Content Pages,' +
   'Content:Readability Difficult,Content:Readability Very Difficult,' +
   'Content:Lorem Ipsum Placeholder,Content:Soft 404 Pages,' +
-  'Custom Extraction:All,Custom Extraction:Extractor 1,Custom Search:All,Custom Search:Filter 1,' +
+  'Custom Extraction:All,Custom Search:All,' +
   'Directives:All,Directives:Index,Directives:Noindex,Directives:Follow,' +
   'Directives:Nofollow,Directives:None,Directives:NoArchive,Directives:NoSnippet,' +
   'Directives:Max-Snippet,Directives:Max-Image-Preview,Directives:Max-Video-Preview,' +
@@ -82,18 +82,15 @@ const DEFAULT_EXPORT_TABS =
   'Page Titles:Over X Pixels,Page Titles:Below X Pixels,' +
   'Page Titles:Same as H1,Page Titles:Multiple,Page Titles:Outside <head>,' +
   'PageSpeed:All,PageSpeed:Eliminate Render-Blocking Resources,' +
-  'PageSpeed:Defer Offscreen Images,PageSpeed:Efficiently Encode Images,' +
-  'PageSpeed:Properly Size Images,PageSpeed:Minify CSS,PageSpeed:Minify JavaScript,' +
+  'PageSpeed:Minify CSS,PageSpeed:Minify JavaScript,' +
   'PageSpeed:Reduce Unused CSS,PageSpeed:Reduce Unused JavaScript,' +
-  'PageSpeed:Serve Images in Next-Gen Formats,PageSpeed:Enable Text Compression,' +
+  'PageSpeed:Enable Text Compression,' +
   'PageSpeed:Preconnect to Required Origins,' +
   'PageSpeed:Reduce Server Response Times (TTFB),PageSpeed:Avoid Multiple Page Redirects,' +
-  'PageSpeed:Preload Key Requests,PageSpeed:Use Video Formats for Animated Content,' +
   'PageSpeed:Avoid Excessive DOM Size,PageSpeed:Reduce JavaScript Execution Time,' +
   'PageSpeed:Serve Static Assets with an Efficient Cache Policy,' +
   'PageSpeed:Minimize Main-Thread Work,' +
   'PageSpeed:Ensure Text Remains Visible During Webfont Load,' +
-  'PageSpeed:Image Elements Do Not Have Explicit Width & Height,' +
   'PageSpeed:Avoid Large Layout Shifts,' +
   'PageSpeed:Avoid Serving Legacy JavaScript to Modern Browsers,PageSpeed:Request Errors,' +
   'Pagination:All,Pagination:Contains Pagination,Pagination:First Page,' +
@@ -141,7 +138,7 @@ const DEFAULT_EXPORT_TABS =
   'Structured Data:All,Structured Data:Contains Structured Data,Structured Data:Missing,' +
   'Structured Data:Validation Errors,Structured Data:Validation Warnings,' +
   'Structured Data:Parse Errors,Structured Data:Microdata URLs,' +
-  'Structured Data:JSON-LD URLs,Structured Data:RDFa URLs,UNDEF:Unknown,' +
+  'Structured Data:JSON-LD URLs,Structured Data:RDFa URLs,' +
   'URL:All,URL:Non ASCII Characters,URL:Underscores,URL:Uppercase,URL:Parameters,' +
   'URL:Over X Characters,URL:Multiple Slashes,URL:Repetitive Path,URL:Contains Space,' +
   'URL:Broken Bookmark,URL:Internal Search,URL:GA Tracking Parameters,' +

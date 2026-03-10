@@ -222,8 +222,8 @@ describe('POST /api/jobs', () => {
       'URL:Underscores',
       'H1:Missing',
     ]));
-    // all 324 entries (28 :All flags + 296 individual items)
-    expect(exportTabs).toHaveLength(324);
+    // all 314 entries (29 :All flags + 285 individual items)
+    expect(exportTabs).toHaveLength(314);
   });
 
   it('uses custom export tabs when provided', async () => {
