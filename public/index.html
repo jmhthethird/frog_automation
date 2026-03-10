@@ -428,8 +428,8 @@
 </div>
 
 <script>
-const DEFAULT_TABS = 'AMP:All,Analytics:All,Canonicals:All,Change Detection:All,Content:All,Custom Extraction:All,Directives:All,External:All,H1:All,H2:All,Hreflang:All,Images:All,Internal:All,JavaScript:All,Link Metrics:All,Links:All,Meta Description:All,Meta Keywords:All,Page Titles:All,PageSpeed:All,Pagination:All,Response Codes:All,Search Console:All,Security:All,Sitemaps:All,Structured Data:All,URL:All,Validation:All';
-window.DEFAULT_EXPORT_TABS = DEFAULT_TABS;
+let DEFAULT_TABS; // computed from EXPORT_TABS_DATA after it is defined below
+window.DEFAULT_EXPORT_TABS = null; // set together with DEFAULT_TABS below
 let autoRefreshTimer = null;
 let runningTimer = null;
 
@@ -1028,6 +1028,14 @@ const EXPORT_TABS_DATA = [
   { key: 'URL', items: ['URL:Non ASCII Characters','URL:Underscores','URL:Uppercase','URL:Parameters','URL:Over X Characters','URL:Multiple Slashes','URL:Repetitive Path','URL:Contains Space','URL:Broken Bookmark','URL:Internal Search','URL:GA Tracking Parameters'] },
   { key: 'Validation', items: ['Validation:Invalid HTML Elements in Head','Validation:<head> Not First In <html> Element','Validation:Missing <head> Tag','Validation:Multiple <head> Tags','Validation:Missing <body> Tag','Validation:Multiple <body> Tags','Validation:HTML Document Over 15MB','Validation:<body> Element Preceding <html>'] },
 ];
+
+// Build DEFAULT_TABS from EXPORT_TABS_DATA so it stays in sync automatically.
+DEFAULT_TABS = EXPORT_TABS_DATA.reduce((parts, cat) => {
+  parts.push(cat.key + ':All');
+  cat.items.forEach(item => parts.push(item));
+  return parts;
+}, []).join(',');
+window.DEFAULT_EXPORT_TABS = DEFAULT_TABS;
 
 function buildExportTabsUI() {
   const allGrid = document.getElementById('et-all-grid');
