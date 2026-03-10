@@ -215,7 +215,15 @@ describe('POST /api/jobs', () => {
       'Internal:All',
       'Response Codes:All',
       'URL:All',
+      // individual tab entries
+      'AMP:Non-200 Response',
+      'Internal:HTML',
+      'Response Codes:Success (2xx)',
+      'URL:Underscores',
+      'H1:Missing',
     ]));
+    // all 324 entries (28 :All flags + 296 individual items)
+    expect(exportTabs).toHaveLength(324);
   });
 
   it('uses custom export tabs when provided', async () => {

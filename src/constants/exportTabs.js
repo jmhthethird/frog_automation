@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * The default export-tabs string used when no explicit value is provided.
- * This is the single source of truth shared by the route, crawler, and UI.
+ * The default export-tabs string used by the backend when no explicit value is provided.
+ * Used by the route and crawler; the UI derives its own default from EXPORT_TABS_DATA.
  * Includes every :All flag and every individual tab option for each category.
  */
 const DEFAULT_EXPORT_TABS =
