@@ -8,6 +8,7 @@ const { db } = require('./db');
 const { computeDiff } = require('./differ');
 const { scheduler } = require('./scheduler');
 const { DEFAULT_EXPORT_TABS } = require('./constants/exportTabs');
+const { buildJobLabel } = require('./utils');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -76,7 +77,9 @@ async function runJob(jobId) {
 
   try {
     await spawnCrawl(job, outputDir, logStream);
-    const zipPath = await zipOutput(outputDir, jobId);
+    const completedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const folderName = buildJobLabel(job.url, completedAt, jobId);
+    const zipPath = await zipOutput(outputDir, jobId, folderName);
     db.prepare("UPDATE jobs SET status='completed', completed_at=datetime('now'), zip_path=? WHERE id=?")
       .run(zipPath, jobId);
 
@@ -268,8 +271,12 @@ function spawnCompare(prevSeospiderPath, newSeospiderPath, compareOutputDir, log
 
 /**
  * Zip the output directory into <outputDir>.zip (placed alongside the dir).
+ * @param {string} outputDir - Source directory to compress.
+ * @param {number} jobId     - Job ID (used as default folder name).
+ * @param {string} [folderName] - Name of the top-level folder inside the ZIP.
+ *   Defaults to "job-{jobId}" when not provided.
  */
-function zipOutput(outputDir, jobId) {
+function zipOutput(outputDir, jobId, folderName) {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(outputDir)) {
       return reject(new Error(`Output directory not found: ${outputDir}`));
@@ -284,7 +291,7 @@ function zipOutput(outputDir, jobId) {
     archive.on('error', reject);
 
     archive.pipe(output);
-    archive.directory(outputDir, `job-${jobId}`);
+    archive.directory(outputDir, folderName || `job-${jobId}`);
     archive.finalize();
   });
 }
