@@ -3,7 +3,9 @@
 /**
  * Extract the registrable domain segment from a URL.
  * e.g., "https://wwe.google.com" → "google"
- *       "https://example.co.uk"  → "example" (best-effort for simple TLDs)
+ *       "https://example.com"    → "example"
+ * Note: for multi-part TLDs like .co.uk this is best-effort (returns the
+ * second-to-last label, e.g., "co" for example.co.uk).
  */
 function extractDomain(url) {
   try {

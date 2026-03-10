@@ -80,8 +80,8 @@ async function runJob(jobId) {
     const completedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const folderName = buildJobLabel(job.url, completedAt, jobId);
     const zipPath = await zipOutput(outputDir, jobId, folderName);
-    db.prepare("UPDATE jobs SET status='completed', completed_at=datetime('now'), zip_path=? WHERE id=?")
-      .run(zipPath, jobId);
+    db.prepare("UPDATE jobs SET status='completed', completed_at=?, zip_path=? WHERE id=?")
+      .run(completedAt, zipPath, jobId);
 
     // Compute a diff against the most recent previous completed crawl of the same URL.
     try {

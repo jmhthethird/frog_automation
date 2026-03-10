@@ -20,8 +20,8 @@ describe('extractDomain()', () => {
     expect(extractDomain('not-a-url')).toBe('unknown');
   });
 
-  it('replaces non-alphanumeric characters with underscores', () => {
-    // hostname parts that contain hyphens are valid – hyphens should be kept
+  it('extracts the domain from a URL with a hyphenated subdomain', () => {
+    // hyphens in subdomains are valid and should not affect domain extraction
     expect(extractDomain('https://my-site.example.com')).toBe('example');
   });
 });
