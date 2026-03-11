@@ -11,11 +11,10 @@
  * On Linux the launcher is expected at /usr/bin/ScreamingFrogSEOSpiderLauncher
  * (installed via scripts/install-sf-linux.sh).  Override with SF_LAUNCHER.
  *
- * A paid SF licence is required for headless / CLI mode.  Activate it before
- * running by writing credentials to ~/.ScreamingFrogSEOSpider/licence.txt
- * (line 1: account e-mail, line 2: licence key) — use install-sf-linux.sh
- * with SF_LICENSE_USERNAME and SF_LICENSE_KEY set to do this automatically.
- * There is no --license-key CLI flag.
+ * No paid licence is required.  Screaming Frog runs in free mode (up to 500
+ * URLs per crawl) without any licence file.  The install script always writes
+ * the EULA acceptance to ~/.ScreamingFrogSEOSpider/spider.config so the
+ * binary can run headlessly in free mode.
  *
  * When those conditions are met, the test:
  *   a) Starts a tiny local HTTP server with several pages / a redirect / a 404

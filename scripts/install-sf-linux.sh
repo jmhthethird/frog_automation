@@ -5,20 +5,23 @@
 # After installation the launcher is available at:
 #   /usr/bin/ScreamingFrogSEOSpiderLauncher
 #
+# Screaming Frog runs in free mode (up to 500 URLs) without any licence,
+# so a paid licence is NOT required for headless / CLI crawls.  The EULA
+# is always accepted by this script so the binary can run headlessly in
+# both free and licensed modes.
+#
 # Environment variables
-#   SF_VERSION          Version to install (default: 21.3)
-#   SF_LICENSE_USERNAME Screaming Frog account e-mail (optional)
-#   SF_LICENSE_KEY      Screaming Frog licence key   (optional)
+#   SF_VERSION          Version to install (default: 23.3)
+#   SF_LICENSE_USERNAME Screaming Frog account e-mail (optional – unlocks unlimited crawling)
+#   SF_LICENSE_KEY      Screaming Frog licence key   (optional – unlocks unlimited crawling)
 #
 # When both SF_LICENSE_USERNAME and SF_LICENSE_KEY are set the script also
-# writes the licence file required for headless / CLI operation:
+# writes the licence file to unlock unlimited crawling:
 #   ~/.ScreamingFrogSEOSpider/licence.txt
-# and ensures the EULA has been accepted in:
-#   ~/.ScreamingFrogSEOSpider/spider.config
 #
 # Usage
 #   bash scripts/install-sf-linux.sh
-#   SF_VERSION=21.3 bash scripts/install-sf-linux.sh
+#   SF_VERSION=23.3 bash scripts/install-sf-linux.sh
 #   SF_LICENSE_USERNAME=me@example.com SF_LICENSE_KEY=XXXX-XXXX-XXXX bash scripts/install-sf-linux.sh
 
 set -euo pipefail
@@ -61,32 +64,31 @@ else
   fi
 fi
 
-# ── Licence activation (optional) ─────────────────────────────────────────────
-# Screaming Frog headless / CLI mode requires the licence to be pre-activated
-# via a credentials file.  There is no --license-key CLI flag.
-# When both SF_LICENSE_USERNAME and SF_LICENSE_KEY are provided, this block
-# writes the expected files so the binary can run without a GUI.
+# ── EULA acceptance (always required for headless / CLI operation) ─────────────
+# Screaming Frog free mode works headlessly without a licence, but it still
+# requires the EULA to be pre-accepted in spider.config.
+SF_CONFIG_DIR="${HOME}/.ScreamingFrogSEOSpider"
+mkdir -p "${SF_CONFIG_DIR}"
+SPIDER_CONFIG="${SF_CONFIG_DIR}/spider.config"
+if [ ! -f "${SPIDER_CONFIG}" ]; then
+  echo "eula.accepted=11" > "${SPIDER_CONFIG}"
+elif ! grep -q "^eula.accepted=" "${SPIDER_CONFIG}"; then
+  echo "eula.accepted=11" >> "${SPIDER_CONFIG}"
+fi
+echo "==> EULA accepted in ${SPIDER_CONFIG}"
+
+# ── Licence activation (optional – unlocks unlimited crawling) ─────────────────
+# Without a licence the binary runs in free mode (500-URL limit per crawl).
+# Providing credentials here lifts that limit.
 if [ -n "${SF_LICENSE_USERNAME:-}" ] && [ -n "${SF_LICENSE_KEY:-}" ]; then
   echo "==> Activating licence for ${SF_LICENSE_USERNAME}..."
-  SF_CONFIG_DIR="${HOME}/.ScreamingFrogSEOSpider"
-  mkdir -p "${SF_CONFIG_DIR}"
 
   # licence.txt: line 1 = username/e-mail, line 2 = licence key
   printf '%s\n%s\n' "${SF_LICENSE_USERNAME}" "${SF_LICENSE_KEY}" > "${SF_CONFIG_DIR}/licence.txt"
   echo "    Licence file written to ${SF_CONFIG_DIR}/licence.txt"
-
-  # Accept the EULA so the binary can run headlessly.
-  SPIDER_CONFIG="${SF_CONFIG_DIR}/spider.config"
-  if [ ! -f "${SPIDER_CONFIG}" ]; then
-    echo "eula.accepted=11" > "${SPIDER_CONFIG}"
-  elif ! grep -q "^eula.accepted=" "${SPIDER_CONFIG}"; then
-    echo "eula.accepted=11" >> "${SPIDER_CONFIG}"
-  fi
-  echo "    EULA accepted in ${SPIDER_CONFIG}"
 else
-  echo "==> Skipping licence activation (SF_LICENSE_USERNAME or SF_LICENSE_KEY not set)."
-  echo "    Re-run with both vars set, or manually write ~/.ScreamingFrogSEOSpider/licence.txt"
-  echo "    (line 1: account e-mail, line 2: licence key) and add 'eula.accepted=11' to spider.config."
+  echo "==> No licence credentials set – running in free mode (500-URL crawl limit)."
+  echo "    To unlock unlimited crawling re-run with SF_LICENSE_USERNAME and SF_LICENSE_KEY set."
 fi
 
 echo "==> Done."
