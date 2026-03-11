@@ -78,3 +78,70 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # ── Screaming Frog integration tests (Linux) ────────────────────────────────
+  # Downloads, installs, and exercises the real SF binary end-to-end.
+  # Requires the SF_LICENSE_KEY repository secret to be set; headless / CLI
+  # mode requires a paid Screaming Frog licence.
+  # This job only runs on pushes / PRs from the same repository so that fork
+  # PRs (which cannot access secrets) do not fail unnecessarily.
+  sf-integration:
+    name: SF integration tests (Linux)
+    if: >-
+      ${{ (github.event_name == 'workflow_call' ||
+           !contains(github.event.head_commit.message, '[skip ci]')) &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # Expose the secret as a job-level env var so it can be checked in step
+    # 'if' conditions via the 'env' context (secrets are not directly usable
+    # inside step-level 'if' expressions).
+    env:
+      SF_LICENSE_KEY: ${{ secrets.SF_LICENSE_KEY }}
+
+    steps:
+      # ── Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Node ─────────────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── Dependencies ─────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Cache SF installer to avoid re-downloading on every run ──────────
+      - name: Cache Screaming Frog installer
+        id: cache-sf
+        uses: actions/cache@v4
+        with:
+          path: /tmp/ScreamingFrogSEOSpider-${{ env.SF_VERSION }}.deb
+          key: sf-linux-${{ env.SF_VERSION }}
+        env:
+          SF_VERSION: '21.3'
+
+      # ── Install Screaming Frog SEO Spider ─────────────────────────────────
+      - name: Install Screaming Frog SEO Spider
+        run: bash scripts/install-sf-linux.sh
+        env:
+          SF_VERSION: '21.3'
+
+      # ── Run SF integration tests ──────────────────────────────────────────
+      # RUN_SF_INTEGRATION=1 opts in to the otherwise-skipped crawl tests.
+      # SF_LICENSE_KEY (set at the job level above) is forwarded to the SF
+      # binary via --license-key so headless mode works.
+      # The step is skipped when the secret is absent.
+      - name: Run Screaming Frog integration tests
+        if: ${{ env.SF_LICENSE_KEY != '' }}
+        run: npx jest tests/integration/
+        env:
+          RUN_SF_INTEGRATION: '1'
+

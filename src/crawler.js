@@ -12,7 +12,9 @@ const { buildJobLabel } = require('./utils');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
-  '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher';
+  (process.platform === 'linux'
+    ? '/usr/bin/ScreamingFrogSEOSpiderLauncher'
+    : '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher');
 
 /**
  * Map from api_credentials.service to the CLI flag that enables it, plus
@@ -148,6 +150,11 @@ function spawnCrawl(job, outputDir, logStream) {
 
     if (job.profile_path) {
       args.push('--config', job.profile_path);
+    }
+
+    // Pass a licence key when provided via the environment (e.g. CI secrets).
+    if (process.env.SF_LICENSE_KEY) {
+      args.push('--license-key', process.env.SF_LICENSE_KEY);
     }
 
     // Append --use-* flags for enabled API integrations.
