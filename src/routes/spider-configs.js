@@ -145,7 +145,12 @@ function doImportLocal(database, name) {
   const existing = database.prepare('SELECT * FROM spider_configs WHERE is_local = 1').get();
   if (existing) {
     // Refresh the stored file so it reflects any SF config changes since last import.
-    try { fs.writeFileSync(existing.filepath, content, 'utf8'); } catch { /* non-critical */ }
+    // Validate that the stored path is still inside SPIDER_CONFIGS_DIR (defence-in-depth).
+    const realExisting = path.resolve(existing.filepath);
+    const realDir = path.resolve(SPIDER_CONFIGS_DIR);
+    if (realExisting.startsWith(realDir + path.sep)) {
+      try { fs.writeFileSync(existing.filepath, content, 'utf8'); } catch { /* non-critical */ }
+    }
     return database.prepare('SELECT * FROM spider_configs WHERE id = ?').get(existing.id);
   }
 
@@ -274,6 +279,14 @@ router.delete('/:id', writeLimit, (req, res) => {
     return res.status(403).json({
       error: 'The laptop spider config cannot be deleted. Use the re-import button to refresh it.',
     });
+  }
+
+  // Validate that the stored path is inside SPIDER_CONFIGS_DIR before deletion
+  // (defence-in-depth against a tampered DB record).
+  const realFile = path.resolve(config.filepath);
+  const realDir  = path.resolve(SPIDER_CONFIGS_DIR);
+  if (!realFile.startsWith(realDir + path.sep)) {
+    return res.status(403).json({ error: 'Forbidden' });
   }
 
   try { fs.unlinkSync(config.filepath); } catch { /* already gone */ }
