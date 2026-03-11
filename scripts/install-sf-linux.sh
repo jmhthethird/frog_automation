@@ -6,11 +6,20 @@
 #   /usr/bin/ScreamingFrogSEOSpiderLauncher
 #
 # Environment variables
-#   SF_VERSION   Version to install (default: 21.3)
+#   SF_VERSION          Version to install (default: 21.3)
+#   SF_LICENSE_USERNAME Screaming Frog account e-mail (optional)
+#   SF_LICENSE_KEY      Screaming Frog licence key   (optional)
+#
+# When both SF_LICENSE_USERNAME and SF_LICENSE_KEY are set the script also
+# writes the licence file required for headless / CLI operation:
+#   ~/.ScreamingFrogSEOSpider/licence.txt
+# and ensures the EULA has been accepted in:
+#   ~/.ScreamingFrogSEOSpider/spider.config
 #
 # Usage
 #   bash scripts/install-sf-linux.sh
 #   SF_VERSION=21.3 bash scripts/install-sf-linux.sh
+#   SF_LICENSE_USERNAME=me@example.com SF_LICENSE_KEY=XXXX-XXXX-XXXX bash scripts/install-sf-linux.sh
 
 set -euo pipefail
 
@@ -50,6 +59,34 @@ else
     echo "    No SF executables found – installation may have failed."
     exit 1
   fi
+fi
+
+# ── Licence activation (optional) ─────────────────────────────────────────────
+# Screaming Frog headless / CLI mode requires the licence to be pre-activated
+# via a credentials file.  There is no --license-key CLI flag.
+# When both SF_LICENSE_USERNAME and SF_LICENSE_KEY are provided, this block
+# writes the expected files so the binary can run without a GUI.
+if [ -n "${SF_LICENSE_USERNAME:-}" ] && [ -n "${SF_LICENSE_KEY:-}" ]; then
+  echo "==> Activating licence for ${SF_LICENSE_USERNAME}..."
+  SF_CONFIG_DIR="${HOME}/.ScreamingFrogSEOSpider"
+  mkdir -p "${SF_CONFIG_DIR}"
+
+  # licence.txt: line 1 = username/e-mail, line 2 = licence key
+  printf '%s\n%s\n' "${SF_LICENSE_USERNAME}" "${SF_LICENSE_KEY}" > "${SF_CONFIG_DIR}/licence.txt"
+  echo "    Licence file written to ${SF_CONFIG_DIR}/licence.txt"
+
+  # Accept the EULA so the binary can run headlessly.
+  SPIDER_CONFIG="${SF_CONFIG_DIR}/spider.config"
+  if [ ! -f "${SPIDER_CONFIG}" ]; then
+    echo "eula.accepted=11" > "${SPIDER_CONFIG}"
+  elif ! grep -q "^eula.accepted=" "${SPIDER_CONFIG}"; then
+    echo "eula.accepted=11" >> "${SPIDER_CONFIG}"
+  fi
+  echo "    EULA accepted in ${SPIDER_CONFIG}"
+else
+  echo "==> Skipping licence activation (SF_LICENSE_USERNAME or SF_LICENSE_KEY not set)."
+  echo "    Re-run with both vars set, or manually write ~/.ScreamingFrogSEOSpider/licence.txt"
+  echo "    (line 1: account e-mail, line 2: licence key) and add 'eula.accepted=11' to spider.config."
 fi
 
 echo "==> Done."

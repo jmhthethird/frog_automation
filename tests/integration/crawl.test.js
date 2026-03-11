@@ -11,9 +11,11 @@
  * On Linux the launcher is expected at /usr/bin/ScreamingFrogSEOSpiderLauncher
  * (installed via scripts/install-sf-linux.sh).  Override with SF_LAUNCHER.
  *
- * A paid SF licence is required for headless / CLI mode.  Supply the key via
- * the SF_LICENSE_KEY environment variable and it will be forwarded to SF as
- * --license-key automatically.
+ * A paid SF licence is required for headless / CLI mode.  Activate it before
+ * running by writing credentials to ~/.ScreamingFrogSEOSpider/licence.txt
+ * (line 1: account e-mail, line 2: licence key) — use install-sf-linux.sh
+ * with SF_LICENSE_USERNAME and SF_LICENSE_KEY set to do this automatically.
+ * There is no --license-key CLI flag.
  *
  * When those conditions are met, the test:
  *   a) Starts a tiny local HTTP server with several pages / a redirect / a 404

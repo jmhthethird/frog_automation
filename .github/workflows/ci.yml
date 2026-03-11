@@ -81,8 +81,10 @@ jobs:
 
   # ── Screaming Frog integration tests (Linux) ────────────────────────────────
   # Downloads, installs, and exercises the real SF binary end-to-end.
-  # Requires the SF_LICENSE_KEY repository secret to be set; headless / CLI
-  # mode requires a paid Screaming Frog licence.
+  # Screaming Frog headless / CLI mode requires a paid licence activated via a
+  # credentials file — there is no --license-key CLI flag.  Supply credentials
+  # through the repository secrets SF_LICENSE_USERNAME and SF_LICENSE_KEY; the
+  # install script writes ~/.ScreamingFrogSEOSpider/licence.txt automatically.
   # This job only runs on pushes / PRs from the same repository so that fork
   # PRs (which cannot access secrets) do not fail unnecessarily.
   sf-integration:
@@ -96,10 +98,11 @@ jobs:
     permissions:
       contents: read
 
-    # Expose the secret as a job-level env var so it can be checked in step
+    # Expose secrets as job-level env vars so they can be checked in step
     # 'if' conditions via the 'env' context (secrets are not directly usable
     # inside step-level 'if' expressions).
     env:
+      SF_LICENSE_USERNAME: ${{ secrets.SF_LICENSE_USERNAME }}
       SF_LICENSE_KEY: ${{ secrets.SF_LICENSE_KEY }}
 
     steps:
@@ -129,6 +132,9 @@ jobs:
           SF_VERSION: '21.3'
 
       # ── Install Screaming Frog SEO Spider ─────────────────────────────────
+      # When SF_LICENSE_USERNAME and SF_LICENSE_KEY are both set the install
+      # script also writes ~/.ScreamingFrogSEOSpider/licence.txt and accepts
+      # the EULA, enabling headless / CLI operation.
       - name: Install Screaming Frog SEO Spider
         run: bash scripts/install-sf-linux.sh
         env:
@@ -136,11 +142,9 @@ jobs:
 
       # ── Run SF integration tests ──────────────────────────────────────────
       # RUN_SF_INTEGRATION=1 opts in to the otherwise-skipped crawl tests.
-      # SF_LICENSE_KEY (set at the job level above) is forwarded to the SF
-      # binary via --license-key so headless mode works.
-      # The step is skipped when the secret is absent.
+      # Both licence secrets must be present for headless mode to work.
       - name: Run Screaming Frog integration tests
-        if: ${{ env.SF_LICENSE_KEY != '' }}
+        if: ${{ env.SF_LICENSE_USERNAME != '' && env.SF_LICENSE_KEY != '' }}
         run: npx jest tests/integration/
         env:
           RUN_SF_INTEGRATION: '1'

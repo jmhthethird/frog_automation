@@ -362,39 +362,6 @@ describe('runJob()', () => {
     expect(spawnArgs).toContain(profilePath);
   });
 
-  it('passes --license-key when SF_LICENSE_KEY env var is set', async () => {
-    process.env.SF_LICENSE_KEY = 'TEST-XXXX-XXXX-XXXX-XXXX';
-    // Re-require crawler so the env var is picked up.
-    jest.resetModules();
-    cp = require('child_process');
-    jest.spyOn(cp, 'spawn');
-    const dbMod = require('../../src/db');
-    db = dbMod.db;
-    crawler = require('../../src/crawler');
-
-    const jobId = insertJob(db, dataDir);
-    fakeProcExit(cp, 0);
-
-    await crawler.runJob(jobId);
-
-    const spawnArgs = cp.spawn.mock.calls[0][1];
-    expect(spawnArgs).toContain('--license-key');
-    expect(spawnArgs).toContain('TEST-XXXX-XXXX-XXXX-XXXX');
-
-    delete process.env.SF_LICENSE_KEY;
-  });
-
-  it('does not pass --license-key when SF_LICENSE_KEY env var is absent', async () => {
-    delete process.env.SF_LICENSE_KEY;
-    const jobId = insertJob(db, dataDir);
-    fakeProcExit(cp, 0);
-
-    await crawler.runJob(jobId);
-
-    const spawnArgs = cp.spawn.mock.calls[0][1];
-    expect(spawnArgs).not.toContain('--license-key');
-  });
-
   it('diff is scoped to same-URL jobs – prev_job_id matches the earlier same-URL job, not a different-URL job', async () => {
     const TARGET_URL = 'https://url-a.example.com';
     const OTHER_URL  = 'https://url-b.example.com';

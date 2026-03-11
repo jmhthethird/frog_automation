@@ -152,11 +152,6 @@ function spawnCrawl(job, outputDir, logStream) {
       args.push('--config', job.profile_path);
     }
 
-    // Pass a licence key when provided via the environment (e.g. CI secrets).
-    if (process.env.SF_LICENSE_KEY) {
-      args.push('--license-key', process.env.SF_LICENSE_KEY);
-    }
-
     // Append --use-* flags for enabled API integrations.
     try {
       const enabledServices = db

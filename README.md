@@ -143,7 +143,6 @@ All configuration is via environment variables:
 | `PORT`            | `3000`                                                                                                          | HTTP port to listen on              |
 | `DATA_DIR`        | `./data`                                                                                                        | Directory for SQLite DB, profiles, job outputs |
 | `SF_LAUNCHER`     | macOS: `/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher`<br>Linux: `/usr/bin/ScreamingFrogSEOSpiderLauncher` | Path to the SF CLI launcher |
-| `SF_LICENSE_KEY`  | *(unset)*                                                                                                       | Screaming Frog licence key — forwarded as `--license-key` for headless use in CI |
 
 **Example – non-standard install path:**
 
@@ -284,16 +283,29 @@ RUN_SF_INTEGRATION=1 npm test
    bash scripts/install-sf-linux.sh
    ```
 
-2. Activate your paid licence, then run:
+2. Activate your paid licence.  Screaming Frog headless mode reads credentials
+   from `~/.ScreamingFrogSEOSpider/licence.txt` — there is no CLI flag for
+   this.  The install script handles it automatically when you supply your
+   credentials:
+
+   ```bash
+   SF_LICENSE_USERNAME=me@example.com \
+   SF_LICENSE_KEY=XXXX-XXXX-XXXX-XXXX-XXXX \
+   bash scripts/install-sf-linux.sh
+   ```
+
+   Or write the file manually:
+
+   ```bash
+   mkdir -p ~/.ScreamingFrogSEOSpider
+   printf 'me@example.com\nXXXX-XXXX-XXXX-XXXX-XXXX\n' > ~/.ScreamingFrogSEOSpider/licence.txt
+   echo "eula.accepted=11" >> ~/.ScreamingFrogSEOSpider/spider.config
+   ```
+
+3. Run the integration tests:
 
    ```bash
    RUN_SF_INTEGRATION=1 npm test
-   ```
-
-   If you prefer to pass your licence key inline without pre-activating:
-
-   ```bash
-   RUN_SF_INTEGRATION=1 SF_LICENSE_KEY=XXXX-XXXX-XXXX-XXXX-XXXX npm test
    ```
 
 #### Running SF integration tests on macOS
@@ -336,15 +348,23 @@ Every pull request runs all tests automatically via **GitHub Actions CI** (`.git
 | Job | Description |
 |-----|-------------|
 | `test` | Unit, route, and E2E tests — always runs on every PR and push to `main` |
-| `SF integration tests (Linux)` | Downloads Screaming Frog, installs it on Linux, and runs the end-to-end crawl tests. Runs on PRs from the same repository only. The crawl tests execute when the `SF_LICENSE_KEY` repository secret is set. |
+| `SF integration tests (Linux)` | Downloads Screaming Frog, installs it on Linux, activates the licence via `~/.ScreamingFrogSEOSpider/licence.txt`, and runs the end-to-end crawl tests. Runs on PRs from the same repository only. The crawl tests execute when both the `SF_LICENSE_USERNAME` and `SF_LICENSE_KEY` repository secrets are set. |
 
 #### Enabling SF end-to-end tests in CI
 
-1. Go to **Settings → Secrets and variables → Actions** in the GitHub repository.
-2. Click **New repository secret**.
-3. Name: `SF_LICENSE_KEY`, value: your Screaming Frog licence key.
+Screaming Frog headless mode requires credentials written to a file —
+there is no `--license-key` CLI flag.  The `sf-integration` CI job activates
+the licence automatically via `scripts/install-sf-linux.sh` when two
+repository secrets are present:
 
-Once the secret is present, the `SF integration tests (Linux)` CI job will automatically download SF, install it, and run the 9 end-to-end crawl tests on every push to `main` and internal PRs.
+1. Go to **Settings → Secrets and variables → Actions** in the GitHub repository.
+2. Add two repository secrets:
+   - `SF_LICENSE_USERNAME` — your Screaming Frog account e-mail address
+   - `SF_LICENSE_KEY` — your Screaming Frog licence key
+
+Once both secrets are set, the `SF integration tests (Linux)` CI job will
+automatically download SF, activate the licence, and run the 9 end-to-end
+crawl tests on every push to `main` and internal PRs.
 
 ### Enabling branch protection (one-time admin step)
 
