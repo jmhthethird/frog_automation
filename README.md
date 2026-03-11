@@ -67,8 +67,8 @@ install it to `/Applications`.  The server expects the launcher at:
 install the `.deb` package:
 
 ```bash
-bash scripts/install-sf-linux.sh          # installs v21.3 (default)
-SF_VERSION=21.3 bash scripts/install-sf-linux.sh  # explicit version
+bash scripts/install-sf-linux.sh          # installs v23.3 (default)
+SF_VERSION=23.3 bash scripts/install-sf-linux.sh  # explicit version
 ```
 
 After installation the launcher is available at

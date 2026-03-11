@@ -126,10 +126,10 @@ jobs:
         id: cache-sf
         uses: actions/cache@v4
         with:
-          path: /tmp/ScreamingFrogSEOSpider-${{ env.SF_VERSION }}.deb
+          path: /tmp/screamingfrogseospider_${{ env.SF_VERSION }}_all.deb
           key: sf-linux-${{ env.SF_VERSION }}
         env:
-          SF_VERSION: '21.3'
+          SF_VERSION: '23.3'
 
       # ── Install Screaming Frog SEO Spider ─────────────────────────────────
       # When SF_LICENSE_USERNAME and SF_LICENSE_KEY are both set the install
@@ -138,7 +138,7 @@ jobs:
       - name: Install Screaming Frog SEO Spider
         run: bash scripts/install-sf-linux.sh
         env:
-          SF_VERSION: '21.3'
+          SF_VERSION: '23.3'
 
       # ── Run SF integration tests ──────────────────────────────────────────
       # RUN_SF_INTEGRATION=1 opts in to the otherwise-skipped crawl tests.

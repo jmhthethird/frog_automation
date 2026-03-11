@@ -23,9 +23,9 @@
 
 set -euo pipefail
 
-SF_VERSION="${SF_VERSION:-21.3}"
-DOWNLOAD_URL="https://download.screamingfrog.co.uk/products/screaming-frog-seo-spider/ScreamingFrogSEOSpider-${SF_VERSION}.deb"
-TMP_DEB="/tmp/ScreamingFrogSEOSpider-${SF_VERSION}.deb"
+SF_VERSION="${SF_VERSION:-23.3}"
+DOWNLOAD_URL="https://www.download.screamingfrog.co.uk/products/seo-spider/screamingfrogseospider_${SF_VERSION}_all.deb"
+TMP_DEB="/tmp/screamingfrogseospider_${SF_VERSION}_all.deb"
 
 echo "==> Screaming Frog SEO Spider Linux installer"
 echo "    Version : ${SF_VERSION}"
