@@ -21,9 +21,11 @@ const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true
 // ─── List jobs ───────────────────────────────────────────────────────────────
 router.get('/', readLimit, (req, res) => {
   const jobs = db.prepare(`
-    SELECT jobs.*, profiles.name AS profile_name
+    SELECT jobs.*, profiles.name AS profile_name,
+           spider_configs.name AS spider_config_name
     FROM jobs
     LEFT JOIN profiles ON jobs.profile_id = profiles.id
+    LEFT JOIN spider_configs ON jobs.spider_config_id = spider_configs.id
     ORDER BY jobs.id DESC
   `).all();
   res.json(jobs);
@@ -32,9 +34,11 @@ router.get('/', readLimit, (req, res) => {
 // ─── Get single job ──────────────────────────────────────────────────────────
 router.get('/:id', readLimit, (req, res) => {
   const job = db.prepare(`
-    SELECT jobs.*, profiles.name AS profile_name
+    SELECT jobs.*, profiles.name AS profile_name,
+           spider_configs.name AS spider_config_name
     FROM jobs
     LEFT JOIN profiles ON jobs.profile_id = profiles.id
+    LEFT JOIN spider_configs ON jobs.spider_config_id = spider_configs.id
     WHERE jobs.id = ?
   `).get(req.params.id);
 
@@ -78,7 +82,7 @@ router.get('/:id', readLimit, (req, res) => {
 
 // ─── Submit job ───────────────────────────────────────────────────────────────
 router.post('/', writeLimit, (req, res) => {
-  const { url, profile_id, export_tabs, cron_expression } = req.body;
+  const { url, profile_id, spider_config_id, export_tabs, cron_expression } = req.body;
 
   // Validate URL
   if (!url || typeof url !== 'string') {
@@ -98,6 +102,12 @@ router.post('/', writeLimit, (req, res) => {
   if (profile_id !== undefined && profile_id !== null && profile_id !== '') {
     const profile = db.prepare('SELECT id FROM profiles WHERE id = ?').get(profile_id);
     if (!profile) return res.status(400).json({ error: 'Profile not found' });
+  }
+
+  // Validate spider_config_id if provided
+  if (spider_config_id !== undefined && spider_config_id !== null && spider_config_id !== '') {
+    const sc = db.prepare('SELECT id FROM spider_configs WHERE id = ?').get(spider_config_id);
+    if (!sc) return res.status(400).json({ error: 'Spider config not found' });
   }
 
   // Validate cron_expression if provided
@@ -120,11 +130,12 @@ router.post('/', writeLimit, (req, res) => {
 
   // Create output dir path (will be created when job runs)
   const jobRow = db.prepare(`
-    INSERT INTO jobs (url, profile_id, export_tabs, status, cron_expression, next_run_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO jobs (url, profile_id, spider_config_id, export_tabs, status, cron_expression, next_run_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     url,
     profile_id || null,
+    spider_config_id || null,
     tabs,
     initialStatus,
     cronExpr,

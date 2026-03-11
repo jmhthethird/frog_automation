@@ -149,6 +149,105 @@ describe('spawnCompare()', () => {
   });
 });
 
+// ─── swapInSpiderConfig() / restoreSpiderConfig() ────────────────────────────
+describe('swapInSpiderConfig() / restoreSpiderConfig()', () => {
+  const makeLogStream = () => {
+    const lines = [];
+    const stream = { writable: true, write: (l) => lines.push(l), end: () => {} };
+    return { stream, lines };
+  };
+
+  it('writes the stored config to the live path and returns swizzle state', () => {
+    const fakeSfDir = path.join(dataDir, 'swap-sf');
+    fs.mkdirSync(fakeSfDir, { recursive: true });
+    const liveConfigPath = path.join(fakeSfDir, 'spider.config');
+    fs.writeFileSync(liveConfigPath, 'ORIGINAL');
+    process.env.SF_DATA_DIR = fakeSfDir;
+
+    const storedPath = path.join(dataDir, 'swap-stored.config');
+    fs.writeFileSync(storedPath, 'SELECTED');
+
+    const { stream } = makeLogStream();
+    const state = crawler.swapInSpiderConfig(storedPath, stream);
+
+    expect(state).not.toBeNull();
+    expect(state.liveConfigPath).toBe(liveConfigPath);
+    expect(state.backupContent).toBe('ORIGINAL');
+    expect(fs.readFileSync(liveConfigPath, 'utf8')).toBe('SELECTED');
+
+    delete process.env.SF_DATA_DIR;
+  });
+
+  it('returns null and logs a warning when the SF data dir is not found', () => {
+    // Point SF_DATA_DIR at an empty temp dir (no spider.config) to guarantee
+    // getLocalSfDataDir() still returns a dir but the swap has nothing to back
+    // up, and to ensure the test is hermetic on machines with a real SF install.
+    // Actually, to simulate "no SF data dir at all" we need SF_DATA_DIR to
+    // resolve to null, so we point it at a path that does NOT exist.
+    const nonexistentDir = path.join(dataDir, 'does-not-exist-sf-dir');
+    process.env.SF_DATA_DIR = nonexistentDir;
+    const storedPath = path.join(dataDir, 'swap-no-sf.config');
+    fs.writeFileSync(storedPath, 'DATA');
+    const { stream, lines } = makeLogStream();
+    const state = crawler.swapInSpiderConfig(storedPath, stream);
+    expect(state).toBeNull();
+    expect(lines.some((l) => /not found/i.test(l))).toBe(true);
+    delete process.env.SF_DATA_DIR;
+  });
+
+  it('returns null and logs a warning when the stored config file is unreadable', () => {
+    const fakeSfDir = path.join(dataDir, 'swap-unreadable');
+    fs.mkdirSync(fakeSfDir, { recursive: true });
+    process.env.SF_DATA_DIR = fakeSfDir;
+
+    const { stream, lines } = makeLogStream();
+    const state = crawler.swapInSpiderConfig('/nonexistent/path.config', stream);
+    expect(state).toBeNull();
+    expect(lines.some((l) => /skip/i.test(l))).toBe(true);
+
+    delete process.env.SF_DATA_DIR;
+  });
+
+  it('backupContent is null when no live spider.config existed yet', () => {
+    const fakeSfDir = path.join(dataDir, 'swap-noexist');
+    fs.mkdirSync(fakeSfDir, { recursive: true });
+    // Deliberately do NOT create a spider.config in the dir.
+    process.env.SF_DATA_DIR = fakeSfDir;
+
+    const storedPath = path.join(dataDir, 'swap-new.config');
+    fs.writeFileSync(storedPath, 'NEW');
+    const { stream } = makeLogStream();
+    const state = crawler.swapInSpiderConfig(storedPath, stream);
+
+    expect(state).not.toBeNull();
+    expect(state.backupContent).toBeNull();
+
+    delete process.env.SF_DATA_DIR;
+  });
+
+  it('restoreSpiderConfig restores the original file', () => {
+    const liveConfigPath = path.join(dataDir, 'restore-live.config');
+    fs.writeFileSync(liveConfigPath, 'SWAPPED');
+    const { stream } = makeLogStream();
+    crawler.restoreSpiderConfig({ liveConfigPath, backupContent: 'ORIGINAL' }, stream);
+    expect(fs.readFileSync(liveConfigPath, 'utf8')).toBe('ORIGINAL');
+  });
+
+  it('restoreSpiderConfig removes the live file when backupContent is null', () => {
+    const liveConfigPath = path.join(dataDir, 'restore-remove.config');
+    fs.writeFileSync(liveConfigPath, 'SWAPPED');
+    const { stream } = makeLogStream();
+    crawler.restoreSpiderConfig({ liveConfigPath, backupContent: null }, stream);
+    expect(fs.existsSync(liveConfigPath)).toBe(false);
+  });
+
+  it('restoreSpiderConfig is a no-op when passed null', () => {
+    // Should not throw.
+    const { stream } = makeLogStream();
+    expect(() => crawler.restoreSpiderConfig(null, stream)).not.toThrow();
+  });
+});
+
 // ─── zipOutput() ─────────────────────────────────────────────────────────────
 describe('zipOutput()', () => {
   it('creates a valid ZIP archive containing all files in the source directory', async () => {
@@ -362,6 +461,107 @@ describe('runJob()', () => {
     expect(spawnArgs).toContain(profilePath);
   });
 
+  it('does not pass --spider-config as a CLI argument (swizzle via filesystem instead)', async () => {
+    // Create a spider config and attach it to the job.
+    const scPath = path.join(dataDir, 'spider.config');
+    fs.writeFileSync(scPath, '<properties/>');
+    const scResult = db.prepare(
+      "INSERT INTO spider_configs (name, filename, filepath, is_local) VALUES ('sc', 'spider.config', ?, 0)"
+    ).run(scPath);
+    const scId = scResult.lastInsertRowid;
+
+    const jobId = insertJob(db, dataDir, { spider_config_id: scId });
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    const spawnArgs = cp.spawn.mock.calls[0][1];
+    expect(spawnArgs).not.toContain('--spider-config');
+  });
+
+  it('swaps in the spider config before the crawl and restores it after', async () => {
+    // Create a fake SF data dir and set it as the override.
+    const fakeSfDir = path.join(dataDir, 'fake-sf');
+    fs.mkdirSync(fakeSfDir, { recursive: true });
+    const liveConfigPath = path.join(fakeSfDir, 'spider.config');
+    const originalContent = '<properties><entry key="crawl.threads">2</entry></properties>';
+    fs.writeFileSync(liveConfigPath, originalContent);
+    process.env.SF_DATA_DIR = fakeSfDir;
+
+    // Create a stored spider config with different content.
+    const storedContent = '<properties><entry key="crawl.threads">8</entry></properties>';
+    const scPath = path.join(dataDir, 'stored.config');
+    fs.writeFileSync(scPath, storedContent);
+    const scResult = db.prepare(
+      "INSERT INTO spider_configs (name, filename, filepath, is_local) VALUES ('sc2', 'stored.config', ?, 0)"
+    ).run(scPath);
+    const scId = scResult.lastInsertRowid;
+
+    const jobId = insertJob(db, dataDir, { spider_config_id: scId });
+
+    // Capture what the live spider.config looks like DURING the crawl.
+    let contentDuringCrawl = null;
+    cp.spawn.mockImplementationOnce((cmd, args, opts) => {
+      const proc = new (require('events').EventEmitter)();
+      proc.stdout = new (require('events').EventEmitter)();
+      proc.stderr = new (require('events').EventEmitter)();
+      // Read the live config at the moment spawn() is called.
+      try { contentDuringCrawl = fs.readFileSync(liveConfigPath, 'utf8'); } catch { /* ignore */ }
+      setImmediate(() => proc.emit('close', 0));
+      return proc;
+    });
+
+    await crawler.runJob(jobId);
+
+    // During the crawl the stored config should have been active.
+    expect(contentDuringCrawl).toBe(storedContent);
+
+    // After the crawl the original config should be restored.
+    const contentAfterCrawl = fs.readFileSync(liveConfigPath, 'utf8');
+    expect(contentAfterCrawl).toBe(originalContent);
+
+    delete process.env.SF_DATA_DIR;
+  });
+
+  it('restores spider config even when the crawl fails', async () => {
+    const fakeSfDir = path.join(dataDir, 'fake-sf-fail');
+    fs.mkdirSync(fakeSfDir, { recursive: true });
+    const liveConfigPath = path.join(fakeSfDir, 'spider.config');
+    const originalContent = '<properties><entry key="crawl.threads">1</entry></properties>';
+    fs.writeFileSync(liveConfigPath, originalContent);
+    process.env.SF_DATA_DIR = fakeSfDir;
+
+    const storedContent = '<properties><entry key="crawl.threads">99</entry></properties>';
+    const scPath = path.join(dataDir, 'fail-stored.config');
+    fs.writeFileSync(scPath, storedContent);
+    const scResult = db.prepare(
+      "INSERT INTO spider_configs (name, filename, filepath, is_local) VALUES ('sc3', 'fail-stored.config', ?, 0)"
+    ).run(scPath);
+    const scId = scResult.lastInsertRowid;
+
+    const jobId = insertJob(db, dataDir, { spider_config_id: scId });
+    fakeProcExit(cp, 1); // Fail the crawl.
+
+    await crawler.runJob(jobId);
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('failed');
+
+    // Original config must be restored even after failure.
+    const contentAfterCrawl = fs.readFileSync(liveConfigPath, 'utf8');
+    expect(contentAfterCrawl).toBe(originalContent);
+
+    delete process.env.SF_DATA_DIR;
+  });
+
+  it('skips the swap when no spider config is selected (runs normally)', async () => {
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0);
+    await crawler.runJob(jobId);
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('completed');
+  });
+
   it('diff is scoped to same-URL jobs – prev_job_id matches the earlier same-URL job, not a different-URL job', async () => {
     const TARGET_URL = 'https://url-a.example.com';
     const OTHER_URL  = 'https://url-b.example.com';
@@ -523,14 +723,15 @@ function insertJob(database, baseDir, extra = {}) {
   const url    = extra.url    || 'https://example.com';
   const status = extra.status || 'queued';
   const row = database.prepare(`
-    INSERT INTO jobs (url, export_tabs, status, output_dir, profile_id)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO jobs (url, export_tabs, status, output_dir, profile_id, spider_config_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   `).run(
     url,
     'Internal:All',
     status,
     outputDir,
     extra.profile_id || null,
+    extra.spider_config_id || null,
   );
   return row.lastInsertRowid;
 }

@@ -6,6 +6,7 @@ const { db } = require('./src/db');
 const Queue = require('./src/queue');
 const { runJob } = require('./src/crawler');
 const { scheduler } = require('./src/scheduler');
+const { autoImportLocalConfig } = require('./src/routes/spider-configs');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.set('scheduler', scheduler);
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/jobs', require('./src/routes/jobs'));
 app.use('/api/profiles', require('./src/routes/profiles'));
+app.use('/api/spider-configs', require('./src/routes/spider-configs').router);
 app.use('/api/health', require('./src/routes/health'));
 app.use('/api/update', require('./src/routes/update'));
 app.use('/api/api-credentials', require('./src/routes/api-credentials'));
@@ -39,6 +41,9 @@ app.use('/api/api-credentials', require('./src/routes/api-credentials'));
  * @returns {Promise<import('http').Server>}
  */
 function startServer(port) {
+  // Auto-import (or refresh) the laptop's spider.config into the library.
+  autoImportLocalConfig(db);
+
   // Re-queue any non-cron jobs that were left running/queued when the process last exited.
   const stale = db.prepare(
     "UPDATE jobs SET status='queued', started_at=NULL WHERE status IN ('running','queued') AND cron_expression IS NULL"

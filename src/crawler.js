@@ -9,6 +9,7 @@ const { computeDiff } = require('./differ');
 const { scheduler } = require('./scheduler');
 const { DEFAULT_EXPORT_TABS } = require('./constants/exportTabs');
 const { buildJobLabel } = require('./utils');
+const { getLocalSfDataDir } = require('./sf-paths');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -55,12 +56,100 @@ function findSeospiderFile(dir) {
 }
 
 /**
+ * Before a crawl: physically replace ~/.ScreamingFrogSEOSpider/spider.config
+ * with the selected config so SF picks it up on startup.
+ *
+ * Returns a swizzle-state object that restoreSpiderConfig() can use to undo
+ * the swap, or null when no swap could be performed (SF data dir not found, or
+ * the selected config file is unreadable).
+ *
+ * @param {string} storedConfigPath - Absolute path to the stored spider config.
+ * @param {import('fs').WriteStream} logStream
+ * @returns {{ liveConfigPath: string, backupContent: string|null }|null}
+ */
+function swapInSpiderConfig(storedConfigPath, logStream) {
+  const sfDataDir = getLocalSfDataDir();
+  if (!sfDataDir) {
+    if (logStream && logStream.writable) {
+      logStream.write('[WARN] SF data directory not found; spider config will not be applied\n');
+    }
+    return null;
+  }
+
+  const liveConfigPath = path.join(sfDataDir, 'spider.config');
+
+  // Read selected config – bail out if unreadable.
+  let selectedContent;
+  try {
+    selectedContent = fs.readFileSync(storedConfigPath, 'utf8');
+  } catch (err) {
+    if (logStream && logStream.writable) {
+      logStream.write(`[WARN] Could not read stored spider config (${err.message}); skipping swap\n`);
+    }
+    return null;
+  }
+
+  // Back up the current live spider.config (may not exist yet).
+  let backupContent = null;
+  try {
+    backupContent = fs.readFileSync(liveConfigPath, 'utf8');
+  } catch { /* no existing config – that's fine */ }
+
+  // Write the selected config to the live location.
+  try {
+    fs.mkdirSync(sfDataDir, { recursive: true });
+    fs.writeFileSync(liveConfigPath, selectedContent, 'utf8');
+    if (logStream && logStream.writable) {
+      logStream.write(`[INFO] Spider config swapped in from ${storedConfigPath}\n`);
+    }
+  } catch (err) {
+    if (logStream && logStream.writable) {
+      logStream.write(`[WARN] Failed to swap in spider config: ${err.message}\n`);
+    }
+    return null;
+  }
+
+  return { liveConfigPath, backupContent };
+}
+
+/**
+ * After a crawl: restore the spider.config that was in place before the swap.
+ * Always called (even on failure) from the finally block in runJob().
+ *
+ * @param {{ liveConfigPath: string, backupContent: string|null }|null} swizzleState
+ * @param {import('fs').WriteStream} logStream
+ */
+function restoreSpiderConfig(swizzleState, logStream) {
+  if (!swizzleState) return;
+  const { liveConfigPath, backupContent } = swizzleState;
+  try {
+    if (backupContent !== null) {
+      fs.writeFileSync(liveConfigPath, backupContent, 'utf8');
+    } else {
+      // No config existed before the swap – remove the one we wrote.
+      try { fs.unlinkSync(liveConfigPath); } catch { /* already gone */ }
+    }
+    if (logStream && logStream.writable) {
+      logStream.write('[INFO] Original spider.config restored\n');
+    }
+  } catch (err) {
+    console.error('[crawler] Failed to restore spider.config:', err);
+  }
+}
+
+/**
  * Run a crawl job end-to-end.
  * @param {number} jobId
  */
 async function runJob(jobId) {
   const job = db
-    .prepare('SELECT jobs.*, profiles.filepath AS profile_path FROM jobs LEFT JOIN profiles ON jobs.profile_id = profiles.id WHERE jobs.id = ?')
+    .prepare(`SELECT jobs.*,
+                profiles.filepath AS profile_path,
+                spider_configs.filepath AS spider_config_path
+              FROM jobs
+              LEFT JOIN profiles ON jobs.profile_id = profiles.id
+              LEFT JOIN spider_configs ON jobs.spider_config_id = spider_configs.id
+              WHERE jobs.id = ?`)
     .get(jobId);
 
   if (!job) throw new Error(`Job ${jobId} not found`);
@@ -77,7 +166,11 @@ async function runJob(jobId) {
   const logStream = fs.createWriteStream(null, { fd: logFd, autoClose: true });
   logStream.on('error', (err) => console.error(`[crawler] logStream error (job ${jobId}):`, err));
 
+  let swizzleState = null;
   try {
+    if (job.spider_config_path) {
+      swizzleState = swapInSpiderConfig(job.spider_config_path, logStream);
+    }
     await spawnCrawl(job, outputDir, logStream);
     const completedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const folderName = buildJobLabel(job.url, completedAt, jobId);
@@ -124,6 +217,7 @@ async function runJob(jobId) {
     db.prepare("UPDATE jobs SET status='failed', completed_at=datetime('now'), error=? WHERE id=?")
       .run(errMsg, jobId);
   } finally {
+    restoreSpiderConfig(swizzleState, logStream);
     logStream.end();
     // For recurring cron jobs, reset back to 'scheduled' so the next tick can run.
     if (job.cron_expression) {
@@ -308,4 +402,4 @@ function detectLauncher() {
   }
 }
 
-module.exports = { runJob, detectLauncher, zipOutput, findSeospiderFile, spawnCompare, SF_LAUNCHER };
+module.exports = { runJob, detectLauncher, zipOutput, findSeospiderFile, spawnCompare, swapInSpiderConfig, restoreSpiderConfig, SF_LAUNCHER };

@@ -287,6 +287,23 @@
           <input type="file"  id="upload-file" accept=".seospiderconfig" style="margin-top:8px;"/>
         </div>
 
+        <label style="margin-top:14px;">Spider Config</label>
+        <div class="radio-group">
+          <label><input type="radio" name="sc-src" value="existing" id="sc-existing" checked> Use saved config</label>
+          <label><input type="radio" name="sc-src" value="upload"   id="sc-upload">   Upload new config</label>
+          <label><input type="radio" name="sc-src" value="none"     id="sc-none">     No spider config</label>
+        </div>
+
+        <div id="sc-existing-row" style="margin-top:8px;">
+          <select id="sc-select">
+            <option value="">— loading configs —</option>
+          </select>
+        </div>
+        <div id="sc-upload-row" style="display:none; margin-top:8px;">
+          <input type="text"  id="sc-upload-name" placeholder="Config display name (optional)"/>
+          <input type="file"  id="sc-upload-file" accept=".seospiderconfig,.config" style="margin-top:8px;"/>
+        </div>
+
         <label style="margin-top:14px;">Export Tabs</label>
         <div class="et-sub-label">:All flags</div>
         <div id="et-all-grid" class="et-all-grid"></div>
@@ -300,6 +317,16 @@
       <div class="card" style="margin-top:20px;">
         <h2>Profile Library</h2>
         <div id="profile-list-area"><em style="color:var(--text-dim);">Loading…</em></div>
+      </div>
+
+      <!-- Spider Config Library -->
+      <div class="card" style="margin-top:20px;">
+        <h2>Spider Config Library</h2>
+        <div style="margin-bottom:10px;">
+          <button class="btn btn-secondary" id="import-local-sc-btn" onclick="importLocalSpiderConfig()" style="font-size:12px;padding:5px 12px;" title="Import spider.config from the local Screaming Frog installation">⬆ Import from local SF</button>
+          <span id="import-local-sc-msg" class="msg" style="display:none;margin-left:8px;"></span>
+        </div>
+        <div id="sc-list-area"><em style="color:var(--text-dim);">Loading…</em></div>
       </div>
     </div>
 
@@ -468,6 +495,21 @@ async function loadProfiles() {
       ? profiles.map(p => `<option value="${p.id}">${escHtml(p.name)} (${escHtml(p.filename)})</option>`).join('')
       : '<option value="">— no saved profiles —</option>';
 
+    // Restore last used profile selection
+    const lastProfSrc = localStorage.getItem('frogAutoLastProfSrc');
+    const lastProfileId = localStorage.getItem('frogAutoLastProfileId');
+    if (lastProfSrc) {
+      const radio = document.querySelector(`input[name=prof-src][value="${lastProfSrc}"]`);
+      if (radio) {
+        radio.checked = true;
+        document.getElementById('prof-existing-row').style.display = lastProfSrc === 'existing' ? '' : 'none';
+        document.getElementById('prof-upload-row').style.display   = lastProfSrc === 'upload'   ? '' : 'none';
+      }
+    }
+    if (lastProfileId && profiles.length > 0) {
+      sel.value = lastProfileId;
+    }
+
     if (profiles.length === 0) {
       listArea.innerHTML = '<em style="color:var(--text-dim);">No profiles saved yet.</em>';
     } else {
@@ -492,6 +534,83 @@ async function deleteProfile(id) {
   loadProfiles();
 }
 
+// ── Spider Configs ────────────────────────────────────────────────────────────
+async function loadSpiderConfigs() {
+  const sel = document.getElementById('sc-select');
+  const listArea = document.getElementById('sc-list-area');
+  try {
+    const r = await fetch('/api/spider-configs');
+    const configs = await r.json();
+    sel.innerHTML = configs.length
+      ? configs.map(c => `<option value="${c.id}">${c.is_local ? '🖥 ' : ''}${escHtml(c.name)} (${escHtml(c.filename)})</option>`).join('')
+      : '<option value="">— no saved configs —</option>';
+
+    // Restore last used spider config selection
+    const lastScSrc = localStorage.getItem('frogAutoLastScSrc');
+    const lastScId  = localStorage.getItem('frogAutoLastScId');
+    if (lastScSrc) {
+      const radio = document.querySelector(`input[name=sc-src][value="${lastScSrc}"]`);
+      if (radio) {
+        radio.checked = true;
+        document.getElementById('sc-existing-row').style.display = lastScSrc === 'existing' ? '' : 'none';
+        document.getElementById('sc-upload-row').style.display   = lastScSrc === 'upload'   ? '' : 'none';
+      }
+    }
+    if (lastScId && configs.length > 0) {
+      sel.value = lastScId;
+    }
+
+    if (configs.length === 0) {
+      listArea.innerHTML = '<em style="color:var(--text-dim);">No spider configs saved yet.</em>';
+    } else {
+      listArea.innerHTML = `<table>
+        <tr><th>Name</th><th>Filename</th><th>Saved</th><th></th></tr>
+        ${configs.map(c => `<tr>
+          <td>${c.is_local ? '🖥 ' : ''}${escHtml(c.name)}</td>
+          <td style="font-family:monospace;font-size:12px;">${escHtml(c.filename)}</td>
+          <td style="color:var(--text-dim);">${fmtDate(c.created_at)}</td>
+          <td>${c.is_local ? '' : `<button class="btn btn-danger" onclick="deleteSpiderConfig(${c.id})">✕</button>`}</td>
+        </tr>`).join('')}
+      </table>`;
+    }
+  } catch (e) {
+    listArea.innerHTML = '<span style="color:var(--red);">Failed to load spider configs</span>';
+  }
+}
+
+async function deleteSpiderConfig(id) {
+  if (!confirm('Delete this spider config?')) return;
+  await fetch('/api/spider-configs/' + id, { method: 'DELETE' });
+  loadSpiderConfigs();
+}
+
+async function importLocalSpiderConfig() {
+  const btn    = document.getElementById('import-local-sc-btn');
+  const msgEl  = document.getElementById('import-local-sc-msg');
+  btn.disabled = true;
+  showMsg(msgEl, '', '');
+  try {
+    const r = await fetch('/api/spider-configs/import-local', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      showMsg(msgEl, d.error || 'Import failed', 'err');
+    } else {
+      showMsg(msgEl, `✓ Imported as "${escHtml(d.name)}"`, 'ok');
+      loadSpiderConfigs();
+    }
+  } catch {
+    showMsg(msgEl, 'Network error', 'err');
+  }
+  btn.disabled = false;
+}
+
+// ── Spider config source toggle ───────────────────────────────────────────────
+document.querySelectorAll('input[name=sc-src]').forEach(r => r.addEventListener('change', () => {
+  const v = document.querySelector('input[name=sc-src]:checked').value;
+  document.getElementById('sc-existing-row').style.display = v === 'existing' ? '' : 'none';
+  document.getElementById('sc-upload-row').style.display   = v === 'upload'   ? '' : 'none';
+}));
+
 // ── Profile source toggle ────────────────────────────────────────────────────
 document.querySelectorAll('input[name=prof-src]').forEach(r => r.addEventListener('change', () => {
   const v = document.querySelector('input[name=prof-src]:checked').value;
@@ -506,6 +625,7 @@ async function submitJob() {
   const url = document.getElementById('job-url').value.trim();
   const exportTabs = document.getElementById('export-tabs').value.trim() || DEFAULT_TABS;
   const profSrc = document.querySelector('input[name=prof-src]:checked').value;
+  const scSrc   = document.querySelector('input[name=sc-src]:checked').value;
   const cronExpression = document.getElementById('cron-expression').value.trim();
 
   showMsg(msgEl, '', '');
@@ -534,8 +654,29 @@ async function submitJob() {
       if (sel.value) profileId = parseInt(sel.value, 10);
     }
 
+    let spiderConfigId = null;
+
+    // Upload new spider config first if needed
+    if (scSrc === 'upload') {
+      const file = document.getElementById('sc-upload-file').files[0];
+      if (!file) { btn.disabled = false; return showMsg(msgEl, 'Please select a spider config file', 'err'); }
+      const fd = new FormData();
+      fd.append('spider_config', file);
+      const nameVal = document.getElementById('sc-upload-name').value.trim();
+      if (nameVal) fd.append('name', nameVal);
+      const sr = await fetch('/api/spider-configs', { method: 'POST', body: fd });
+      const sd = await sr.json();
+      if (!sr.ok) { btn.disabled = false; return showMsg(msgEl, sd.error || 'Spider config upload failed', 'err'); }
+      spiderConfigId = sd.id;
+      loadSpiderConfigs();
+    } else if (scSrc === 'existing') {
+      const sel = document.getElementById('sc-select');
+      if (sel.value) spiderConfigId = parseInt(sel.value, 10);
+    }
+
     const body = { url, export_tabs: exportTabs };
     if (profileId) body.profile_id = profileId;
+    if (spiderConfigId) body.spider_config_id = spiderConfigId;
     if (cronExpression) body.cron_expression = cronExpression;
 
     const r = await fetch('/api/jobs', {
@@ -545,6 +686,20 @@ async function submitJob() {
     });
     const d = await r.json();
     if (!r.ok) { btn.disabled = false; return showMsg(msgEl, d.error || 'Failed to submit job', 'err'); }
+
+    // Persist last-used profile and spider config for next visit
+    localStorage.setItem('frogAutoLastProfSrc', profSrc);
+    if (profSrc === 'existing' && profileId) {
+      localStorage.setItem('frogAutoLastProfileId', String(profileId));
+    } else if (profSrc !== 'existing') {
+      localStorage.removeItem('frogAutoLastProfileId');
+    }
+    localStorage.setItem('frogAutoLastScSrc', scSrc);
+    if (scSrc === 'existing' && spiderConfigId) {
+      localStorage.setItem('frogAutoLastScId', String(spiderConfigId));
+    } else if (scSrc !== 'existing') {
+      localStorage.removeItem('frogAutoLastScId');
+    }
 
     const isScheduled = d.status === 'scheduled';
     showMsg(msgEl, isScheduled ? `Job #${d.id} scheduled! Next run: ${fmtDate(d.next_run_at)}` : `Job #${d.id} queued!`, 'ok');
@@ -614,6 +769,7 @@ async function showJobDetail(id) {
         <div class="detail-item"><label>Status</label><span><span class="badge badge-${j.status}">${j.status}</span></span></div>
         <div class="detail-item"><label>URL</label><span>${escHtml(j.url)}</span></div>
         <div class="detail-item"><label>Profile</label><span>${escHtml(j.profile_name || '—')}</span></div>
+        <div class="detail-item"><label>Spider Config</label><span>${escHtml(j.spider_config_name || '—')}</span></div>
         <div class="detail-item"><label>Created</label><span>${fmtDate(j.created_at)}</span></div>
         <div class="detail-item"><label>Started</label><span>${j.started_at ? fmtDate(j.started_at) : '—'}</span></div>
         <div class="detail-item"><label>Completed</label><span>${j.completed_at ? fmtDate(j.completed_at) : '—'}</span></div>
@@ -1318,6 +1474,7 @@ syncUIFromTextarea();
 document.getElementById('export-tabs').addEventListener('input', syncUIFromTextarea);
 checkHealth();
 loadProfiles();
+loadSpiderConfigs();
 loadJobs();
 _initApiSettingsBtn();
 _initUpdateCheck();
