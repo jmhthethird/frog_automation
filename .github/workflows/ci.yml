@@ -145,8 +145,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # ── Run SF Playwright e2e tests ───────────────────────────────────────
+      # Crawls a local deterministic test-site fixture — no external network
+      # access needed, making the job fast and reliable on every PR.
       - name: Run Screaming Frog E2E tests (Playwright)
-        run: npm run test:e2e -- tests/e2e/sf-linux-google.spec.js
+        run: npm run test:e2e -- tests/e2e/sf-linux.spec.js
         env:
           CI: 'true'
           RUN_SF_INTEGRATION: '1'

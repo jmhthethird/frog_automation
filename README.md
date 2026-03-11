@@ -341,7 +341,7 @@ Every pull request runs all tests automatically via **GitHub Actions CI** (`.git
 | Job | Description |
 |-----|-------------|
 | `test` | Unit, route, and E2E tests — always runs on every PR and push to `main` |
-| `SF integration tests (Linux)` | Downloads and installs Screaming Frog on Linux (free mode — no licence required), accepts the EULA, and runs both the Jest crawl tests and the Playwright UI tests. Runs on PRs from the same repository only. |
+| `SF integration tests (Linux)` | Downloads and installs Screaming Frog on Linux (free mode — no licence required), accepts the EULA, and runs both the Jest crawl tests and the Playwright UI tests against a local deterministic fixture. Runs on PRs from the same repository only. |
 
 #### SF integration tests in CI
 
