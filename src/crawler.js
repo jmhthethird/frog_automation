@@ -9,7 +9,7 @@ const { computeDiff } = require('./differ');
 const { scheduler } = require('./scheduler');
 const { DEFAULT_EXPORT_TABS } = require('./constants/exportTabs');
 const { buildJobLabel } = require('./utils');
-const { getLocalSfDataDir } = require('./routes/spider-configs');
+const { getLocalSfDataDir } = require('./sf-paths');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||

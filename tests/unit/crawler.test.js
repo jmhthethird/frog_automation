@@ -179,15 +179,20 @@ describe('swapInSpiderConfig() / restoreSpiderConfig()', () => {
   });
 
   it('returns null and logs a warning when the SF data dir is not found', () => {
-    const saved = process.env.SF_DATA_DIR;
-    delete process.env.SF_DATA_DIR;
+    // Point SF_DATA_DIR at an empty temp dir (no spider.config) to guarantee
+    // getLocalSfDataDir() still returns a dir but the swap has nothing to back
+    // up, and to ensure the test is hermetic on machines with a real SF install.
+    // Actually, to simulate "no SF data dir at all" we need SF_DATA_DIR to
+    // resolve to null, so we point it at a path that does NOT exist.
+    const nonexistentDir = path.join(dataDir, 'does-not-exist-sf-dir');
+    process.env.SF_DATA_DIR = nonexistentDir;
     const storedPath = path.join(dataDir, 'swap-no-sf.config');
     fs.writeFileSync(storedPath, 'DATA');
     const { stream, lines } = makeLogStream();
     const state = crawler.swapInSpiderConfig(storedPath, stream);
     expect(state).toBeNull();
     expect(lines.some((l) => /not found/i.test(l))).toBe(true);
-    if (saved !== undefined) process.env.SF_DATA_DIR = saved;
+    delete process.env.SF_DATA_DIR;
   });
 
   it('returns null and logs a warning when the stored config file is unreadable', () => {

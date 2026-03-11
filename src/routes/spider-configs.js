@@ -3,10 +3,10 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const multer = require('multer');
 const rateLimit = require('express-rate-limit');
 const { db, DATA_DIR } = require('../db');
+const { getLocalSfDataDir } = require('../sf-paths');
 
 const router = express.Router();
 
@@ -15,12 +15,6 @@ const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true
 
 const SPIDER_CONFIGS_DIR = path.join(DATA_DIR, 'spider_configs');
 fs.mkdirSync(SPIDER_CONFIGS_DIR, { recursive: true });
-
-// Candidate paths for the SF data directory (the folder that contains spider.config)
-const SF_DATA_DIR_CANDIDATES = [
-  path.join(os.homedir(), '.ScreamingFrogSEOSpider'),
-  path.join(os.homedir(), 'Library', 'Application Support', 'Screaming Frog SEO Spider'),
-];
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, SPIDER_CONFIGS_DIR),
@@ -48,20 +42,8 @@ const upload = multer({
 
 // ─── Path utilities ───────────────────────────────────────────────────────────
 
-/**
- * Return the first accessible SF data directory on this machine, or null.
- * Respects the SF_DATA_DIR env var so tests can override the detection.
- */
-function getLocalSfDataDir() {
-  if (process.env.SF_DATA_DIR) return process.env.SF_DATA_DIR;
-  for (const dir of SF_DATA_DIR_CANDIDATES) {
-    try {
-      fs.accessSync(dir, fs.constants.R_OK);
-      return dir;
-    } catch { /* try next */ }
-  }
-  return null;
-}
+// getLocalSfDataDir() is imported from ../sf-paths – see that module for
+// validation logic and candidate-path detection.
 
 /**
  * Parse a spider.config (Java Properties XML) into a plain { key: value } map.

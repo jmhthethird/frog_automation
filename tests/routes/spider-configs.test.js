@@ -161,21 +161,34 @@ describe('sanitizeSpiderConfig() – with laptopEntries (path replacement)', () 
 
 // ─── getLocalSfDataDir ────────────────────────────────────────────────────────
 describe('getLocalSfDataDir()', () => {
-  it('returns the SF_DATA_DIR env var when set', () => {
+  it('returns the SF_DATA_DIR env var when it points to a valid directory', () => {
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frog-sf-dir-'));
     const saved = process.env.SF_DATA_DIR;
-    process.env.SF_DATA_DIR = '/tmp/fake-sf';
-    expect(getLocalSfDataDir()).toBe('/tmp/fake-sf');
-    if (saved === undefined) delete process.env.SF_DATA_DIR;
-    else process.env.SF_DATA_DIR = saved;
+    process.env.SF_DATA_DIR = fakeDir;
+    try {
+      expect(getLocalSfDataDir()).toBe(fakeDir);
+    } finally {
+      if (saved === undefined) delete process.env.SF_DATA_DIR;
+      else process.env.SF_DATA_DIR = saved;
+      fs.rmSync(fakeDir, { recursive: true, force: true });
+    }
   });
 
-  it('returns null when no SF installation is found and env var is not set', () => {
+  it('falls back to candidate detection when SF_DATA_DIR points to a nonexistent path', () => {
+    const nonexistent = path.join(os.tmpdir(), 'frog-sf-nonexistent-9999999');
     const saved = process.env.SF_DATA_DIR;
-    delete process.env.SF_DATA_DIR;
-    // On CI there is no SF installation, so null is expected.
-    const result = getLocalSfDataDir();
-    expect(result === null || typeof result === 'string').toBe(true);
-    if (saved !== undefined) process.env.SF_DATA_DIR = saved;
+    process.env.SF_DATA_DIR = nonexistent;
+    try {
+      // On CI there is no SF installation so the result should be null.
+      // On a dev machine with SF installed it may return a candidate path; either is valid.
+      const result = getLocalSfDataDir();
+      expect(result === null || typeof result === 'string').toBe(true);
+      // Must NOT return the nonexistent dir itself.
+      expect(result).not.toBe(nonexistent);
+    } finally {
+      if (saved === undefined) delete process.env.SF_DATA_DIR;
+      else process.env.SF_DATA_DIR = saved;
+    }
   });
 });
 
@@ -292,11 +305,19 @@ describe('GET /api/spider-configs/local', () => {
   });
 
   it('returns found:false when no local spider.config exists', async () => {
+    // Use an empty temp dir (no spider.config inside) so the test is hermetic
+    // on machines that have a real SF installation in the candidate paths.
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frog-sf-empty-'));
     const saved = process.env.SF_DATA_DIR;
-    delete process.env.SF_DATA_DIR;
-    const res = await ctx.request.get('/api/spider-configs/local').expect(200);
-    expect(res.body).toHaveProperty('found');
-    if (saved !== undefined) process.env.SF_DATA_DIR = saved;
+    process.env.SF_DATA_DIR = emptyDir;
+    try {
+      const res = await ctx.request.get('/api/spider-configs/local').expect(200);
+      expect(res.body.found).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env.SF_DATA_DIR;
+      else process.env.SF_DATA_DIR = saved;
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -374,8 +395,11 @@ describe('POST /api/spider-configs', () => {
   });
 
   it('clears abs path entries when no laptop config exists (fallback)', async () => {
+    // Use an empty temp dir (no spider.config) to ensure getLaptopConfigEntries()
+    // returns {} regardless of whether a real SF install exists on this machine.
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frog-sf-fallback-'));
     const saved = process.env.SF_DATA_DIR;
-    delete process.env.SF_DATA_DIR;
+    process.env.SF_DATA_DIR = emptyDir;
     try {
       const xml = `<properties>
 <entry key="storage.db_dir">/home/user/.ScreamingFrogSEOSpider/</entry>
@@ -391,7 +415,9 @@ describe('POST /api/spider-configs', () => {
       expect(stored).toContain('<entry key="storage.db_dir"></entry>');
       expect(stored).toContain('<entry key="crawl.threads">5</entry>');
     } finally {
-      if (saved !== undefined) process.env.SF_DATA_DIR = saved;
+      if (saved === undefined) delete process.env.SF_DATA_DIR;
+      else process.env.SF_DATA_DIR = saved;
+      fs.rmSync(emptyDir, { recursive: true, force: true });
     }
   });
 
@@ -424,13 +450,18 @@ describe('POST /api/spider-configs', () => {
 // ─── POST /api/spider-configs/import-local ────────────────────────────────────
 describe('POST /api/spider-configs/import-local', () => {
   it('returns 404 when no local spider.config is present', async () => {
+    // Use an empty temp dir (no spider.config) to guarantee 404 regardless of
+    // whether a real SF installation exists in the candidate paths.
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frog-sf-import-missing-'));
     const saved = process.env.SF_DATA_DIR;
-    delete process.env.SF_DATA_DIR;
+    process.env.SF_DATA_DIR = emptyDir;
     try {
       const res = await ctx.request.post('/api/spider-configs/import-local').expect(404);
       expect(res.body.error).toBeTruthy();
     } finally {
-      if (saved !== undefined) process.env.SF_DATA_DIR = saved;
+      if (saved === undefined) delete process.env.SF_DATA_DIR;
+      else process.env.SF_DATA_DIR = saved;
+      fs.rmSync(emptyDir, { recursive: true, force: true });
     }
   });
 
