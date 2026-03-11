@@ -26,26 +26,35 @@ db.exec(`
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS spider_configs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    filename   TEXT    NOT NULL,
+    filepath   TEXT    NOT NULL UNIQUE,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS jobs (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    url             TEXT    NOT NULL,
-    profile_id      INTEGER REFERENCES profiles(id) ON DELETE SET NULL,
-    export_tabs     TEXT    NOT NULL,
-    status          TEXT    NOT NULL DEFAULT 'queued',
-    output_dir      TEXT,
-    zip_path        TEXT,
-    error           TEXT,
-    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-    started_at      TEXT,
-    completed_at    TEXT,
-    cron_expression TEXT,
-    next_run_at     TEXT,
-    diff_summary    TEXT
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    url              TEXT    NOT NULL,
+    profile_id       INTEGER REFERENCES profiles(id) ON DELETE SET NULL,
+    spider_config_id INTEGER REFERENCES spider_configs(id) ON DELETE SET NULL,
+    export_tabs      TEXT    NOT NULL,
+    status           TEXT    NOT NULL DEFAULT 'queued',
+    output_dir       TEXT,
+    zip_path         TEXT,
+    error            TEXT,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+    started_at       TEXT,
+    completed_at     TEXT,
+    cron_expression  TEXT,
+    next_run_at      TEXT,
+    diff_summary     TEXT
   );
 `);
 
-// Idempotent migrations for databases created before cron/diff support was added.
-for (const col of ['cron_expression TEXT', 'next_run_at TEXT', 'diff_summary TEXT']) {
+// Idempotent migrations for databases created before cron/diff/spider-config support was added.
+for (const col of ['cron_expression TEXT', 'next_run_at TEXT', 'diff_summary TEXT', 'spider_config_id INTEGER']) {
   try {
     db.exec(`ALTER TABLE jobs ADD COLUMN ${col}`);
   } catch {

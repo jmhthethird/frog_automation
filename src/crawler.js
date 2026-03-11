@@ -60,7 +60,13 @@ function findSeospiderFile(dir) {
  */
 async function runJob(jobId) {
   const job = db
-    .prepare('SELECT jobs.*, profiles.filepath AS profile_path FROM jobs LEFT JOIN profiles ON jobs.profile_id = profiles.id WHERE jobs.id = ?')
+    .prepare(`SELECT jobs.*,
+        profiles.filepath AS profile_path,
+        spider_configs.filepath AS spider_config_path
+      FROM jobs
+      LEFT JOIN profiles ON jobs.profile_id = profiles.id
+      LEFT JOIN spider_configs ON jobs.spider_config_id = spider_configs.id
+      WHERE jobs.id = ?`)
     .get(jobId);
 
   if (!job) throw new Error(`Job ${jobId} not found`);
@@ -150,6 +156,10 @@ function spawnCrawl(job, outputDir, logStream) {
 
     if (job.profile_path) {
       args.push('--config', job.profile_path);
+    }
+
+    if (job.spider_config_path) {
+      args.push('--spider-config', job.spider_config_path);
     }
 
     // Append --use-* flags for enabled API integrations.

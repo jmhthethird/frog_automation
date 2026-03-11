@@ -28,6 +28,7 @@ app.set('scheduler', scheduler);
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/jobs', require('./src/routes/jobs'));
 app.use('/api/profiles', require('./src/routes/profiles'));
+app.use('/api/spider-configs', require('./src/routes/spider-configs').router);
 app.use('/api/health', require('./src/routes/health'));
 app.use('/api/update', require('./src/routes/update'));
 app.use('/api/api-credentials', require('./src/routes/api-credentials'));
