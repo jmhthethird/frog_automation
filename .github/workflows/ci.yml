@@ -79,14 +79,11 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # ── Screaming Frog integration tests (Linux) ────────────────────────────────
+  # ── Screaming Frog integration tests (Linux) ────────────────────────────────────
   # Downloads, installs, and exercises the real SF binary end-to-end.
-  # Screaming Frog headless / CLI mode requires a paid licence activated via a
-  # credentials file — there is no --license-key CLI flag.  Supply credentials
-  # through the repository secrets SF_LICENSE_USERNAME and SF_LICENSE_KEY; the
-  # install script writes ~/.ScreamingFrogSEOSpider/licence.txt automatically.
-  # This job only runs on pushes / PRs from the same repository so that fork
-  # PRs (which cannot access secrets) do not fail unnecessarily.
+  # Screaming Frog runs in free mode (up to 500 URLs) without any licence, so
+  # no repository secrets are needed.  The binary is installed unconditionally
+  # and both Jest and Playwright SF tests run on every same-repo PR / push.
   sf-integration:
     name: SF integration tests (Linux)
     if: >-
@@ -97,13 +94,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
-    # Expose secrets as job-level env vars so they can be checked in step
-    # 'if' conditions via the 'env' context (secrets are not directly usable
-    # inside step-level 'if' expressions).
-    env:
-      SF_LICENSE_USERNAME: ${{ secrets.SF_LICENSE_USERNAME }}
-      SF_LICENSE_KEY: ${{ secrets.SF_LICENSE_KEY }}
 
     steps:
       # ── Checkout ─────────────────────────────────────────────────────────
@@ -132,20 +122,41 @@ jobs:
           SF_VERSION: '23.3'
 
       # ── Install Screaming Frog SEO Spider ─────────────────────────────────
-      # When SF_LICENSE_USERNAME and SF_LICENSE_KEY are both set the install
-      # script also writes ~/.ScreamingFrogSEOSpider/licence.txt and accepts
-      # the EULA, enabling headless / CLI operation.
+      # The install script always accepts the EULA so the binary can run
+      # headlessly.  Licence credentials are optional (free mode = 500 URLs).
       - name: Install Screaming Frog SEO Spider
         run: bash scripts/install-sf-linux.sh
         env:
           SF_VERSION: '23.3'
+          SF_LICENSE_USERNAME: ${{ secrets.SF_LICENSE_USERNAME }}
+          SF_LICENSE_KEY: ${{ secrets.SF_LICENSE_KEY }}
 
-      # ── Run SF integration tests ──────────────────────────────────────────
+      # ── Run SF Jest integration tests ─────────────────────────────────────
       # RUN_SF_INTEGRATION=1 opts in to the otherwise-skipped crawl tests.
-      # Both licence secrets must be present for headless mode to work.
-      - name: Run Screaming Frog integration tests
-        if: ${{ env.SF_LICENSE_USERNAME != '' && env.SF_LICENSE_KEY != '' }}
+      # No licence secrets are needed – the free mode (500-URL limit) is
+      # sufficient for all integration test crawls.
+      - name: Run Screaming Frog integration tests (Jest)
         run: npx jest tests/integration/
         env:
           RUN_SF_INTEGRATION: '1'
+
+      # ── Playwright browsers ───────────────────────────────────────────────
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # ── Run SF Playwright e2e tests ───────────────────────────────────────
+      - name: Run Screaming Frog E2E tests (Playwright)
+        run: npm run test:e2e -- tests/e2e/sf-linux-google.spec.js
+        env:
+          CI: 'true'
+          RUN_SF_INTEGRATION: '1'
+
+      # ── Upload Playwright report on failure ───────────────────────────────
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-sf
+          path: playwright-report/
+          retention-days: 7
 

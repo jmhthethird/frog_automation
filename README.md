@@ -283,10 +283,10 @@ RUN_SF_INTEGRATION=1 npm test
    bash scripts/install-sf-linux.sh
    ```
 
-2. Activate your paid licence.  Screaming Frog headless mode reads credentials
-   from `~/.ScreamingFrogSEOSpider/licence.txt` — there is no CLI flag for
-   this.  The install script handles it automatically when you supply your
-   credentials:
+   The script always writes the EULA acceptance so the binary can run headlessly.
+   No licence is needed — Screaming Frog runs in free mode (up to 500 URLs per
+   crawl), which is sufficient for all integration tests.  If you have a paid
+   licence and want to unlock unlimited crawling, supply your credentials:
 
    ```bash
    SF_LICENSE_USERNAME=me@example.com \
@@ -294,15 +294,7 @@ RUN_SF_INTEGRATION=1 npm test
    bash scripts/install-sf-linux.sh
    ```
 
-   Or write the file manually:
-
-   ```bash
-   mkdir -p ~/.ScreamingFrogSEOSpider
-   printf 'me@example.com\nXXXX-XXXX-XXXX-XXXX-XXXX\n' > ~/.ScreamingFrogSEOSpider/licence.txt
-   echo "eula.accepted=11" >> ~/.ScreamingFrogSEOSpider/spider.config
-   ```
-
-3. Run the integration tests:
+2. Run the integration tests:
 
    ```bash
    RUN_SF_INTEGRATION=1 npm test
@@ -314,7 +306,8 @@ RUN_SF_INTEGRATION=1 npm test
 RUN_SF_INTEGRATION=1 npm test
 ```
 
-Screaming Frog must be installed and licensed at the default path (see [Prerequisites](#prerequisites)).
+Screaming Frog must be installed at the default path (see [Prerequisites](#prerequisites)).
+No licence is required — free mode (500-URL limit) is sufficient.
 
 ### End-to-end UI tests (Playwright)
 
@@ -348,23 +341,27 @@ Every pull request runs all tests automatically via **GitHub Actions CI** (`.git
 | Job | Description |
 |-----|-------------|
 | `test` | Unit, route, and E2E tests — always runs on every PR and push to `main` |
-| `SF integration tests (Linux)` | Downloads Screaming Frog, installs it on Linux, activates the licence via `~/.ScreamingFrogSEOSpider/licence.txt`, and runs the end-to-end crawl tests. Runs on PRs from the same repository only. The crawl tests execute when both the `SF_LICENSE_USERNAME` and `SF_LICENSE_KEY` repository secrets are set. |
+| `SF integration tests (Linux)` | Downloads and installs Screaming Frog on Linux (free mode — no licence required), accepts the EULA, and runs both the Jest crawl tests and the Playwright UI tests. Runs on PRs from the same repository only. |
 
-#### Enabling SF end-to-end tests in CI
+#### SF integration tests in CI
 
-Screaming Frog headless mode requires credentials written to a file —
-there is no `--license-key` CLI flag.  The `sf-integration` CI job activates
-the licence automatically via `scripts/install-sf-linux.sh` when two
-repository secrets are present:
+The `sf-integration` CI job runs on every same-repo PR and push to `main`.  It
+installs Screaming Frog and immediately runs both the Jest and Playwright
+integration tests without any additional secrets.
+
+Screaming Frog's free mode (up to 500 URLs per crawl) is sufficient for all
+integration test crawls — no paid licence is required.
+
+If you have a paid licence and want to enable unlimited crawling in CI, add two
+optional repository secrets:
 
 1. Go to **Settings → Secrets and variables → Actions** in the GitHub repository.
-2. Add two repository secrets:
+2. Add:
    - `SF_LICENSE_USERNAME` — your Screaming Frog account e-mail address
    - `SF_LICENSE_KEY` — your Screaming Frog licence key
 
-Once both secrets are set, the `SF integration tests (Linux)` CI job will
-automatically download SF, activate the licence, and run the 9 end-to-end
-crawl tests on every push to `main` and internal PRs.
+When present the install step will activate the licence automatically.  The
+tests pass regardless of whether the secrets are set.
 
 ### Enabling branch protection (one-time admin step)
 
