@@ -66,6 +66,10 @@ function getLocalSfDataDir() {
 /**
  * Parse a spider.config (Java Properties XML) into a plain { key: value } map.
  * Only captures <entry key="...">...</entry> elements.
+ *
+ * Note: [^<]* is intentional – spider.config values are simple strings
+ * (file paths, numbers, user-agent strings) that never contain '<', so the
+ * pattern is both correct and faster than a greedy alternative.
  */
 function parseSpiderConfigEntries(content) {
   const entries = {};

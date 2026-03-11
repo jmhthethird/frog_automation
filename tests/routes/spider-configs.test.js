@@ -39,7 +39,9 @@ describe('parseSpiderConfigEntries()', () => {
   });
 
   it('handles Windows drive paths', () => {
-    const xml = `<entry key="storage.db_dir">C:\\Users\\bob\\SF\\</entry>`;
+    const xml = `<properties>
+<entry key="storage.db_dir">C:\\Users\\bob\\SF\\</entry>
+</properties>`;
     const entries = parseSpiderConfigEntries(xml);
     expect(entries['storage.db_dir']).toBe('C:\\Users\\bob\\SF\\');
   });
