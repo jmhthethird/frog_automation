@@ -41,7 +41,7 @@ fi
 
 # ── Install ───────────────────────────────────────────────────────────────────
 echo "==> Installing (requires sudo)..."
-sudo apt-get install -y "${TMP_DEB}"
+sudo dpkg -i "${TMP_DEB}" || sudo apt-get install -f -y
 
 # ── Verify ────────────────────────────────────────────────────────────────────
 echo "==> Verifying installation..."
@@ -52,7 +52,7 @@ if [ -x "${SF_BIN}" ]; then
 else
   echo "    Warning: expected launcher not found at ${SF_BIN}"
   echo "    Searching for SF executables under /usr..."
-  found=$(find /usr -name "ScreamingFrogSEOSpider*" -type f 2>/dev/null | head -5)
+  found=$(find /usr -name "ScreamingFrogSEOSpider*" -type f 2>/dev/null | head -5 || true)
   if [ -n "${found}" ]; then
     echo "${found}"
   else
