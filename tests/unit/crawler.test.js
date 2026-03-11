@@ -305,7 +305,7 @@ describe('runJob()', () => {
     expect(spawnArgs).toContain('--use-pagespeed');
   });
 
-  it('passes --ps-api-key when pagespeed has an api_key stored', async () => {
+  it('passes --pagespeed-api-key when pagespeed has an api_key stored', async () => {
     db.prepare("UPDATE api_credentials SET enabled = 1, credentials = ? WHERE service = 'pagespeed'")
       .run(JSON.stringify({ api_key: 'my-ps-api-key' }));
     const jobId = insertJob(db, dataDir);
@@ -315,7 +315,7 @@ describe('runJob()', () => {
 
     const spawnArgs = cp.spawn.mock.calls[0][1];
     expect(spawnArgs).toContain('--use-pagespeed');
-    expect(spawnArgs).toContain('--ps-api-key');
+    expect(spawnArgs).toContain('--pagespeed-api-key');
     expect(spawnArgs).toContain('my-ps-api-key');
   });
 
