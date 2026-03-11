@@ -242,18 +242,19 @@ router.post('/', writeLimit, (req, res) => {
     const realDir = path.resolve(SPIDER_CONFIGS_DIR);
     /* istanbul ignore next */
     if (!realFile.startsWith(realDir + path.sep)) {
-      fs.unlinkSync(req.file.path);
+      try { fs.unlinkSync(realFile); } catch { /* best-effort cleanup */ }
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     // Patch absolute-path entries using the laptop's spider.config as the
     // reference, so paths like storage.db_dir and ui.recent_config_0 resolve
     // correctly on the machine running the crawl.
+    // Use realFile (the resolved, validated path) for all subsequent I/O.
     try {
-      const content = fs.readFileSync(req.file.path, 'utf8');
+      const content = fs.readFileSync(realFile, 'utf8');
       const laptopEntries = getLaptopConfigEntries();
       const patched = sanitizeSpiderConfig(content, laptopEntries);
-      fs.writeFileSync(req.file.path, patched, 'utf8');
+      fs.writeFileSync(realFile, patched, 'utf8');
     } catch (patchErr) {
       /* Non-critical – proceed with original content */
       console.warn('[spider-configs] Path patch failed:', patchErr.message);
@@ -261,7 +262,7 @@ router.post('/', writeLimit, (req, res) => {
 
     const result = db.prepare(
       'INSERT INTO spider_configs (name, filename, filepath, is_local) VALUES (?, ?, ?, 0)'
-    ).run(name, req.file.filename, req.file.path);
+    ).run(name, req.file.filename, realFile);
 
     const config = db.prepare('SELECT * FROM spider_configs WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(config);
