@@ -542,7 +542,7 @@ async function loadSpiderConfigs() {
     const r = await fetch('/api/spider-configs');
     const configs = await r.json();
     sel.innerHTML = configs.length
-      ? configs.map(c => `<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.filename)})</option>`).join('')
+      ? configs.map(c => `<option value="${c.id}">${c.is_local ? '🖥 ' : ''}${escHtml(c.name)} (${escHtml(c.filename)})</option>`).join('')
       : '<option value="">— no saved configs —</option>';
 
     // Restore last used spider config selection
@@ -566,10 +566,10 @@ async function loadSpiderConfigs() {
       listArea.innerHTML = `<table>
         <tr><th>Name</th><th>Filename</th><th>Saved</th><th></th></tr>
         ${configs.map(c => `<tr>
-          <td>${escHtml(c.name)}</td>
+          <td>${c.is_local ? '🖥 ' : ''}${escHtml(c.name)}</td>
           <td style="font-family:monospace;font-size:12px;">${escHtml(c.filename)}</td>
           <td style="color:var(--text-dim);">${fmtDate(c.created_at)}</td>
-          <td><button class="btn btn-danger" onclick="deleteSpiderConfig(${c.id})">✕</button></td>
+          <td>${c.is_local ? '' : `<button class="btn btn-danger" onclick="deleteSpiderConfig(${c.id})">✕</button>`}</td>
         </tr>`).join('')}
       </table>`;
     }

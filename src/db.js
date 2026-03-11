@@ -31,6 +31,7 @@ db.exec(`
     name       TEXT    NOT NULL,
     filename   TEXT    NOT NULL,
     filepath   TEXT    NOT NULL UNIQUE,
+    is_local   INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -60,6 +61,13 @@ for (const col of ['cron_expression TEXT', 'next_run_at TEXT', 'diff_summary TEX
   } catch {
     // Column already exists – safe to ignore.
   }
+}
+
+// Idempotent migration: is_local column for spider_configs (added later).
+try {
+  db.exec('ALTER TABLE spider_configs ADD COLUMN is_local INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // Column already exists – safe to ignore.
 }
 
 db.exec(`
