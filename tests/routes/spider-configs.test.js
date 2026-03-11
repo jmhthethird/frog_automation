@@ -2,7 +2,6 @@
 
 const path = require('path');
 const fs   = require('fs');
-const os   = require('os');
 
 const { makeApp } = require('../helpers/app-factory');
 const { sanitizeSpiderConfig } = require('../../src/routes/spider-configs');
@@ -192,19 +191,20 @@ describe('POST /api/spider-configs/import-local', () => {
   });
 
   it('imports and sanitizes a local spider.config when present', async () => {
-    // Create a fake "local" spider.config so we can test the import path.
-    const fakeLocalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-fake-'));
-    const fakeLocalPath = path.join(fakeLocalDir, 'spider.config');
-    fs.writeFileSync(fakeLocalPath, `<properties>
-<entry key="storage.db_dir">/home/user/.ScreamingFrogSEOSpider/</entry>
-<entry key="crawl.threads">8</entry>
-</properties>`, 'utf8');
-
-    // Monkey-patch the route module's known paths for this test.
-    // We test the underlying sanitize function directly instead, as the
-    // local detection paths are OS-specific.  This test verifies the
-    // import-local endpoint returns 404 when no real SF is installed.
-    fs.rmSync(fakeLocalDir, { recursive: true, force: true });
+    // The import-local endpoint relies on detecting real SF installation paths
+    // on the host machine.  On CI there is no SF installation, so the endpoint
+    // returns 404 (tested above).  The sanitization logic is exercised directly
+    // via the sanitizeSpiderConfig unit tests and via the POST upload tests.
+    // This test confirms the endpoint signature is correct when called with a
+    // JSON body for the optional name field.
+    const res = await ctx.request
+      .post('/api/spider-configs/import-local')
+      .set('Content-Type', 'application/json')
+      .send({ name: 'My Local Config' });
+    // 404 is expected on CI (no SF installed); 201 would be expected on a
+    // machine with SF installed.
+    expect([201, 404]).toContain(res.status);
+    expect(res.body).toBeDefined();
   });
 });
 

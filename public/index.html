@@ -508,7 +508,6 @@ async function loadProfiles() {
     }
     if (lastProfileId && profiles.length > 0) {
       sel.value = lastProfileId;
-      if (!sel.value) sel.value = '';
     }
 
     if (profiles.length === 0) {
@@ -559,7 +558,6 @@ async function loadSpiderConfigs() {
     }
     if (lastScId && configs.length > 0) {
       sel.value = lastScId;
-      if (!sel.value) sel.value = '';
     }
 
     if (configs.length === 0) {
