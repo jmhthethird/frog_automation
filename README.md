@@ -54,14 +54,27 @@ with signed `.dmg` installers for both Apple Silicon and Intel Macs.
 
 ## Prerequisites
 
-### 1 – Install Screaming Frog SEO Spider on macOS
+### 1 – Install Screaming Frog SEO Spider
 
-Download the macOS DMG from <https://www.screamingfrog.co.uk/seo-spider/> and
+**macOS** — Download the DMG from <https://www.screamingfrog.co.uk/seo-spider/> and
 install it to `/Applications`.  The server expects the launcher at:
 
 ```
 /Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher
 ```
+
+**Linux (Debian / Ubuntu)** — Use the provided helper script to download and
+install the `.deb` package:
+
+```bash
+bash scripts/install-sf-linux.sh          # installs v23.3 (default)
+SF_VERSION=23.3 bash scripts/install-sf-linux.sh  # explicit version
+```
+
+After installation the launcher is available at
+`/usr/bin/ScreamingFrogSEOSpiderLauncher`.
+
+Override either default with the `SF_LAUNCHER` environment variable.
 
 ### 2 – Ensure a CLI / headless licence
 
@@ -125,11 +138,11 @@ Then open `http://<mac-ip>:3000` in any browser on the same network.
 
 All configuration is via environment variables:
 
-| Variable      | Default                                                                                       | Description                         |
-|---------------|-----------------------------------------------------------------------------------------------|-------------------------------------|
-| `PORT`        | `3000`                                                                                        | HTTP port to listen on              |
-| `DATA_DIR`    | `./data`                                                                                      | Directory for SQLite DB, profiles, job outputs |
-| `SF_LAUNCHER` | `/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher` | Path to the SF CLI launcher         |
+| Variable          | Default                                                                                                         | Description                         |
+|-------------------|-----------------------------------------------------------------------------------------------------------------|-------------------------------------|
+| `PORT`            | `3000`                                                                                                          | HTTP port to listen on              |
+| `DATA_DIR`        | `./data`                                                                                                        | Directory for SQLite DB, profiles, job outputs |
+| `SF_LAUNCHER`     | macOS: `/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher`<br>Linux: `/usr/bin/ScreamingFrogSEOSpiderLauncher` | Path to the SF CLI launcher |
 
 **Example – non-standard install path:**
 
@@ -256,11 +269,52 @@ npm test                  # run all unit/route/integration tests
 npm run test:coverage     # run with coverage report (thresholds enforced)
 ```
 
-The 9 Screaming Frog integration tests are **skipped by default** because they require the SF binary and macOS. To opt-in:
+The 9 Screaming Frog integration tests are **skipped by default** because they require the SF binary. To opt-in:
 
 ```bash
 RUN_SF_INTEGRATION=1 npm test
 ```
+
+#### Running SF integration tests on Linux
+
+1. Install Screaming Frog using the provided script:
+
+   ```bash
+   bash scripts/install-sf-linux.sh
+   ```
+
+2. Activate your paid licence.  Screaming Frog headless mode reads credentials
+   from `~/.ScreamingFrogSEOSpider/licence.txt` — there is no CLI flag for
+   this.  The install script handles it automatically when you supply your
+   credentials:
+
+   ```bash
+   SF_LICENSE_USERNAME=me@example.com \
+   SF_LICENSE_KEY=XXXX-XXXX-XXXX-XXXX-XXXX \
+   bash scripts/install-sf-linux.sh
+   ```
+
+   Or write the file manually:
+
+   ```bash
+   mkdir -p ~/.ScreamingFrogSEOSpider
+   printf 'me@example.com\nXXXX-XXXX-XXXX-XXXX-XXXX\n' > ~/.ScreamingFrogSEOSpider/licence.txt
+   echo "eula.accepted=11" >> ~/.ScreamingFrogSEOSpider/spider.config
+   ```
+
+3. Run the integration tests:
+
+   ```bash
+   RUN_SF_INTEGRATION=1 npm test
+   ```
+
+#### Running SF integration tests on macOS
+
+```bash
+RUN_SF_INTEGRATION=1 npm test
+```
+
+Screaming Frog must be installed and licensed at the default path (see [Prerequisites](#prerequisites)).
 
 ### End-to-end UI tests (Playwright)
 
@@ -288,6 +342,29 @@ npm run test:all     # jest --coverage && playwright test
 ## CI and Branch Protection
 
 Every pull request runs all tests automatically via **GitHub Actions CI** (`.github/workflows/ci.yml`).  PRs **cannot be merged** until the `CI / test` status check passes.
+
+### CI jobs
+
+| Job | Description |
+|-----|-------------|
+| `test` | Unit, route, and E2E tests — always runs on every PR and push to `main` |
+| `SF integration tests (Linux)` | Downloads Screaming Frog, installs it on Linux, activates the licence via `~/.ScreamingFrogSEOSpider/licence.txt`, and runs the end-to-end crawl tests. Runs on PRs from the same repository only. The crawl tests execute when both the `SF_LICENSE_USERNAME` and `SF_LICENSE_KEY` repository secrets are set. |
+
+#### Enabling SF end-to-end tests in CI
+
+Screaming Frog headless mode requires credentials written to a file —
+there is no `--license-key` CLI flag.  The `sf-integration` CI job activates
+the licence automatically via `scripts/install-sf-linux.sh` when two
+repository secrets are present:
+
+1. Go to **Settings → Secrets and variables → Actions** in the GitHub repository.
+2. Add two repository secrets:
+   - `SF_LICENSE_USERNAME` — your Screaming Frog account e-mail address
+   - `SF_LICENSE_KEY` — your Screaming Frog licence key
+
+Once both secrets are set, the `SF integration tests (Linux)` CI job will
+automatically download SF, activate the licence, and run the 9 end-to-end
+crawl tests on every push to `main` and internal PRs.
 
 ### Enabling branch protection (one-time admin step)
 

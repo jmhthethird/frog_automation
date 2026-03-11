@@ -4,9 +4,18 @@
  * Integration test: real Screaming Frog CLI crawl + ZIP verification.
  *
  * This test is SKIPPED unless ALL of the following are true:
- *   1. Running on macOS (darwin)
+ *   1. Running on macOS (darwin) or Linux
  *   2. The SF launcher binary exists and is executable
  *   3. The env var RUN_SF_INTEGRATION=1 is set (opt-in to prevent accidental long runs)
+ *
+ * On Linux the launcher is expected at /usr/bin/ScreamingFrogSEOSpiderLauncher
+ * (installed via scripts/install-sf-linux.sh).  Override with SF_LAUNCHER.
+ *
+ * A paid SF licence is required for headless / CLI mode.  Activate it before
+ * running by writing credentials to ~/.ScreamingFrogSEOSpider/licence.txt
+ * (line 1: account e-mail, line 2: licence key) — use install-sf-linux.sh
+ * with SF_LICENSE_USERNAME and SF_LICENSE_KEY set to do this automatically.
+ * There is no --license-key CLI flag.
  *
  * When those conditions are met, the test:
  *   a) Starts a tiny local HTTP server with several pages / a redirect / a 404
@@ -27,11 +36,15 @@ const { createTestSite } = require('../helpers/test-site');
 const { makeApp }        = require('../helpers/app-factory');
 
 // ── Guard: skip unless the right conditions are met ───────────────────────────
+// Resolve the launcher path using the same platform-aware logic as crawler.js,
+// so SF_LAUNCHER overrides work consistently across tests and the application.
 const SF_LAUNCHER = process.env.SF_LAUNCHER ||
-  '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher';
+  (process.platform === 'linux'
+    ? '/usr/bin/ScreamingFrogSEOSpiderLauncher'
+    : '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher');
 
 const sfAvailable = (() => {
-  if (process.platform !== 'darwin') return false;
+  if (process.platform !== 'darwin' && process.platform !== 'linux') return false;
   try { fs.accessSync(SF_LAUNCHER, fs.constants.X_OK); return true; } catch { return false; }
 })();
 

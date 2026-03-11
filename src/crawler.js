@@ -12,7 +12,9 @@ const { buildJobLabel } = require('./utils');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
-  '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher';
+  (process.platform === 'linux'
+    ? '/usr/bin/ScreamingFrogSEOSpiderLauncher'
+    : '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher');
 
 /**
  * Map from api_credentials.service to the CLI flag that enables it, plus
