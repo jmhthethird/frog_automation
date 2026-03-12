@@ -90,7 +90,7 @@
   .rel-badge.is-newer { background: #1a2a3a; color: #6ab0f5; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
-  .grid > div { min-width: 0; }
+  .grid > div:last-child { min-width: 0; }
   @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
   .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ccc; }
