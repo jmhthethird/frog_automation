@@ -3,9 +3,15 @@
 const { makeApp } = require('../helpers/app-factory');
 
 let ctx;
+let db;
+let SERVICE_FIELDS;
 
 beforeAll(() => {
   ctx = makeApp('api-creds');
+  // Capture the db instance that was loaded as part of this app context.
+  // Must be required AFTER makeApp() since makeApp() calls jest.resetModules().
+  ({ db } = require('../../src/db'));
+  ({ SERVICE_FIELDS } = require('../../src/routes/api-credentials'));
 });
 
 afterAll(() => ctx.cleanup());
@@ -42,23 +48,6 @@ describe('GET /api/api-credentials', () => {
     for (const svc of res.body) {
       expect(svc.enabled).toBe(false);
     }
-  });
-
-  it('pagespeed has an api_key field', async () => {
-    const res = await ctx.request.get('/api/api-credentials').expect(200);
-    const ps = res.body.find(s => s.service === 'pagespeed');
-    expect(ps).toBeDefined();
-    const fieldNames = ps.fields.map(f => f.name);
-    expect(fieldNames).toContain('api_key');
-  });
-
-  it('mozscape has access_id and secret_key fields', async () => {
-    const res = await ctx.request.get('/api/api-credentials').expect(200);
-    const moz = res.body.find(s => s.service === 'mozscape');
-    expect(moz).toBeDefined();
-    const fieldNames = moz.fields.map(f => f.name);
-    expect(fieldNames).toContain('access_id');
-    expect(fieldNames).toContain('secret_key');
   });
 
   it('google_search_console has no credential fields (OAuth-based)', async () => {
@@ -110,13 +99,12 @@ describe('PUT /api/api-credentials/:service', () => {
     expect(res.body.enabled).toBe(false);
   });
 
-  it('stores credentials and masks sensitive fields in the response', async () => {
+  it('returns empty credentials for services with no defined fields', async () => {
     const res = await ctx.request.put('/api/api-credentials/pagespeed')
       .send({ enabled: true, credentials: { api_key: 'abc-secret-key' } })
       .expect(200);
-    // The response should mask the sensitive value
-    expect(res.body.credentials.api_key).not.toBe('abc-secret-key');
-    expect(res.body.credentials.api_key).toMatch(/●/);
+    // pagespeed no longer has credential fields, so credentials object is empty
+    expect(res.body.credentials).toEqual({});
   });
 
   it('persists changes so GET reflects them', async () => {
@@ -127,33 +115,38 @@ describe('PUT /api/api-credentials/:service', () => {
     const getRes = await ctx.request.get('/api/api-credentials').expect(200);
     const maj = getRes.body.find(s => s.service === 'majestic');
     expect(maj.enabled).toBe(true);
-    // Sensitive field is masked
-    expect(maj.credentials.api_key).toMatch(/●/);
+    // majestic no longer exposes credential fields
+    expect(maj.fields).toHaveLength(0);
   });
 
-  it('preserves existing credential values when a masked value (prefix+bullets) is sent back', async () => {
-    // Set a real value first
+  it('returns empty credentials for services without defined credential fields and does not persist them', async () => {
+    // ahrefs no longer has credential fields; sending api_key should be accepted but not persisted
     await ctx.request.put('/api/api-credentials/ahrefs')
       .send({ enabled: true, credentials: { api_key: 'real-secret-value' } })
       .expect(200);
 
-    // GET to obtain the masked value (format: "real●●●●●●●●" - prefix + bullets)
     const getRes = await ctx.request.get('/api/api-credentials').expect(200);
-    const masked = getRes.body.find(s => s.service === 'ahrefs').credentials.api_key;
-    expect(masked).toMatch(/●/);
-    // The mask should have the first 4 chars of the real value as a prefix
-    expect(masked.startsWith('real')).toBe(true);
+    const ahrefs = getRes.body.find(s => s.service === 'ahrefs');
+    expect(ahrefs.enabled).toBe(true);
+    expect(ahrefs.credentials).toEqual({});
 
-    // Now PUT with the masked value back – the real value should be preserved
-    const res2 = await ctx.request.put('/api/api-credentials/ahrefs')
-      .send({ enabled: true, credentials: { api_key: masked } })
-      .expect(200);
-    // The response mask should still show the same prefix/length pattern
-    expect(res2.body.credentials.api_key).toMatch(/●/);
-    expect(res2.body.credentials.api_key.startsWith('real')).toBe(true);
+    // Verify the secret was not silently persisted in the database.
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('ahrefs');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored).toEqual({});
   });
 
-  it('can store mozscape access_id and secret_key', async () => {
+  it('does not persist credentials for pagespeed', async () => {
+    await ctx.request.put('/api/api-credentials/pagespeed')
+      .send({ enabled: true, credentials: { api_key: 'ps-secret-123' } })
+      .expect(200);
+
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('pagespeed');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored).toEqual({});
+  });
+
+  it('can update mozscape (no credential fields exposed)', async () => {
     const res = await ctx.request.put('/api/api-credentials/mozscape')
       .send({
         enabled: true,
@@ -161,9 +154,8 @@ describe('PUT /api/api-credentials/:service', () => {
       })
       .expect(200);
     expect(res.body.enabled).toBe(true);
-    // access_id is not sensitive, secret_key is
-    expect(res.body.credentials.access_id).toBe('moz-access-123');
-    expect(res.body.credentials.secret_key).toMatch(/●/);
+    // mozscape no longer exposes credential fields
+    expect(res.body.credentials).toEqual({});
   });
 
   it('enables google_search_console (no credentials needed)', async () => {
@@ -181,15 +173,107 @@ describe('PUT /api/api-credentials/:service', () => {
     expect(res.body.enabled).toBe(true);
   });
 
-  it('clears a credential field when an empty string is sent', async () => {
-    // Set a value first
-    await ctx.request.put('/api/api-credentials/ahrefs')
-      .send({ enabled: true, credentials: { api_key: 'to-be-cleared' } })
-      .expect(200);
-    // Clear it
+  it('accepts empty credential values for services without defined credential fields', async () => {
+    // ahrefs no longer has exposed credential fields; sending credentials is accepted
     const res = await ctx.request.put('/api/api-credentials/ahrefs')
       .send({ enabled: true, credentials: { api_key: '' } })
       .expect(200);
-    expect(res.body.credentials.api_key).toBe('');
+    expect(res.body.credentials).toEqual({});
+  });
+});
+
+// ─── Credential field handling (with injected test fields) ───────────────────
+// These tests temporarily add a field definition to a service so the masking
+// and field-seeding code paths can be exercised.
+describe('PUT/GET credential field handling with defined fields', () => {
+  beforeEach(() => {
+    // Temporarily give google_analytics_4 a sensitive field so we can test
+    // the masking logic and the allowed-fields seeding in the PUT handler.
+    SERVICE_FIELDS.google_analytics_4 = [{ name: 'api_secret', sensitive: true }];
+  });
+
+  afterEach(() => {
+    SERVICE_FIELDS.google_analytics_4 = [];
+  });
+
+  it('stores and masks a sensitive field via PUT, returns masked value in response', async () => {
+    const res = await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'supersecret-1234' } })
+      .expect(200);
+    expect(res.body.enabled).toBe(true);
+    expect(res.body.credentials.api_secret).toMatch(/●/);
+    expect(res.body.credentials.api_secret).not.toContain('supersecret');
+  });
+
+  it('GET returns masked sensitive credential value', async () => {
+    // First store a value
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'verylongsecret' } })
+      .expect(200);
+
+    const getRes = await ctx.request.get('/api/api-credentials').expect(200);
+    const ga4 = getRes.body.find(s => s.service === 'google_analytics_4');
+    expect(ga4.credentials.api_secret).toMatch(/●/);
+  });
+
+  it('leaves existing value unchanged when masked string is re-submitted', async () => {
+    // Store original value
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'original-secret' } })
+      .expect(200);
+
+    // Fetch the masked value
+    const getRes = await ctx.request.get('/api/api-credentials').expect(200);
+    const masked = getRes.body.find(s => s.service === 'google_analytics_4').credentials.api_secret;
+    expect(masked).toMatch(/●/);
+
+    // Re-submit the masked value; the stored secret should be unchanged
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: masked } })
+      .expect(200);
+
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('google_analytics_4');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored.api_secret).toBe('original-secret');
+  });
+
+  it('seeds existing stored value when field is already in the DB', async () => {
+    // Store a value, then call PUT without credentials – field should be preserved
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'stored-value' } })
+      .expect(200);
+
+    const res = await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: false })
+      .expect(200);
+
+    expect(res.body.enabled).toBe(false);
+    // The stored credential is not exposed in the response only when sensitive
+    expect(res.body.credentials.api_secret).toMatch(/●/);
+
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('google_analytics_4');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored.api_secret).toBe('stored-value');
+  });
+
+  it('maskValue handles short values (≤4 chars) and empty values', async () => {
+    // Store a short secret (≤4 chars) and verify it is fully masked
+    const res = await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'abc' } })
+      .expect(200);
+    // Short value: every char should be masked as ●
+    expect(res.body.credentials.api_secret).toMatch(/^●+$/);
+    expect(res.body.credentials.api_secret).toHaveLength(3);
+  });
+
+  it('maskValue handles empty/null stored value', async () => {
+    // Store empty value
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: '' } })
+      .expect(200);
+
+    const getRes = await ctx.request.get('/api/api-credentials').expect(200);
+    const ga4 = getRes.body.find(s => s.service === 'google_analytics_4');
+    expect(ga4.credentials.api_secret).toBe('');
   });
 });

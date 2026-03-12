@@ -15,13 +15,10 @@ const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true
  */
 const SERVICE_FIELDS = {
   google_search_console: [],
-  pagespeed:             [{ name: 'api_key',    label: 'API Key',    sensitive: true }],
-  majestic:              [{ name: 'api_key',    label: 'API Key',    sensitive: true }],
-  mozscape:              [
-    { name: 'access_id',  label: 'Access ID',   sensitive: false },
-    { name: 'secret_key', label: 'Secret Key',  sensitive: true  },
-  ],
-  ahrefs:                [{ name: 'api_key',    label: 'API Key',    sensitive: true }],
+  pagespeed:             [],
+  majestic:              [],
+  mozscape:              [],
+  ahrefs:                [],
   google_analytics:      [],
   google_analytics_4:    [],
 };
@@ -89,12 +86,22 @@ router.put('/:service', writeLimit, (req, res) => {
 
   const newEnabled = enabled !== undefined ? (enabled ? 1 : 0) : existingEnabled;
 
-  // Merge credentials: if a field value contains any ● (bullet) characters it is
-  // a masked display value returned by the GET endpoint – keep the existing stored
-  // value instead of overwriting it.  An empty string clears the value.
-  const newCreds = Object.assign({}, existingCreds);
+  // Only persist credential fields that are declared in SERVICE_FIELDS.
+  // Keys not listed there are silently ignored so that undeclared secrets are
+  // never written to the database, even if the client sends them.
+  const allowedFields = new Set((SERVICE_FIELDS[service] || []).map(f => f.name));
+
+  // Seed newCreds from existing stored values (allowed keys only).
+  const newCreds = {};
+  for (const field of allowedFields) {
+    newCreds[field] = existingCreds[field] || '';
+  }
+  // Merge incoming credentials for allowed keys only.
+  // If a field value contains ● (bullet) characters it is a masked display
+  // value returned by GET – keep the existing stored value unchanged.
   if (credentials) {
     for (const [key, val] of Object.entries(credentials)) {
+      if (!allowedFields.has(key)) continue; // ignore undeclared fields
       if (typeof val === 'string' && /[●•]/.test(val)) {
         // Contains mask characters – keep existing
       } else {

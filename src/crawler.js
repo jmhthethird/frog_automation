@@ -26,10 +26,7 @@ const SF_LAUNCHER =
  */
 const API_SERVICE_FLAGS = {
   google_search_console: { flag: '--use-google-search-console', extraArgs: () => [] },
-  pagespeed:             {
-    flag: '--use-pagespeed',
-    extraArgs: (creds) => (creds.api_key ? ['--pagespeed-api-key', creds.api_key] : []),
-  },
+  pagespeed:             { flag: '--use-pagespeed',                extraArgs: () => [] },
   majestic:              { flag: '--use-majestic',              extraArgs: () => [] },
   mozscape:              { flag: '--use-mozscape',              extraArgs: () => [] },
   ahrefs:                { flag: '--use-ahrefs',                extraArgs: () => [] },

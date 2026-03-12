@@ -1293,19 +1293,19 @@ const API_SERVICE_META = {
   },
   pagespeed: {
     label: 'PageSpeed Insights',
-    note: 'Optionally enter a Google PageSpeed Insights API key to avoid public rate limits. Without a key, SF uses anonymous access (slower for large crawls).',
+    note: 'Enable to pass <code>--use-pagespeed</code> when crawling. To authenticate with a Google PageSpeed Insights API key, provide it via the <strong>Spider Config</strong> file upload.',
   },
   majestic: {
     label: 'Majestic',
-    note: '<strong>API key required in SF.</strong> Enter your Majestic API key for reference. You must also add it in Screaming Frog (Configuration → API Access → Majestic) for it to be used during crawls. Enable here to pass <code>--use-majestic</code>.',
+    note: '<strong>API key required in SF.</strong> Configure your Majestic API key in Screaming Frog (Configuration → API Access → Majestic). Authentication can also be provided via the <strong>Spider Config</strong> file upload. Enable here to pass <code>--use-majestic</code>.',
   },
   mozscape: {
     label: 'Mozscape (Moz)',
-    note: '<strong>Credentials required in SF.</strong> Enter your Moz Access ID and Secret Key for reference. You must also add them in Screaming Frog (Configuration → API Access → Mozscape). Enable here to pass <code>--use-mozscape</code>.',
+    note: '<strong>Credentials required in SF.</strong> Configure your Moz Access ID and Secret Key in Screaming Frog (Configuration → API Access → Mozscape). Authentication can also be provided via the <strong>Spider Config</strong> file upload. Enable here to pass <code>--use-mozscape</code>.',
   },
   ahrefs: {
     label: 'Ahrefs',
-    note: '<strong>API key required in SF.</strong> Enter your Ahrefs API key for reference. You must also add it in Screaming Frog (Configuration → API Access → Ahrefs). Enable here to pass <code>--use-ahrefs</code>.',
+    note: '<strong>API key required in SF.</strong> Configure your Ahrefs API key in Screaming Frog (Configuration → API Access → Ahrefs). Authentication can also be provided via the <strong>Spider Config</strong> file upload. Enable here to pass <code>--use-ahrefs</code>.',
   },
   google_analytics: {
     label: 'Google Analytics (UA)',
