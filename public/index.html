@@ -120,6 +120,13 @@
   /* jobs table */
   .jobs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
   .jobs-header h2 { font-size: 16px; font-weight: 600; color: #ccc; }
+  /* pagination */
+  .pagination { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .pagination button { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+  .pagination button:hover:not(:disabled) { background: var(--surface3, #2e2e2e); }
+  .pagination button:disabled { opacity: .4; cursor: default; }
+  .pagination button.pg-active { background: var(--green); color: #000; border-color: var(--green); font-weight: 700; }
+  .pagination .pg-ellipsis { color: var(--text-dim); font-size: 13px; padding: 0 2px; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; font-size: 11px; text-transform: uppercase; color: var(--text-dim); padding: 6px 8px; border-bottom: 1px solid var(--border); }
   td { padding: 8px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13px; }
@@ -718,16 +725,20 @@ async function submitJob() {
 }
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────
-async function loadJobs() {
+let _jobsPage = 1;
+
+async function loadJobs(page) {
+  if (page !== undefined) _jobsPage = page;
   const area = document.getElementById('jobs-area');
   try {
-    const r = await fetch('/api/jobs');
-    const jobs = await r.json();
-    if (jobs.length === 0) {
+    const r = await fetch(`/api/jobs?page=${_jobsPage}&limit=10`);
+    const data = await r.json();
+    const { jobs, total, page: currentPage, totalPages } = data;
+    if (total === 0) {
       area.innerHTML = '<em style="color:var(--text-dim);">No jobs yet. Submit one above.</em>';
       return;
     }
-    area.innerHTML = `<table>
+    const tableHtml = `<table>
       <tr><th>#</th><th>URL</th><th>Profile</th><th>Status</th><th>Created</th><th></th></tr>
       ${jobs.map(j => `<tr>
         <td>${j.id}${j.status === 'running' ? ` <button class="btn btn-danger" style="font-size:10px;padding:2px 7px;" onclick="stopJobClick(${j.id})">■ Stop</button>` : ''}</td>
@@ -741,9 +752,40 @@ async function loadJobs() {
         </td>
       </tr>`).join('')}
     </table>`;
+
+    const paginationHtml = buildPagination(currentPage, totalPages);
+    area.innerHTML = tableHtml + paginationHtml;
   } catch {
     area.innerHTML = '<span style="color:var(--red);">Failed to load jobs</span>';
   }
+}
+
+function buildPagination(currentPage, totalPages) {
+  if (totalPages <= 1) return '';
+  const btns = [];
+
+  btns.push(`<button ${currentPage <= 1 ? 'disabled' : `onclick="loadJobs(${currentPage - 1})"`}>← Prev</button>`);
+
+  // Numbered page buttons with ellipsis for large page counts
+  const pages = [];
+  for (let p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || (p >= currentPage - 2 && p <= currentPage + 2)) {
+      pages.push(p);
+    } else if (pages[pages.length - 1] !== '…') {
+      pages.push('…');
+    }
+  }
+  for (const p of pages) {
+    if (p === '…') {
+      btns.push('<span class="pg-ellipsis">…</span>');
+    } else {
+      btns.push(`<button class="${p === currentPage ? 'pg-active' : ''}" ${p === currentPage ? 'disabled aria-current="page"' : `onclick="loadJobs(${p})"`}>${p}</button>`);
+    }
+  }
+
+  btns.push(`<button ${currentPage >= totalPages ? 'disabled' : `onclick="loadJobs(${currentPage + 1})"`}>Next →</button>`);
+
+  return `<div class="pagination">${btns.join('')}</div>`;
 }
 
 function equalizeExportTabHeights() {
