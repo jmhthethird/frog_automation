@@ -10,6 +10,7 @@ const { scheduler } = require('./scheduler');
 const { DEFAULT_EXPORT_TABS } = require('./constants/exportTabs');
 const { buildJobLabel } = require('./utils');
 const { getLocalSfDataDir } = require('./sf-paths');
+const { uploadToDrive } = require('./google-drive');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -177,6 +178,37 @@ async function runJob(jobId) {
     const zipPath = await zipOutput(outputDir, jobId, folderName);
     db.prepare("UPDATE jobs SET status='completed', completed_at=?, zip_path=? WHERE id=?")
       .run(completedAt, zipPath, jobId);
+
+    // Upload the ZIP to Google Drive when the integration is enabled.
+    try {
+      const gdRow = db.prepare(
+        "SELECT enabled, credentials FROM api_credentials WHERE service = 'google_drive'"
+      ).get();
+      if (gdRow && gdRow.enabled === 1) {
+        const creds = JSON.parse(gdRow.credentials || '{}');
+        if (creds.client_id && creds.client_secret && creds.refresh_token) {
+          logStream.write('[INFO] Uploading ZIP to Google Drive…\n');
+          const result = await uploadToDrive({
+            clientId:     creds.client_id,
+            clientSecret: creds.client_secret,
+            refreshToken: creds.refresh_token,
+            filePath:     zipPath,
+            jobUrl:       job.url,
+            rootFolderId: creds.root_folder_id || undefined,
+          });
+          logStream.write(
+            `[INFO] Google Drive upload complete: fileId=${result.fileId} ` +
+            `domain="${result.domain}" size=${result.localSize} bytes\n`
+          );
+        } else {
+          logStream.write('[WARN] Google Drive integration is enabled but not yet authenticated; skipping upload\n');
+        }
+      }
+    } catch (driveErr) {
+      // Drive upload is non-critical – log but don't fail the job.
+      logStream.write(`[WARN] Google Drive upload failed: ${driveErr.message}\n`);
+      console.error(`[crawler] Google Drive upload failed for job ${jobId}:`, driveErr);
+    }
 
     // Compute a diff against the most recent previous completed crawl of the same URL.
     try {

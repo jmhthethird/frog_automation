@@ -701,6 +701,133 @@ describe('runJob()', () => {
   });
 });
 
+// ─── Google Drive upload in runJob() ─────────────────────────────────────────
+describe('runJob() – Google Drive upload', () => {
+  // Mock the google-drive module before each test so we never hit the network.
+  // jest.doMock() is the non-hoisted variant intended for use after jest.resetModules().
+  let mockUploadToDrive;
+
+  beforeEach(() => {
+    jest.resetModules();
+    cp = require('child_process');
+    jest.spyOn(cp, 'spawn');
+    const dbMod = require('../../src/db');
+    db = dbMod.db;
+
+    mockUploadToDrive = jest.fn();
+    jest.doMock('../../src/google-drive', () => ({
+      uploadToDrive:             mockUploadToDrive,
+      buildOAuth2Client:         jest.fn(),
+      buildDriveClientFromOAuth: jest.fn(),
+      ensureFolder:              jest.fn(),
+      findFolder:                jest.fn(),
+      // Mirror the real implementation's try-catch so invalid URLs fall back gracefully.
+      domainFromUrl: (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } },
+    }));
+
+    crawler = require('../../src/crawler');
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('calls uploadToDrive with correct OAuth2 args when google_drive is enabled and authenticated', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({
+      client_id: 'cid', client_secret: 'cs', refresh_token: 'rt',
+      root_folder_id: 'root-folder-xyz',
+    }));
+
+    mockUploadToDrive.mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 100, driveSize: 100,
+    });
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    expect(mockUploadToDrive).toHaveBeenCalledWith(expect.objectContaining({
+      clientId:     'cid',
+      clientSecret: 'cs',
+      refreshToken: 'rt',
+      rootFolderId: 'root-folder-xyz',
+      jobUrl:       'https://example.com',
+    }));
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('completed');
+  });
+
+  it('skips upload and logs a warning when google_drive is enabled but not authenticated', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({ client_id: 'cid', client_secret: 'cs' }));
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    expect(mockUploadToDrive).not.toHaveBeenCalled();
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('completed');
+  });
+
+  it('does not call uploadToDrive when google_drive integration is disabled', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 0, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' }));
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    expect(mockUploadToDrive).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the job when the Drive upload throws an error', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' }));
+
+    mockUploadToDrive.mockRejectedValueOnce(new Error('Drive quota exceeded'));
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    // Job completes despite the upload failure.
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('completed');
+  });
+
+  it('passes rootFolderId as undefined when root_folder_id is not set', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' }));
+
+    mockUploadToDrive.mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 50, driveSize: 50,
+    });
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    expect(mockUploadToDrive).toHaveBeenCalledWith(expect.objectContaining({
+      rootFolderId: undefined,
+    }));
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Insert a minimal job row and return its id. */

@@ -87,6 +87,7 @@ const API_SERVICES = [
   'ahrefs',
   'google_analytics',
   'google_analytics_4',
+  'google_drive',
 ];
 const seedStmt = db.prepare(
   "INSERT OR IGNORE INTO api_credentials (service, enabled, credentials) VALUES (?, 0, '{}')"
