@@ -23,7 +23,6 @@ const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true
 router.get('/', readLimit, (req, res) => {
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
   const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const offset = (page - 1) * limit;
 
   const total = db.prepare('SELECT COUNT(*) AS cnt FROM jobs').get().cnt;
   const totalPages = Math.max(1, Math.ceil(total / limit));

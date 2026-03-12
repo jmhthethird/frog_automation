@@ -779,7 +779,7 @@ function buildPagination(currentPage, totalPages) {
     if (p === '…') {
       btns.push('<span class="pg-ellipsis">…</span>');
     } else {
-      btns.push(`<button class="${p === currentPage ? 'pg-active' : ''}" ${p === currentPage ? 'disabled' : `onclick="loadJobs(${p})"`}>${p}</button>`);
+      btns.push(`<button class="${p === currentPage ? 'pg-active' : ''}" ${p === currentPage ? 'disabled aria-current="page"' : `onclick="loadJobs(${p})"`}>${p}</button>`);
     }
   }
 
