@@ -404,20 +404,6 @@ describe('runJob()', () => {
     expect(spawnArgs).toContain('--use-pagespeed');
   });
 
-  it('passes --pagespeed-api-key when pagespeed has an api_key stored', async () => {
-    db.prepare("UPDATE api_credentials SET enabled = 1, credentials = ? WHERE service = 'pagespeed'")
-      .run(JSON.stringify({ api_key: 'my-ps-api-key' }));
-    const jobId = insertJob(db, dataDir);
-    fakeProcExit(cp, 0);
-
-    await crawler.runJob(jobId);
-
-    const spawnArgs = cp.spawn.mock.calls[0][1];
-    expect(spawnArgs).toContain('--use-pagespeed');
-    expect(spawnArgs).toContain('--pagespeed-api-key');
-    expect(spawnArgs).toContain('my-ps-api-key');
-  });
-
   it('does not pass --use-pagespeed when pagespeed integration is disabled', async () => {
     db.prepare("UPDATE api_credentials SET enabled = 0 WHERE service = 'pagespeed'").run();
     const jobId = insertJob(db, dataDir);

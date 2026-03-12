@@ -130,6 +130,7 @@
   .badge-completed { background: #1a4a2e; color: var(--green); }
   .badge-failed    { background: #4a1a1a; color: var(--red); }
   .badge-scheduled { background: #2a1a4e; color: #c9a0ff; }
+  .badge-stopped   { background: #3a2a1a; color: var(--orange); }
   /* detail panel */
   #detail-panel { margin-top: 24px; display: none; }
   #detail-panel .card { padding: 20px; }
@@ -729,12 +730,15 @@ async function loadJobs() {
     area.innerHTML = `<table>
       <tr><th>#</th><th>URL</th><th>Profile</th><th>Status</th><th>Created</th><th></th></tr>
       ${jobs.map(j => `<tr>
-        <td>${j.id}</td>
+        <td>${j.id}${j.status === 'running' ? ` <button class="btn btn-danger" style="font-size:10px;padding:2px 7px;" onclick="stopJobClick(${j.id})">■ Stop</button>` : ''}</td>
         <td class="url-cell" title="${escHtml(j.url)}">${escHtml(j.url)}</td>
         <td style="color:var(--text-dim);">${escHtml(j.profile_name || '—')}</td>
         <td><span class="badge badge-${j.status}">${j.status}</span>${j.diff_summary ? ' <span title="Diff available" aria-label="Diff available" role="img">🔀</span>' : ''}</td>
         <td style="color:var(--text-dim);white-space:nowrap;">${fmtDate(j.created_at)}</td>
-        <td><button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="showJobDetail(${j.id})">View</button></td>
+        <td>
+          <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="showJobDetail(${j.id})">View</button>
+          ${j.status === 'stopped' ? `<button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:4px;" onclick="rerunJob(${j.id})">▶ Rerun</button>` : ''}
+        </td>
       </tr>`).join('')}
     </table>`;
   } catch {
@@ -1317,19 +1321,19 @@ const API_SERVICE_META = {
   },
   pagespeed: {
     label: 'PageSpeed Insights',
-    note: 'Optionally enter a Google PageSpeed Insights API key to avoid public rate limits. Without a key, SF uses anonymous access (slower for large crawls).',
+    note: 'Enable to pass <code>--use-pagespeed</code> when crawling. To authenticate with a Google PageSpeed Insights API key, provide it via the <strong>Spider Config</strong> file upload.',
   },
   majestic: {
     label: 'Majestic',
-    note: '<strong>API key required in SF.</strong> Enter your Majestic API key for reference. You must also add it in Screaming Frog (Configuration → API Access → Majestic) for it to be used during crawls. Enable here to pass <code>--use-majestic</code>.',
+    note: '<strong>API key required in SF.</strong> Configure your Majestic API key in Screaming Frog (Configuration → API Access → Majestic). Authentication can also be provided via the <strong>Spider Config</strong> file upload. Enable here to pass <code>--use-majestic</code>.',
   },
   mozscape: {
     label: 'Mozscape (Moz)',
-    note: '<strong>Credentials required in SF.</strong> Enter your Moz Access ID and Secret Key for reference. You must also add them in Screaming Frog (Configuration → API Access → Mozscape). Enable here to pass <code>--use-mozscape</code>.',
+    note: '<strong>Credentials required in SF.</strong> Configure your Moz Access ID and Secret Key in Screaming Frog (Configuration → API Access → Mozscape). Authentication can also be provided via the <strong>Spider Config</strong> file upload. Enable here to pass <code>--use-mozscape</code>.',
   },
   ahrefs: {
     label: 'Ahrefs',
-    note: '<strong>API key required in SF.</strong> Enter your Ahrefs API key for reference. You must also add it in Screaming Frog (Configuration → API Access → Ahrefs). Enable here to pass <code>--use-ahrefs</code>.',
+    note: '<strong>API key required in SF.</strong> Configure your Ahrefs API key in Screaming Frog (Configuration → API Access → Ahrefs). Authentication can also be provided via the <strong>Spider Config</strong> file upload. Enable here to pass <code>--use-ahrefs</code>.',
   },
   google_analytics: {
     label: 'Google Analytics (UA)',
@@ -1496,6 +1500,37 @@ function equalizeExportTabHeights() {
   let maxH = 0;
   items.forEach(el => { el.style.height = ''; maxH = Math.max(maxH, el.offsetHeight); });
   if (maxH > 0) items.forEach(el => { el.style.height = maxH + 'px'; });
+}
+
+async function stopJobClick(id) {
+  if (!confirm(`Stop job #${id}?`)) return;
+  try {
+    const r = await fetch(`/api/jobs/${id}/stop`, { method: 'POST' });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      alert(`Could not stop job: ${body.error || r.status}`);
+      return;
+    }
+    loadJobs();
+  } catch {
+    alert('Network error while stopping job.');
+  }
+}
+
+async function rerunJob(id) {
+  try {
+    const r = await fetch(`/api/jobs/${id}/rerun`, { method: 'POST' });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      alert(`Could not rerun job: ${body.error || r.status}`);
+      return;
+    }
+    const d = await r.json();
+    loadJobs();
+    setTimeout(() => showJobDetail(d.id), 500);
+  } catch {
+    alert('Network error while rerunning job.');
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

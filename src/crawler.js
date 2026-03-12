@@ -17,6 +17,9 @@ const SF_LAUNCHER =
     ? '/usr/bin/ScreamingFrogSEOSpiderLauncher'
     : '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher');
 
+/** Map from jobId (number) → ChildProcess for currently running crawl jobs. */
+const runningProcs = new Map();
+
 /**
  * Map from api_credentials.service to the CLI flag that enables it, plus
  * any extra credential flags to append.
@@ -26,10 +29,7 @@ const SF_LAUNCHER =
  */
 const API_SERVICE_FLAGS = {
   google_search_console: { flag: '--use-google-search-console', extraArgs: () => [] },
-  pagespeed:             {
-    flag: '--use-pagespeed',
-    extraArgs: (creds) => (creds.api_key ? ['--pagespeed-api-key', creds.api_key] : []),
-  },
+  pagespeed:             { flag: '--use-pagespeed',                extraArgs: () => [] },
   majestic:              { flag: '--use-majestic',              extraArgs: () => [] },
   mozscape:              { flag: '--use-mozscape',              extraArgs: () => [] },
   ahrefs:                { flag: '--use-ahrefs',                extraArgs: () => [] },
@@ -214,8 +214,12 @@ async function runJob(jobId) {
     }
   } catch (err) {
     const errMsg = err && err.message ? err.message : String(err);
-    db.prepare("UPDATE jobs SET status='failed', completed_at=datetime('now'), error=? WHERE id=?")
-      .run(errMsg, jobId);
+    // Don't overwrite a 'stopped' status set by stopJob().
+    const currentJob = db.prepare('SELECT status FROM jobs WHERE id = ?').get(jobId);
+    if (!currentJob || currentJob.status !== 'stopped') {
+      db.prepare("UPDATE jobs SET status='failed', completed_at=datetime('now'), error=? WHERE id=?")
+        .run(errMsg, jobId);
+    }
   } finally {
     restoreSpiderConfig(swizzleState, logStream);
     logStream.end();
@@ -284,6 +288,8 @@ function spawnCrawl(job, outputDir, logStream) {
       return reject(new Error(`Failed to spawn crawler: ${spawnErr.message}`));
     }
 
+    runningProcs.set(job.id, proc);
+
     // Accumulate output lines so we can detect FATAL errors reported by SF even
     // when the process exits with code 0 (a known SF quirk for bad --export-tabs).
     let fatalMessage = null;
@@ -302,10 +308,12 @@ function spawnCrawl(job, outputDir, logStream) {
     proc.stderr.on('data', (d) => handleData('STDERR', d));
 
     proc.on('error', (err) => {
+      runningProcs.delete(job.id);
       reject(new Error(`Crawler process error: ${err.message}`));
     });
 
     proc.on('close', (code) => {
+      runningProcs.delete(job.id);
       if (logStream.writable) logStream.write(`[INFO] Process exited with code ${code}\n`);
       if (fatalMessage) {
         reject(new Error(`Screaming Frog fatal error: ${fatalMessage}`));
@@ -316,6 +324,20 @@ function spawnCrawl(job, outputDir, logStream) {
       }
     });
   });
+}
+
+/**
+ * Stop a currently running job by killing its child process.
+ * Marks the job as 'stopped' in the database.
+ * @param {number} jobId
+ * @returns {boolean} true if the process was found and signalled, false otherwise.
+ */
+function stopJob(jobId) {
+  const proc = runningProcs.get(Number(jobId));
+  if (!proc) return false;
+  proc.kill('SIGTERM');
+  db.prepare("UPDATE jobs SET status='stopped', completed_at=datetime('now'), error='Stopped by user' WHERE id=?").run(jobId);
+  return true;
 }
 
 /**
@@ -402,4 +424,4 @@ function detectLauncher() {
   }
 }
 
-module.exports = { runJob, detectLauncher, zipOutput, findSeospiderFile, spawnCompare, swapInSpiderConfig, restoreSpiderConfig, SF_LAUNCHER };
+module.exports = { runJob, stopJob, detectLauncher, zipOutput, findSeospiderFile, spawnCompare, swapInSpiderConfig, restoreSpiderConfig, SF_LAUNCHER };

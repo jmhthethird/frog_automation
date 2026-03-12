@@ -379,6 +379,84 @@ describe('GET /api/jobs/:id/download', () => {
   });
 });
 
+// ─── POST /api/jobs/:id/stop ──────────────────────────────────────────────────
+describe('POST /api/jobs/:id/stop', () => {
+  it('returns 404 for a non-existent job', async () => {
+    const res = await ctx.request.post('/api/jobs/99999/stop').expect(404);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('returns 409 when the job is not running (queued)', async () => {
+    const postRes = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://stop-queued.example.com' })
+      .set('Content-Type', 'application/json')
+      .expect(201);
+
+    const res = await ctx.request.post(`/api/jobs/${postRes.body.id}/stop`).expect(409);
+    expect(res.body.error).toMatch(/not running/i);
+  });
+
+  it('returns 409 when the job is completed', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, completed_at)
+      VALUES ('https://stop-completed.example.com', 'Internal:All', 'completed', datetime('now'))
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${id}/stop`).expect(409);
+    expect(res.body.error).toMatch(/not running/i);
+  });
+
+  it('returns 409 when job is marked running but has no active process', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, started_at)
+      VALUES ('https://stop-running-no-proc.example.com', 'Internal:All', 'running', datetime('now'))
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${id}/stop`).expect(409);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+});
+
+// ─── POST /api/jobs/:id/rerun ─────────────────────────────────────────────────
+describe('POST /api/jobs/:id/rerun', () => {
+  it('returns 404 for a non-existent job', async () => {
+    const res = await ctx.request.post('/api/jobs/99999/rerun').expect(404);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('creates a new queued job with the same URL and settings', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, completed_at)
+      VALUES ('https://rerun.example.com', 'Internal:All,Response Codes:All', 'stopped', datetime('now'))
+    `).run();
+    const originalId = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${originalId}/rerun`).expect(201);
+    expect(res.body).toMatchObject({
+      url: 'https://rerun.example.com',
+      export_tabs: 'Internal:All,Response Codes:All',
+      status: 'queued',
+      id: expect.any(Number),
+    });
+    expect(res.body.id).not.toBe(originalId);
+  });
+
+  it('sets output_dir for the new job', async () => {
+    const postRes = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://rerun-outdir.example.com' })
+      .set('Content-Type', 'application/json')
+      .expect(201);
+
+    const res = await ctx.request.post(`/api/jobs/${postRes.body.id}/rerun`).expect(201);
+    expect(res.body.output_dir).toContain(dataDir);
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Access the db module that was loaded into the current app context. */
