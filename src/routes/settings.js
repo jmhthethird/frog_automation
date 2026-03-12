@@ -12,6 +12,19 @@ const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true
 /** Maximum allowed queue concurrency. */
 const MAX_CONCURRENCY = 8;
 
+/**
+ * Validate and coerce the queue_concurrency setting value.
+ * @param {string|number} value
+ * @returns {{ n: number }|{ error: string }}
+ */
+function validateQueueConcurrency(value) {
+  const n = parseInt(value, 10);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_CONCURRENCY) {
+    return { error: `queue_concurrency must be an integer between 1 and ${MAX_CONCURRENCY}` };
+  }
+  return { n };
+}
+
 // ─── GET /api/settings ────────────────────────────────────────────────────────
 router.get('/', readLimit, (req, res) => {
   const rows = db.prepare('SELECT key, value FROM settings').all();
@@ -38,17 +51,17 @@ router.patch('/', writeLimit, (req, res) => {
     }
 
     if (key === 'queue_concurrency') {
-      const n = parseInt(value, 10);
-      if (!Number.isInteger(n) || n < 1 || n > MAX_CONCURRENCY) {
-        errors[key] = `queue_concurrency must be an integer between 1 and ${MAX_CONCURRENCY}`;
+      const result = validateQueueConcurrency(value);
+      if (result.error) {
+        errors[key] = result.error;
         continue;
       }
-      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, String(n));
-      applied[key] = String(n);
+      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, String(result.n));
+      applied[key] = String(result.n);
       // Apply to the live queue immediately if it is attached to the app.
       try {
         const queue = req.app.get('queue');
-        if (queue) queue.concurrency = n;
+        if (queue) queue.concurrency = result.n;
       } catch { /* queue not attached in isolated tests */ }
     }
   }
