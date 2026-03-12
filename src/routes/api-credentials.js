@@ -21,6 +21,11 @@ const SERVICE_FIELDS = {
   ahrefs:                [],
   google_analytics:      [],
   google_analytics_4:    [],
+  google_drive: [
+    { name: 'api_key',       label: 'Google API Key',         sensitive: false },
+    { name: 'client_id',     label: 'OAuth2 Client ID',       sensitive: false },
+    { name: 'client_secret', label: 'OAuth2 Client Secret',   sensitive: true  },
+  ],
 };
 
 const KNOWN_SERVICES = Object.keys(SERVICE_FIELDS);

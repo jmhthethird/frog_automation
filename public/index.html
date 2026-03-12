@@ -64,6 +64,12 @@
   #api-settings-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
   #api-settings-btn:hover { color: var(--text); border-color: var(--text-dim); }
   #api-settings-btn.has-enabled { border-color: var(--blue); color: var(--blue); }
+  /* Google Drive sub-sections */
+  .drive-subsection { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .drive-subsection-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .drive-status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .drive-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .drive-folder-display { font-size: 13px; margin-bottom: 8px; word-break: break-all; }
   /* Update notification panel */
   #update-panel { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; display: none; align-items: center; gap: 14px; flex-wrap: wrap; }
   #update-panel.visible { display: flex; }
@@ -1350,6 +1356,12 @@ const API_SERVICE_META = {
     label: 'Google Analytics 4',
     note: '<strong>OAuth-based.</strong> Configure via Screaming Frog (Configuration → API Access → Google Analytics 4). Enable here to pass <code>--use-google-analytics-4</code> when crawling.',
   },
+  google_drive: {
+    label: '☁ Google Drive Upload',
+    note: 'Automatically uploads each completed crawl ZIP to Google Drive, organised by domain:<br><code>Drive / [Root Folder] / &lt;domain&gt; / &lt;crawl.zip&gt;</code><br><br>' +
+          '<strong>Setup (one-time):</strong> In <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue);">Google Cloud Console</a> create a project, enable the <em>Google Drive API</em> and <em>Google Picker API</em>, then create an <strong>OAuth 2.0 Client ID</strong> (Web application) and an <strong>API Key</strong>. ' +
+          'Add <code>' + window.location.origin + '</code> to the authorised JavaScript origins and <code>' + window.location.origin + '/api/google-drive/callback</code> to the authorised redirect URIs.',
+  },
 };
 
 let _apiCredentialsCache = null;
@@ -1375,6 +1387,8 @@ async function loadApiCredentials() {
     _apiCredentialsCache = await r.json();
     renderApiServicesList(_apiCredentialsCache);
     _updateApiSettingsBtn(_apiCredentialsCache);
+    // Load Drive connection status now that the Drive card is rendered.
+    loadDriveStatus();
   } catch {
     list.innerHTML = '<span style="color:var(--red);">Failed to load API credentials</span>';
   }
@@ -1384,15 +1398,45 @@ function renderApiServicesList(services) {
   const list = document.getElementById('api-services-list');
   list.innerHTML = services.map(svc => {
     const meta = API_SERVICE_META[svc.service] || { label: svc.service, note: '' };
-    const fieldRows = (svc.fields || []).map(f => `
-      <label>${escHtml(f.label)}${f.sensitive ? ' <span style="color:var(--text-dim);">(stored securely)</span>' : ''}</label>
+    const fieldRows = (svc.fields || []).map(f => {
+      const fieldId    = `api-field-${escHtml(svc.service)}-${escHtml(f.name)}`;
+      const val        = escHtml(svc.credentials[f.name] || '');
+      const secureNote = f.sensitive ? ' <span style="color:var(--text-dim);">(stored securely)</span>' : '';
+      return `
+      <label>${escHtml(f.label)}${secureNote}</label>
       <input type="${f.sensitive ? 'password' : 'text'}"
-             id="api-field-${escHtml(svc.service)}-${escHtml(f.name)}"
+             id="${fieldId}"
              placeholder="${escHtml(f.sensitive ? '••••••••' : '')}"
-             value="${escHtml(svc.credentials[f.name] || '')}"
+             value="${val}"
              autocomplete="off"
-             spellcheck="false"/>
-    `).join('');
+             spellcheck="false"/>`;
+    }).join('');
+
+    // Extra UI injected below the Save button for the Google Drive service.
+    const driveExtra = svc.service === 'google_drive' ? `
+      <div class="drive-subsection">
+        <div class="drive-subsection-label">Connection</div>
+        <div class="drive-status-row">
+          <span id="drive-conn-status" style="color:var(--text-dim);">○ Not connected</span>
+        </div>
+        <div class="drive-btn-row">
+          <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
+                  onclick="connectGoogleDrive()">Connect Google Drive</button>
+          <button id="drive-disconnect-btn" class="btn btn-secondary"
+                  style="font-size:11px;padding:4px 12px;display:none;"
+                  onclick="disconnectGoogleDrive()">Disconnect</button>
+        </div>
+      </div>
+      <div class="drive-subsection">
+        <div class="drive-subsection-label">Root Folder</div>
+        <div id="drive-folder-display" class="drive-folder-display" style="color:var(--text-dim);">No folder selected</div>
+        <div class="drive-btn-row">
+          <button id="drive-pick-btn" class="btn btn-secondary"
+                  style="font-size:11px;padding:4px 12px;"
+                  onclick="openDrivePicker()" disabled>Select Root Folder</button>
+          <span id="drive-pick-msg" style="font-size:11px;color:var(--text-dim);"></span>
+        </div>
+      </div>` : '';
 
     return `<div class="api-svc-card" id="api-svc-${escHtml(svc.service)}">
       <div class="api-svc-header">
@@ -1416,6 +1460,7 @@ function renderApiServicesList(services) {
                 onclick="saveApiCredential('${escHtml(svc.service)}')">Save</button>
         <span id="api-svc-msg-${escHtml(svc.service)}" class="api-svc-msg" style="display:none;"></span>
       </div>
+      ${driveExtra}
     </div>`;
   }).join('');
 }
@@ -1531,6 +1576,170 @@ async function rerunJob(id) {
   } catch {
     alert('Network error while rerunning job.');
   }
+}
+
+// ── Google Drive Integration ──────────────────────────────────────────────────
+
+/** Refresh Drive connection status and update the card UI. */
+async function loadDriveStatus() {
+  try {
+    const r = await fetch('/api/google-drive/status');
+    if (!r.ok) return;
+    const status = await r.json();
+    _applyDriveStatus(status);
+  } catch { /* non-critical */ }
+}
+
+function _applyDriveStatus(status) {
+  const connEl    = document.getElementById('drive-conn-status');
+  const pickBtn   = document.getElementById('drive-pick-btn');
+  const disconnBtn = document.getElementById('drive-disconnect-btn');
+  const folderEl  = document.getElementById('drive-folder-display');
+  if (!connEl) return; // card not rendered
+
+  if (status.connected) {
+    connEl.textContent = '● Connected';
+    connEl.style.color = 'var(--green)';
+    if (pickBtn)    { pickBtn.disabled = false; }
+    if (disconnBtn) { disconnBtn.style.display = 'inline-block'; }
+  } else {
+    connEl.textContent = '○ Not connected';
+    connEl.style.color = 'var(--text-dim)';
+    if (pickBtn)    { pickBtn.disabled = true; }
+    if (disconnBtn) { disconnBtn.style.display = 'none'; }
+  }
+
+  if (folderEl) {
+    if (status.rootFolderName) {
+      folderEl.textContent = '📁 ' + status.rootFolderName;
+      folderEl.style.color = 'var(--text)';
+    } else {
+      folderEl.textContent = 'No folder selected – uploads will go to My Drive root';
+      folderEl.style.color = 'var(--text-dim)';
+    }
+  }
+}
+
+/** Open a popup for the Google OAuth2 consent flow. */
+async function connectGoogleDrive() {
+  try {
+    const r = await fetch('/api/google-drive/auth-url');
+    const d = await r.json();
+    if (!r.ok) { alert(d.error || 'Could not get authorization URL'); return; }
+
+    const w = 600, h = 700;
+    const left = Math.round(window.screenX + (window.outerWidth  - w) / 2);
+    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
+    window.open(d.url, 'gd-auth', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+
+    // Listen for the postMessage sent by the callback popup page.
+    window.addEventListener('message', _onDriveAuthMessage);
+  } catch {
+    alert('Network error while starting Google Drive authorization.');
+  }
+}
+
+function _onDriveAuthMessage(event) {
+  if (event.origin !== window.location.origin) return;
+  window.removeEventListener('message', _onDriveAuthMessage);
+
+  const msg = event.data || {};
+  if (msg.type === 'drive-auth-success') {
+    loadDriveStatus();
+  } else if (msg.type === 'drive-auth-error') {
+    alert('Google Drive authorization failed: ' + (msg.error || 'unknown error'));
+  }
+}
+
+/** Clear stored OAuth tokens and root-folder selection. */
+async function disconnectGoogleDrive() {
+  if (!confirm('Disconnect Google Drive? Stored tokens and root folder will be cleared.')) return;
+  try {
+    const r = await fetch('/api/google-drive/auth', { method: 'DELETE' });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Disconnect failed'); return; }
+    loadDriveStatus();
+  } catch {
+    alert('Network error while disconnecting.');
+  }
+}
+
+/**
+ * Load the Google Picker API (lazy) and open a folder-selection dialog.
+ * The user browses their Drive and clicks a folder; the selection is posted
+ * back to the server via POST /api/google-drive/root-folder.
+ */
+async function openDrivePicker() {
+  const pickMsgEl = document.getElementById('drive-pick-msg');
+  if (pickMsgEl) { pickMsgEl.textContent = 'Loading…'; }
+
+  try {
+    const tokenRes = await fetch('/api/google-drive/token');
+    if (!tokenRes.ok) {
+      const d = await tokenRes.json().catch(() => ({}));
+      alert(d.error || 'Could not get Drive access token. Please connect first.');
+      if (pickMsgEl) { pickMsgEl.textContent = ''; }
+      return;
+    }
+    const { accessToken, apiKey } = await tokenRes.json();
+
+    // Load the GAPI script lazily on first use.
+    await _loadGapiScript();
+    if (pickMsgEl) { pickMsgEl.textContent = ''; }
+
+    gapi.load('picker', () => {
+      const view = new google.picker.DocsView()
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(true)
+        .setMimeTypes('application/vnd.google-apps.folder');
+
+      const builder = new google.picker.PickerBuilder()
+        .setTitle('Select root folder for Frog Automation uploads')
+        .addView(view)
+        .setOAuthToken(accessToken)
+        .setCallback(_onPickerCallback);
+
+      if (apiKey) builder.setDeveloperKey(apiKey);
+      builder.build().setVisible(true);
+    });
+  } catch {
+    if (pickMsgEl) { pickMsgEl.textContent = ''; }
+    alert('Network error while opening the folder picker.');
+  }
+}
+
+async function _onPickerCallback(data) {
+  if (data.action !== google.picker.Action.PICKED) return;
+  const folder = data.docs && data.docs[0];
+  if (!folder) return;
+
+  const pickMsgEl = document.getElementById('drive-pick-msg');
+  try {
+    const r = await fetch('/api/google-drive/root-folder', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ folderId: folder.id, folderName: folder.name }),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      if (pickMsgEl) { pickMsgEl.textContent = d.error || 'Save failed'; }
+      return;
+    }
+    loadDriveStatus();
+    if (pickMsgEl) { pickMsgEl.textContent = ''; }
+  } catch {
+    if (pickMsgEl) { pickMsgEl.textContent = 'Network error'; }
+  }
+}
+
+function _loadGapiScript() {
+  return new Promise((resolve, reject) => {
+    if (window.gapi) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://apis.google.com/js/api.js';
+    s.onload  = resolve;
+    s.onerror = () => reject(new Error('Failed to load Google API script'));
+    document.head.appendChild(s);
+  });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

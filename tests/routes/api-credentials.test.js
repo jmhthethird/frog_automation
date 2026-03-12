@@ -29,6 +29,7 @@ describe('GET /api/api-credentials', () => {
     expect(services).toContain('ahrefs');
     expect(services).toContain('google_analytics');
     expect(services).toContain('google_analytics_4');
+    expect(services).toContain('google_drive');
   });
 
   it('each entry has service, enabled, credentials, and fields', async () => {
@@ -55,6 +56,30 @@ describe('GET /api/api-credentials', () => {
     const gsc = res.body.find(s => s.service === 'google_search_console');
     expect(gsc).toBeDefined();
     expect(gsc.fields).toHaveLength(0);
+  });
+
+  it('google_drive has api_key, client_id, and client_secret fields', async () => {
+    const res = await ctx.request.get('/api/api-credentials').expect(200);
+    const gd = res.body.find(s => s.service === 'google_drive');
+    expect(gd).toBeDefined();
+    const names = gd.fields.map(f => f.name);
+    expect(names).toContain('api_key');
+    expect(names).toContain('client_id');
+    expect(names).toContain('client_secret');
+  });
+
+  it('google_drive client_secret field is marked sensitive', async () => {
+    const res = await ctx.request.get('/api/api-credentials').expect(200);
+    const gd = res.body.find(s => s.service === 'google_drive');
+    const secretField = gd.fields.find(f => f.name === 'client_secret');
+    expect(secretField.sensitive).toBe(true);
+  });
+
+  it('google_drive api_key and client_id fields are not marked sensitive', async () => {
+    const res = await ctx.request.get('/api/api-credentials').expect(200);
+    const gd = res.body.find(s => s.service === 'google_drive');
+    expect(gd.fields.find(f => f.name === 'api_key').sensitive).toBeFalsy();
+    expect(gd.fields.find(f => f.name === 'client_id').sensitive).toBeFalsy();
   });
 });
 
