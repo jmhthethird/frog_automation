@@ -50,7 +50,7 @@ router.get('/:id', readLimit, (req, res) => {
     try {
       const content = fs.readFileSync(logFile, 'utf8');
       const lines = content.split('\n');
-      job.log_tail = lines.slice(-100).join('\n');
+      job.log_tail = lines.join('\n');
     } catch {
       job.log_tail = null;
     }
