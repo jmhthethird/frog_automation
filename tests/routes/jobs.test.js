@@ -62,22 +62,9 @@ describe('GET /api/jobs/:id', () => {
     expect(res.body.url).toBe('https://detail-test.example.com');
   });
 
-  it('includes a log_tail field (null when log file does not exist yet)', async () => {
+  it('does not include a log_tail field in job detail response', async () => {
     const res = await ctx.request.get(`/api/jobs/${jobId}`).expect(200);
-    // The job was just queued; the output_dir exists but log file may not.
-    expect(res.body).toHaveProperty('log_tail');
-  });
-
-  it('returns log_tail content when the log file exists', async () => {
-    // Manually create a log file in the job's output directory.
-    const jobRes = await ctx.request.get(`/api/jobs/${jobId}`).expect(200);
-    const outputDir = jobRes.body.output_dir;
-    if (outputDir) {
-      fs.mkdirSync(outputDir, { recursive: true });
-      fs.writeFileSync(path.join(outputDir, 'crawler.log'), 'line1\nline2\n');
-      const res2 = await ctx.request.get(`/api/jobs/${jobId}`).expect(200);
-      expect(res2.body.log_tail).toContain('line1');
-    }
+    expect(res.body).not.toHaveProperty('log_tail');
   });
 
   it('does not include duration_seconds when job has no started_at or completed_at', async () => {
@@ -143,6 +130,51 @@ describe('GET /api/jobs/:id', () => {
     const res = await ctx.request.get(`/api/jobs/${id}`).expect(200);
     expect(res.body.prev_duration_seconds).toBeUndefined();
     expect(res.body.prev_completed_at).toBeUndefined();
+  });
+});
+
+// ─── GET /api/jobs/:id/log ────────────────────────────────────────────────────
+describe('GET /api/jobs/:id/log', () => {
+  let logJobId;
+  let cronJobId;
+
+  beforeAll(async () => {
+    // Regular queued job for the streaming test
+    const res = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://log-stream-test.example.com' })
+      .set('Content-Type', 'application/json');
+    logJobId = res.body.id;
+
+    // Cron job – stays in 'scheduled' state so the crawler never starts
+    // and no crawler.log is created, letting us reliably test the 404 case.
+    const cronRes = await ctx.request.post('/api/jobs')
+      .send({ url: 'https://log-cron-test.example.com', cron_expression: '0 3 * * *' })
+      .set('Content-Type', 'application/json');
+    cronJobId = cronRes.body.id;
+  });
+
+  it('returns 404 when the log file does not exist yet', async () => {
+    const res = await ctx.request.get(`/api/jobs/${cronJobId}/log`).expect(404);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('returns 404 for a non-existent job', async () => {
+    const res = await ctx.request.get('/api/jobs/99999/log').expect(404);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('streams the full log file as plain text', async () => {
+    const jobRes = await ctx.request.get(`/api/jobs/${logJobId}`).expect(200);
+    const outputDir = jobRes.body.output_dir;
+    if (outputDir) {
+      fs.mkdirSync(outputDir, { recursive: true });
+      const logContent = Array.from({ length: 150 }, (_, i) => `line ${i + 1}`).join('\n');
+      fs.writeFileSync(path.join(outputDir, 'crawler.log'), logContent, 'utf8');
+      const res = await ctx.request.get(`/api/jobs/${logJobId}/log`).expect(200);
+      expect(res.headers['content-type']).toMatch(/text\/plain/);
+      expect(res.text).toContain('line 1');
+      expect(res.text).toContain('line 150');
+    }
   });
 });
 

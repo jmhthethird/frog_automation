@@ -45,18 +45,6 @@ router.get('/:id', readLimit, (req, res) => {
 
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
-  // Attach log tail if available
-  if (job.output_dir) {
-    const logFile = path.join(job.output_dir, 'crawler.log');
-    try {
-      const content = fs.readFileSync(logFile, 'utf8');
-      const lines = content.split('\n');
-      job.log_tail = lines.slice(-100).join('\n');
-    } catch {
-      job.log_tail = null;
-    }
-  }
-
   // Compute duration whenever both timestamps are available
   if (job.started_at && job.completed_at) {
     const startMs = new Date(job.started_at + 'Z').getTime();
@@ -79,6 +67,35 @@ router.get('/:id', readLimit, (req, res) => {
   }
 
   res.json(job);
+});
+
+// ─── Stream job log ───────────────────────────────────────────────────────────
+router.get('/:id/log', readLimit, (req, res) => {
+  const job = db.prepare('SELECT id, output_dir FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+
+  if (!job.output_dir) {
+    return res.status(404).json({ error: 'No log available yet' });
+  }
+
+  const logFile = path.join(job.output_dir, 'crawler.log');
+
+  // Safety: ensure logFile is inside DATA_DIR
+  const realLog  = path.resolve(logFile);
+  const realData = path.resolve(DATA_DIR);
+  if (!realLog.startsWith(realData + path.sep)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (!fs.existsSync(logFile)) {
+    return res.status(404).json({ error: 'No log available yet' });
+  }
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  const stream = fs.createReadStream(logFile, { encoding: 'utf8' });
+  stream.on('error', () => res.end());
+  stream.pipe(res);
 });
 
 // ─── Submit job ───────────────────────────────────────────────────────────────

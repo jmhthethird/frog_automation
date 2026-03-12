@@ -90,6 +90,7 @@
   .rel-badge.is-newer { background: #1a2a3a; color: #6ab0f5; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
+  .grid > div:last-child { min-width: 0; }
   @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
   .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ccc; }
@@ -137,7 +138,7 @@
   .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
   .detail-item label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; }
   .detail-item span  { display: block; font-size: 13px; word-break: break-all; }
-  pre#log-output { background: #0a0a0a; color: #c8e6c9; font-family: monospace; font-size: 12px; line-height: 1.6; padding: 12px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; max-height: 350px; overflow-y: auto; }
+  pre#log-output { background: #0a0a0a; color: #c8e6c9; font-family: monospace; font-size: 12px; line-height: 1.6; padding: 12px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; overflow-y: auto; }
   .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; letter-spacing: .05em; }
   hr.sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
   .url-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -171,7 +172,7 @@
   .et-all-item:hover { border-color: var(--blue); color: var(--text); }
   .et-all-item:has(input:checked) { background: var(--blue); color: #000; border-color: var(--blue); font-weight: 600; }
   .et-all-item:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 1px; }
-  .et-all-item .et-key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .et-all-item .et-key { overflow-wrap: break-word; word-break: break-word; white-space: normal; line-height: 1.3; }
   .et-all-item input[type=checkbox] { position: absolute; opacity: 0; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
   .et-cat-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 5px; margin-bottom: 8px; }
   .et-details { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
@@ -359,7 +360,7 @@
             <div id="compare-content"></div>
           </div>
           <hr class="sep"/>
-          <div class="section-label">Log (last 100 lines)</div>
+          <div class="section-label">Log</div>
           <pre id="log-output">Select a job to view logs.</pre>
         </div>
       </div>
@@ -460,6 +461,7 @@ let DEFAULT_TABS; // computed from EXPORT_TABS_DATA after it is defined below
 window.DEFAULT_EXPORT_TABS = null; // set together with DEFAULT_TABS below
 let autoRefreshTimer = null;
 let runningTimer = null;
+let logAbortController = null;
 
 function fmtDuration(seconds) {
   seconds = Math.max(0, seconds);
@@ -744,6 +746,38 @@ async function loadJobs() {
   }
 }
 
+function equalizeExportTabHeights() {
+  const items = document.querySelectorAll('#et-all-grid .et-all-item');
+  let maxH = 0;
+  items.forEach(el => { el.style.height = ''; maxH = Math.max(maxH, el.offsetHeight); });
+  if (maxH > 0) items.forEach(el => { el.style.height = maxH + 'px'; });
+}
+
+async function loadLog(id) {
+  if (logAbortController) logAbortController.abort();
+  logAbortController = new AbortController();
+  const pre = document.getElementById('log-output');
+  try {
+    const r = await fetch(`/api/jobs/${id}/log`, { signal: logAbortController.signal });
+    if (!r.ok) { pre.textContent = '(no log output yet)'; return; }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      pre.textContent = text;
+      pre.scrollTop = pre.scrollHeight;
+    }
+    text += decoder.decode();
+    pre.textContent = text || '(no log output yet)';
+    pre.scrollTop = pre.scrollHeight;
+  } catch (e) {
+    if (e.name !== 'AbortError') pre.textContent = '(no log output yet)';
+  }
+}
+
 async function showJobDetail(id) {
   const panel = document.getElementById('detail-panel');
   panel.style.display = 'block';
@@ -762,6 +796,7 @@ async function showJobDetail(id) {
   clearInterval(autoRefreshTimer);
   clearInterval(runningTimer);
   runningTimer = null;
+  if (logAbortController) { logAbortController.abort(); logAbortController = null; }
 
   const refresh = async () => {
     try {
@@ -808,11 +843,7 @@ async function showJobDetail(id) {
         if (!j.cron_expression) clearInterval(autoRefreshTimer);
       }
 
-      if (j.log_tail !== null && j.log_tail !== undefined) {
-        const pre = document.getElementById('log-output');
-        pre.textContent = j.log_tail || '(no log output yet)';
-        pre.scrollTop = pre.scrollHeight;
-      }
+      loadLog(id);
     } catch {}
   };
 
@@ -1504,6 +1535,7 @@ async function rerunJob(id) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildExportTabsUI();
+requestAnimationFrame(equalizeExportTabHeights);
 document.getElementById('export-tabs').value = DEFAULT_TABS;
 syncUIFromTextarea();
 document.getElementById('export-tabs').addEventListener('input', syncUIFromTextarea);
