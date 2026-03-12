@@ -3,18 +3,49 @@
 const { EventEmitter } = require('events');
 
 /**
- * Simple single-worker FIFO queue.
- * Jobs are processed one at a time.
+ * Concurrent FIFO job queue.
+ * Up to `concurrency` jobs run simultaneously; additional jobs wait in order.
  */
 class Queue extends EventEmitter {
-  constructor(worker) {
+  /**
+   * @param {function} worker              - Async function called with each job id.
+   * @param {object}   [opts]
+   * @param {number}   [opts.concurrency=1]  Max simultaneous workers (≥ 1).
+   */
+  constructor(worker, { concurrency = 1 } = {}) {
     super();
     if (typeof worker !== 'function') {
       throw new TypeError('worker must be a function');
     }
+    if (!Number.isInteger(concurrency) || concurrency < 1) {
+      throw new RangeError('concurrency must be a positive integer');
+    }
     this._worker = worker;
     this._pending = [];
-    this._running = false;
+    this._running = 0;
+    this._concurrency = concurrency;
+  }
+
+  /** Number of jobs currently executing. */
+  get running() { return this._running; }
+
+  /** Number of jobs waiting to start. */
+  get size() { return this._pending.length; }
+
+  /** Current maximum concurrency. */
+  get concurrency() { return this._concurrency; }
+
+  /**
+   * Change the maximum concurrency at runtime.
+   * If raising it allows queued jobs to start immediately, _drain() is called.
+   * @param {number} n
+   */
+  set concurrency(n) {
+    if (!Number.isInteger(n) || n < 1) {
+      throw new RangeError('concurrency must be a positive integer');
+    }
+    this._concurrency = n;
+    this._drain();
   }
 
   /** Add a job id to the queue. */
@@ -24,16 +55,17 @@ class Queue extends EventEmitter {
   }
 
   _drain() {
-    if (this._running || this._pending.length === 0) return;
-    const jobId = this._pending.shift();
-    this._running = true;
-    Promise.resolve()
-      .then(() => this._worker(jobId))
-      .catch((err) => this.emit('error', err, jobId))
-      .finally(() => {
-        this._running = false;
-        setImmediate(() => this._drain());
-      });
+    while (this._running < this._concurrency && this._pending.length > 0) {
+      const jobId = this._pending.shift();
+      this._running++;
+      Promise.resolve()
+        .then(() => this._worker(jobId))
+        .catch((err) => this.emit('error', err, jobId))
+        .finally(() => {
+          this._running--;
+          setImmediate(() => this._drain());
+        });
+    }
   }
 }
 

@@ -21,6 +21,32 @@ const SF_LAUNCHER =
 const runningProcs = new Map();
 
 /**
+ * Spider-config mutex.
+ *
+ * Only one job may hold the spider-config lock at a time, regardless of the
+ * queue's concurrency setting.  This prevents two concurrent jobs from
+ * overwriting and restoring the shared spider.config file simultaneously.
+ *
+ * Jobs that do NOT use a spider config bypass this entirely and can run fully
+ * in parallel.
+ */
+let _configChain = Promise.resolve();
+
+/**
+ * Run `fn` inside the spider-config lock.
+ * The lock is released (and the next waiter unblocked) when `fn` resolves or rejects.
+ * @param {() => Promise<any>} fn
+ * @returns {Promise<any>}
+ */
+function _withSpiderConfigLock(fn) {
+  // Append fn to the chain.  Even if a previous slot rejected we still run fn.
+  const slot = _configChain.then(fn, fn);
+  // Keep the chain alive by swallowing the slot's outcome.
+  _configChain = slot.then(() => {}, () => {});
+  return slot;
+}
+
+/**
  * Map from api_credentials.service to the CLI flag that enables it, plus
  * any extra credential flags to append.
  *
@@ -166,12 +192,22 @@ async function runJob(jobId) {
   const logStream = fs.createWriteStream(null, { fd: logFd, autoClose: true });
   logStream.on('error', (err) => console.error(`[crawler] logStream error (job ${jobId}):`, err));
 
-  let swizzleState = null;
   try {
+    // When a spider config is selected, the swap must be held for the entire
+    // duration of the crawl to prevent concurrent jobs from clobbering the
+    // shared spider.config file.  Jobs without a spider config run freely.
     if (job.spider_config_path) {
-      swizzleState = swapInSpiderConfig(job.spider_config_path, logStream);
+      await _withSpiderConfigLock(async () => {
+        const swizzleState = swapInSpiderConfig(job.spider_config_path, logStream);
+        try {
+          await spawnCrawl(job, outputDir, logStream);
+        } finally {
+          restoreSpiderConfig(swizzleState, logStream);
+        }
+      });
+    } else {
+      await spawnCrawl(job, outputDir, logStream);
     }
-    await spawnCrawl(job, outputDir, logStream);
     const completedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const folderName = buildJobLabel(job.url, completedAt, jobId);
     const zipPath = await zipOutput(outputDir, jobId, folderName);
@@ -221,7 +257,6 @@ async function runJob(jobId) {
         .run(errMsg, jobId);
     }
   } finally {
-    restoreSpiderConfig(swizzleState, logStream);
     logStream.end();
     // For recurring cron jobs, reset back to 'scheduled' so the next tick can run.
     if (job.cron_expression) {

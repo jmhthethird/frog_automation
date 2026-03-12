@@ -78,6 +78,16 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
+// Seed default settings.
+db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('queue_concurrency', '1')").run();
+
 // Seed a row for every known integration so GET always returns the full list.
 const API_SERVICES = [
   'google_search_console',

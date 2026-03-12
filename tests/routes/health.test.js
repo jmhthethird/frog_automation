@@ -20,6 +20,9 @@ describe('GET /api/health', () => {
       launcher: expect.any(String),
       node_version: expect.any(String),
       uptime_seconds: expect.any(Number),
+      queue_concurrency: expect.any(Number),
+      queue_running: expect.any(Number),
+      queue_pending: expect.any(Number),
     });
   });
 

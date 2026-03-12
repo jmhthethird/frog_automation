@@ -16,7 +16,9 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Job queue ────────────────────────────────────────────────────────────────
-const queue = new Queue(runJob);
+const concurrencySetting = db.prepare("SELECT value FROM settings WHERE key = 'queue_concurrency'").get();
+const initialConcurrency = parseInt(concurrencySetting && concurrencySetting.value, 10) || 1;
+const queue = new Queue(runJob, { concurrency: initialConcurrency });
 queue.on('error', (err, jobId) => {
   console.error(`[queue] Unhandled error for job ${jobId}:`, err);
 });
@@ -33,6 +35,7 @@ app.use('/api/spider-configs', require('./src/routes/spider-configs').router);
 app.use('/api/health', require('./src/routes/health'));
 app.use('/api/update', require('./src/routes/update'));
 app.use('/api/api-credentials', require('./src/routes/api-credentials'));
+app.use('/api/settings', require('./src/routes/settings'));
 
 // ─── startServer ─────────────────────────────────────────────────────────────
 /**

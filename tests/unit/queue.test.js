@@ -13,10 +13,20 @@ describe('Queue – constructor', () => {
   it('accepts a function as worker', () => {
     expect(() => new Queue(() => {})).not.toThrow();
   });
+
+  it('throws RangeError when concurrency < 1', () => {
+    expect(() => new Queue(() => {}, { concurrency: 0 })).toThrow(RangeError);
+    expect(() => new Queue(() => {}, { concurrency: -1 })).toThrow(RangeError);
+    expect(() => new Queue(() => {}, { concurrency: 1.5 })).toThrow(RangeError);
+  });
+
+  it('accepts a valid concurrency option', () => {
+    expect(() => new Queue(() => {}, { concurrency: 3 })).not.toThrow();
+  });
 });
 
 // ─── push / _drain ────────────────────────────────────────────────────────────
-describe('Queue – processing', () => {
+describe('Queue – processing (concurrency=1)', () => {
   it('calls the worker with the pushed job id', async () => {
     const called = [];
     const q = new Queue(async (id) => called.push(id));
@@ -97,6 +107,107 @@ describe('Queue – processing', () => {
   });
 });
 
+// ─── Concurrent processing ────────────────────────────────────────────────────
+describe('Queue – concurrency > 1', () => {
+  it('exposes running and size getters', async () => {
+    let resolveJob;
+    const q = new Queue(async () => {
+      await new Promise((r) => { resolveJob = r; });
+    }, { concurrency: 2 });
+
+    expect(q.running).toBe(0);
+    expect(q.size).toBe(0);
+
+    q.push(1);
+    q.push(2);
+    q.push(3);
+    await settle(20);
+
+    expect(q.running).toBe(2);  // 2 running
+    expect(q.size).toBe(1);     // 1 waiting
+
+    resolveJob();
+    await settle(50);
+    resolveJob();
+    await settle(50);
+    resolveJob();
+    await settle(50);
+  });
+
+  it('runs up to concurrency jobs simultaneously', async () => {
+    let concurrentCount = 0;
+    let maxConcurrent = 0;
+
+    const q = new Queue(async () => {
+      concurrentCount++;
+      maxConcurrent = Math.max(maxConcurrent, concurrentCount);
+      await delay(20);
+      concurrentCount--;
+    }, { concurrency: 3 });
+
+    q.push(1);
+    q.push(2);
+    q.push(3);
+    q.push(4);
+    q.push(5);
+    await settle(300);
+
+    expect(maxConcurrent).toBe(3);
+  });
+
+  it('processes all jobs even when concurrency > total jobs', async () => {
+    const completed = [];
+    const q = new Queue(async (id) => {
+      await delay(5);
+      completed.push(id);
+    }, { concurrency: 5 });
+
+    q.push(1);
+    q.push(2);
+    await settle(100);
+
+    expect(completed).toHaveLength(2);
+    expect(completed).toContain(1);
+    expect(completed).toContain(2);
+  });
+
+  it('concurrency setter starts queued jobs immediately', async () => {
+    const started = [];
+    let blockAll = true;
+    const q = new Queue(async (id) => {
+      started.push(id);
+      while (blockAll) await delay(5);
+    }, { concurrency: 1 });
+
+    q.push(1);
+    q.push(2);
+    q.push(3);
+    await settle(30);
+
+    expect(started).toHaveLength(1);  // only 1 running with concurrency=1
+
+    q.concurrency = 3;  // raise the limit
+    await settle(30);
+
+    expect(started).toHaveLength(3);  // all 3 now running
+
+    blockAll = false;
+    await settle(50);
+  });
+
+  it('concurrency setter throws on invalid value', () => {
+    const q = new Queue(async () => {});
+    expect(() => { q.concurrency = 0; }).toThrow(RangeError);
+    expect(() => { q.concurrency = -1; }).toThrow(RangeError);
+    expect(() => { q.concurrency = 1.5; }).toThrow(RangeError);
+  });
+
+  it('exposes concurrency getter', () => {
+    const q = new Queue(async () => {}, { concurrency: 4 });
+    expect(q.concurrency).toBe(4);
+  });
+});
+
 // ─── Error handling ───────────────────────────────────────────────────────────
 describe('Queue – error handling', () => {
   it('emits "error" event when the worker throws synchronously', async () => {
@@ -152,6 +263,25 @@ describe('Queue – error handling', () => {
     await settle(150);
 
     expect(errors).toHaveLength(2);
+  });
+
+  it('continues processing after a worker error under concurrent load', async () => {
+    const completed = [];
+    let calls = 0;
+    const q = new Queue(async (id) => {
+      calls++;
+      if (calls <= 2) throw new Error('fails');
+      completed.push(id);
+    }, { concurrency: 2 });
+    q.on('error', () => {});
+
+    q.push(1);
+    q.push(2);
+    q.push(3);
+    q.push(4);
+    await settle(300);
+
+    expect(completed).toEqual(expect.arrayContaining([3, 4]));
   });
 });
 

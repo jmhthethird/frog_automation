@@ -64,6 +64,19 @@
   #api-settings-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
   #api-settings-btn:hover { color: var(--text); border-color: var(--text-dim); }
   #api-settings-btn.has-enabled { border-color: var(--blue); color: var(--blue); }
+  /* Queue settings drawer */
+  #queue-drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: none; }
+  #queue-drawer-backdrop.open { display: block; }
+  #queue-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 360px; max-width: 100vw; background: var(--surface); border-left: 1px solid var(--border); z-index: 201; transform: translateX(100%); transition: transform .25s ease; overflow-y: auto; display: flex; flex-direction: column; }
+  #queue-drawer.open { transform: translateX(0); }
+  #queue-drawer-header { padding: 16px 20px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 1; }
+  #queue-drawer-header h2 { font-size: 15px; font-weight: 700; flex: 1; }
+  #queue-drawer-close { background: transparent; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  #queue-drawer-close:hover { color: var(--text); background: #ffffff12; }
+  #queue-drawer-body { padding: 16px; flex: 1; }
+  #queue-settings-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
+  #queue-settings-btn:hover { color: var(--text); border-color: var(--text-dim); }
+  #queue-settings-btn.concurrency-gt1 { border-color: var(--orange); color: var(--orange); }
   /* Update notification panel */
   #update-panel { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; display: none; align-items: center; gap: 14px; flex-wrap: wrap; }
   #update-panel.visible { display: flex; }
@@ -227,6 +240,7 @@
   <div id="version-badge">v…</div>
   <button id="update-btn" onclick="checkForUpdates()" title="Check for updates">↻ Updates</button>
   <button id="api-settings-btn" onclick="openApiDrawer()" title="API Integration settings">🔑 API Settings</button>
+  <button id="queue-settings-btn" onclick="openQueueDrawer()" title="Queue settings">⚡ Queue</button>
   <div id="health-badge">checking…</div>
 </header>
 <!-- API Settings Drawer -->
@@ -243,6 +257,44 @@
       <strong>Screaming Frog → Configuration → API Access</strong>.
     </p>
     <div id="api-services-list"><em style="color:var(--text-dim);">Loading…</em></div>
+  </div>
+</div>
+<!-- Queue Settings Drawer -->
+<div id="queue-drawer-backdrop" onclick="closeQueueDrawer()"></div>
+<div id="queue-drawer" role="dialog" aria-modal="true" aria-label="Queue Settings">
+  <div id="queue-drawer-header">
+    <h2>⚡ Queue Settings</h2>
+    <button id="queue-drawer-close" onclick="closeQueueDrawer()" title="Close" aria-label="Close">✕</button>
+  </div>
+  <div id="queue-drawer-body">
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.6;">
+      Control how many crawl jobs can run <strong>at the same time</strong>.
+      Screaming Frog's headless CLI supports multiple simultaneous instances, each
+      writing to its own output folder.
+    </p>
+    <div style="background:#0f0f2a;border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;">
+      <label style="font-size:12px;color:var(--text-dim);margin-bottom:6px;display:block;">
+        Concurrent crawls (1 – 8)
+      </label>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <input id="queue-concurrency-input" type="number" min="1" max="8" value="1"
+               style="width:70px;padding:7px 9px;background:#0a0a1e;border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:14px;outline:none;"
+               oninput="this.style.borderColor='var(--border)'" />
+        <button class="btn" onclick="saveQueueConcurrency()" style="font-size:12px;padding:6px 14px;">Save</button>
+        <span id="queue-concurrency-msg" style="font-size:11px;display:none;padding:3px 8px;border-radius:4px;"></span>
+      </div>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.6;">
+        ⚠ <strong>Spider Config note:</strong> When two jobs both use a spider config, they
+        are automatically serialised — only one may hold the shared <code>spider.config</code>
+        file at a time. Jobs without a spider config always run fully in parallel.
+      </p>
+    </div>
+    <div style="background:#0f0f2a;border:1px solid var(--border);border-radius:6px;padding:14px;">
+      <p style="font-size:12px;color:var(--text-dim);line-height:1.6;margin:0;">
+        <strong style="color:var(--text);">Queue status</strong><br/>
+        <span id="queue-status-text" style="font-family:monospace;">—</span>
+      </p>
+    </div>
   </div>
 </div>
 <!-- Update notification panel (shown when an update is available or in-progress) -->
@@ -1575,6 +1627,106 @@ async function rerunJob(id) {
   }
 }
 
+// ── Queue Settings Drawer ─────────────────────────────────────────────────────
+function openQueueDrawer() {
+  document.getElementById('queue-drawer').classList.add('open');
+  document.getElementById('queue-drawer-backdrop').classList.add('open');
+  _loadQueueSettings();
+}
+
+function closeQueueDrawer() {
+  document.getElementById('queue-drawer').classList.remove('open');
+  document.getElementById('queue-drawer-backdrop').classList.remove('open');
+}
+
+async function _loadQueueSettings() {
+  try {
+    const [settingsRes, healthRes] = await Promise.all([
+      fetch('/api/settings'),
+      fetch('/api/health'),
+    ]);
+    if (settingsRes.ok) {
+      const s = await settingsRes.json();
+      const inp = document.getElementById('queue-concurrency-input');
+      if (inp) inp.value = s.queue_concurrency || '1';
+      _updateQueueSettingsBtn(parseInt(s.queue_concurrency, 10) || 1);
+    }
+    if (healthRes.ok) {
+      const h = await healthRes.json();
+      const statusEl = document.getElementById('queue-status-text');
+      if (statusEl) {
+        statusEl.textContent =
+          `concurrency: ${h.queue_concurrency} | running: ${h.queue_running} | pending: ${h.queue_pending}`;
+      }
+    }
+  } catch { /* non-critical */ }
+}
+
+async function saveQueueConcurrency() {
+  const inp = document.getElementById('queue-concurrency-input');
+  const msgEl = document.getElementById('queue-concurrency-msg');
+  const n = parseInt(inp && inp.value, 10);
+  if (!n || n < 1 || n > 8) {
+    inp.style.borderColor = 'var(--red)';
+    return;
+  }
+  try {
+    const r = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ queue_concurrency: n }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      if (msgEl) {
+        msgEl.textContent = (d.errors && d.errors.queue_concurrency) || 'Error';
+        msgEl.style.background = '#4a1a1a';
+        msgEl.style.color = 'var(--red)';
+        msgEl.style.display = 'inline-block';
+        setTimeout(() => { if (msgEl) msgEl.style.display = 'none'; }, 3000);
+      }
+      return;
+    }
+    _updateQueueSettingsBtn(n);
+    if (msgEl) {
+      msgEl.textContent = '✓ Saved';
+      msgEl.style.background = '#1a4a2e';
+      msgEl.style.color = 'var(--green)';
+      msgEl.style.display = 'inline-block';
+      setTimeout(() => { if (msgEl) msgEl.style.display = 'none'; }, 3000);
+    }
+    // Refresh queue status
+    _loadQueueSettings();
+  } catch {
+    if (msgEl) {
+      msgEl.textContent = 'Network error';
+      msgEl.style.background = '#4a1a1a';
+      msgEl.style.color = 'var(--red)';
+      msgEl.style.display = 'inline-block';
+      setTimeout(() => { if (msgEl) msgEl.style.display = 'none'; }, 3000);
+    }
+  }
+}
+
+function _updateQueueSettingsBtn(concurrency) {
+  const btn = document.getElementById('queue-settings-btn');
+  if (!btn) return;
+  btn.classList.toggle('concurrency-gt1', concurrency > 1);
+  btn.title = concurrency > 1
+    ? `Queue: ${concurrency} concurrent crawls`
+    : 'Queue settings (1 crawl at a time)';
+}
+
+async function _initQueueSettingsBtn() {
+  try {
+    const r = await fetch('/api/settings');
+    if (r.ok) {
+      const s = await r.json();
+      _updateQueueSettingsBtn(parseInt(s.queue_concurrency, 10) || 1);
+    }
+  } catch { /* non-critical */ }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildExportTabsUI();
 requestAnimationFrame(equalizeExportTabHeights);
@@ -1586,6 +1738,7 @@ loadProfiles();
 loadSpiderConfigs();
 loadJobs();
 _initApiSettingsBtn();
+_initQueueSettingsBtn();
 _initUpdateCheck();
 
 // ── Cron Modal ────────────────────────────────────────────────────────────────
