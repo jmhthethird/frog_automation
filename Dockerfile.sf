@@ -1,0 +1,51 @@
+# Dockerfile.sf
+#
+# Docker image for the Screaming Frog SEO Spider headless CLI.
+# Each crawl job that uses this image runs in its own container, giving it a
+# completely isolated filesystem (including ~/.ScreamingFrogSEOSpider/) so that
+# multiple crawls can run simultaneously without sharing state or lock files.
+#
+# Build:
+#   docker build -f Dockerfile.sf -t frog-automation-sf:latest .
+#   SF_VERSION=23.3 docker build -f Dockerfile.sf --build-arg SF_VERSION=23.3 \
+#     -t frog-automation-sf:23.3 .
+#
+# The EULA is pre-accepted so the binary runs headlessly in free mode
+# (500-URL limit per crawl) without any licence file.
+#
+# To enable unlimited crawling at run time, set:
+#   SF_LICENSE_USERNAME=<email> SF_LICENSE_KEY=<key>
+# and pass them to 'docker run' via -e flags (see scripts/build-sf-docker.sh).
+
+FROM debian:bookworm-slim
+
+ARG SF_VERSION=23.3
+ENV SF_VERSION=${SF_VERSION}
+
+# Install curl (for the download) plus the runtime libraries that the SF .deb
+# installer's post-install hooks try to satisfy.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install Screaming Frog SEO Spider.
+# apt-get install -f repairs any dependency issues left behind by dpkg.
+RUN curl -fsSL \
+        "https://download.screamingfrog.co.uk/products/seo-spider/screamingfrogseospider_${SF_VERSION}_all.deb" \
+        -o /tmp/sf.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends /tmp/sf.deb \
+    && rm -f /tmp/sf.deb \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pre-accept the EULA so the binary can run headlessly without interaction.
+# (Free mode: up to 500 URLs per crawl.  Licensed mode is enabled at runtime
+#  by writing a licence.txt when SF_LICENSE_USERNAME / SF_LICENSE_KEY are set.)
+RUN mkdir -p /root/.ScreamingFrogSEOSpider \
+    && printf 'eula.accepted=11\n' > /root/.ScreamingFrogSEOSpider/spider.config
+
+# Entrypoint is the SF launcher so this image can be used as a drop-in
+# replacement for running the launcher directly.
+ENTRYPOINT ["/usr/bin/ScreamingFrogSEOSpiderLauncher"]

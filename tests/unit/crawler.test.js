@@ -701,6 +701,174 @@ describe('runJob()', () => {
   });
 });
 
+// ─── detectCrawlerMode() ─────────────────────────────────────────────────────
+describe('detectCrawlerMode()', () => {
+  it('returns mode: "direct" when SF_DOCKER_IMAGE is not set', () => {
+    delete process.env.SF_DOCKER_IMAGE;
+    jest.resetModules();
+    const c = require('../../src/crawler');
+    const result = c.detectCrawlerMode();
+    expect(result.mode).toBe('direct');
+    expect(result.docker_image).toBeNull();
+    expect(typeof result.launcher).toBe('string');
+  });
+
+  it('returns mode: "docker" and the image name when SF_DOCKER_IMAGE is set', () => {
+    process.env.SF_DOCKER_IMAGE = 'frog-automation-sf:latest';
+    jest.resetModules();
+    const c = require('../../src/crawler');
+    const result = c.detectCrawlerMode();
+    expect(result.mode).toBe('docker');
+    expect(result.docker_image).toBe('frog-automation-sf:latest');
+    delete process.env.SF_DOCKER_IMAGE;
+  });
+});
+
+// ─── buildDockerArgs() ────────────────────────────────────────────────────────
+describe('buildDockerArgs()', () => {
+  const dockerImage = 'frog-automation-sf:test';
+
+  it('starts with docker run --rm --network=host', () => {
+    const job = { profile_path: null, spider_config_path: null };
+    const args = crawler.buildDockerArgs(job, '/output/dir', ['--headless', '--crawl', 'http://x.com'], dockerImage);
+    expect(args[0]).toBe('run');
+    expect(args).toContain('--rm');
+    expect(args).toContain('--network=host');
+  });
+
+  it('mounts the output directory with the same path', () => {
+    const job = { profile_path: null, spider_config_path: null };
+    const outputDir = '/data/jobs/99';
+    const args = crawler.buildDockerArgs(job, outputDir, [], dockerImage);
+    expect(args).toContain('-v');
+    const vIdx = args.indexOf('-v');
+    expect(args[vIdx + 1]).toBe(`${outputDir}:${outputDir}`);
+  });
+
+  it('includes the docker image as the last non-sf arg before sf args', () => {
+    const job = { profile_path: null, spider_config_path: null };
+    const sfArgs = ['--headless', '--crawl', 'http://x.com'];
+    const args = crawler.buildDockerArgs(job, '/out', sfArgs, dockerImage);
+    // Image name should appear before the SF args
+    const imgIdx = args.indexOf(dockerImage);
+    expect(imgIdx).toBeGreaterThan(-1);
+    expect(args.slice(imgIdx + 1)).toEqual(sfArgs);
+  });
+
+  it('mounts a profile file read-only when profile_path is set', () => {
+    const profilePath = '/data/profiles/my.seospiderconfig';
+    const job = { profile_path: profilePath, spider_config_path: null };
+    const args = crawler.buildDockerArgs(job, '/out', [], dockerImage);
+    expect(args).toContain(`${profilePath}:${profilePath}:ro`);
+  });
+
+  it('does not add a profile mount when profile_path is null', () => {
+    const job = { profile_path: null, spider_config_path: null };
+    const args = crawler.buildDockerArgs(job, '/out', [], dockerImage);
+    expect(args.join(' ')).not.toContain(':ro');
+  });
+
+  it('mounts spider config to the container SF config path when spider_config_path is set', () => {
+    const scPath = '/data/spider_configs/my.config';
+    const job = { profile_path: null, spider_config_path: scPath };
+    const args = crawler.buildDockerArgs(job, '/out', [], dockerImage);
+    expect(args).toContain(`${scPath}:/root/.ScreamingFrogSEOSpider/spider.config:ro`);
+  });
+});
+
+// ─── runJob() – Docker mode ───────────────────────────────────────────────────
+describe('runJob() – Docker mode', () => {
+  beforeEach(() => {
+    // SF_DOCKER_IMAGE is captured as a module-level constant, so we must set the
+    // env var before resetting modules and re-requiring the crawler.
+    process.env.SF_DOCKER_IMAGE = 'frog-automation-sf:test';
+
+    jest.resetModules();
+
+    cp = require('child_process');
+    jest.spyOn(cp, 'spawn');
+
+    const dbMod = require('../../src/db');
+    db = dbMod.db;
+    crawler = require('../../src/crawler');
+
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    delete process.env.SF_DOCKER_IMAGE;
+  });
+
+  it('spawns "docker" instead of the SF launcher', async () => {
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0, 'crawl ok', '');
+
+    await crawler.runJob(jobId);
+
+    const spawnCall = cp.spawn.mock.calls[0];
+    expect(spawnCall[0]).toBe('docker');
+  });
+
+  it('docker run args include --rm, --network=host, and the image name', async () => {
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    const dockerArgs = cp.spawn.mock.calls[0][1];
+    expect(dockerArgs[0]).toBe('run');
+    expect(dockerArgs).toContain('--rm');
+    expect(dockerArgs).toContain('--network=host');
+    expect(dockerArgs).toContain('frog-automation-sf:test');
+  });
+
+  it('does NOT call swapInSpiderConfig when a spider config is set (Docker handles isolation)', async () => {
+    // Create a fake SF data dir to verify it is NOT written to.
+    const fakeSfDir = path.join(dataDir, 'docker-sf-dir');
+    fs.mkdirSync(fakeSfDir, { recursive: true });
+    const liveConfigPath = path.join(fakeSfDir, 'spider.config');
+    const originalContent = 'eula.accepted=11';
+    fs.writeFileSync(liveConfigPath, originalContent);
+    process.env.SF_DATA_DIR = fakeSfDir;
+
+    const scPath = path.join(dataDir, 'docker-sc.config');
+    fs.writeFileSync(scPath, 'DOCKER_CONFIG');
+    const scResult = db.prepare(
+      "INSERT INTO spider_configs (name, filename, filepath, is_local) VALUES ('docker-sc', 'sc.config', ?, 0)"
+    ).run(scPath);
+
+    const jobId = insertJob(db, dataDir, { spider_config_id: scResult.lastInsertRowid });
+    fakeProcExit(cp, 0);
+
+    await crawler.runJob(jobId);
+
+    // The live spider.config on the host must be untouched.
+    expect(fs.readFileSync(liveConfigPath, 'utf8')).toBe(originalContent);
+
+    delete process.env.SF_DATA_DIR;
+  });
+
+  it('marks job as completed when Docker exits with code 0', async () => {
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 0, 'docker crawl complete', '');
+
+    await crawler.runJob(jobId);
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('completed');
+  });
+
+  it('marks job as failed when Docker exits with non-zero code', async () => {
+    const jobId = insertJob(db, dataDir);
+    fakeProcExit(cp, 1);
+
+    await crawler.runJob(jobId);
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('failed');
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Insert a minimal job row and return its id. */

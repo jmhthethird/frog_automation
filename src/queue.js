@@ -55,6 +55,10 @@ class Queue extends EventEmitter {
   }
 
   _drain() {
+    // JavaScript is single-threaded, so this while-loop is atomic: the condition
+    // is evaluated and `_running` is incremented before any microtask can run.
+    // Concurrent completions schedule separate setImmediate callbacks that each
+    // run on their own event-loop tick — they never interleave with this loop.
     while (this._running < this._concurrency && this._pending.length > 0) {
       const jobId = this._pending.shift();
       this._running++;

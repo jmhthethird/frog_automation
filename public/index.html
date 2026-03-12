@@ -269,9 +269,14 @@
   <div id="queue-drawer-body">
     <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.6;">
       Control how many crawl jobs can run <strong>at the same time</strong>.
-      Screaming Frog's headless CLI supports multiple simultaneous instances, each
-      writing to its own output folder.
+      Raising this above 1 requires <strong>Docker mode</strong> — each crawl must run in its own
+      isolated container so that multiple Screaming Frog instances never share the same
+      <code>~/.ScreamingFrogSEOSpider/</code> directory.
     </p>
+    <div id="crawler-mode-card" style="background:#0f0f2a;border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.6;">
+      <strong style="color:var(--text);">Crawler mode</strong><br/>
+      <span id="crawler-mode-text" style="color:var(--text-dim);">—</span>
+    </div>
     <div style="background:#0f0f2a;border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;">
       <label style="font-size:12px;color:var(--text-dim);margin-bottom:6px;display:block;">
         Concurrent crawls (1 – 8)
@@ -284,9 +289,12 @@
         <span id="queue-concurrency-msg" style="font-size:11px;display:none;padding:3px 8px;border-radius:4px;"></span>
       </div>
       <p style="font-size:11px;color:var(--text-dim);margin-top:10px;line-height:1.6;">
-        ⚠ <strong>Spider Config note:</strong> When two jobs both use a spider config, they
-        are automatically serialised — only one may hold the shared <code>spider.config</code>
-        file at a time. Jobs without a spider config always run fully in parallel.
+        <span id="spider-config-note">
+          ⚠ <strong>Direct-mode note:</strong> When <em>SF_DOCKER_IMAGE</em> is not set, jobs that
+          use a spider config are automatically serialised — only one may hold the shared
+          <code>spider.config</code> file at a time. In Docker mode each container is fully
+          isolated, so this restriction does not apply.
+        </span>
       </p>
     </div>
     <div style="background:#0f0f2a;border:1px solid var(--border);border-radius:6px;padding:14px;">
@@ -1657,6 +1665,21 @@ async function _loadQueueSettings() {
       if (statusEl) {
         statusEl.textContent =
           `concurrency: ${h.queue_concurrency} | running: ${h.queue_running} | pending: ${h.queue_pending}`;
+      }
+      const modeEl = document.getElementById('crawler-mode-text');
+      if (modeEl) {
+        if (h.crawler_mode === 'docker') {
+          modeEl.innerHTML =
+            `🐳 <strong style="color:var(--green);">Docker</strong> — ` +
+            `each crawl runs in an isolated container` +
+            (h.docker_image ? ` (<code style="font-size:10px;">${escHtml(h.docker_image)}</code>)` : '') +
+            `. Multiple concurrent crawls are fully supported.`;
+        } else {
+          modeEl.innerHTML =
+            `⚙️ <strong style="color:var(--orange);">Direct</strong> — SF runs on the host. ` +
+            `Set <code style="font-size:10px;">SF_DOCKER_IMAGE</code> and restart to enable ` +
+            `containerised concurrent crawling.`;
+        }
       }
     }
   } catch { /* non-critical */ }

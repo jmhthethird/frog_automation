@@ -1,17 +1,19 @@
 'use strict';
 
 const express = require('express');
-const { detectLauncher } = require('../crawler');
+const { detectCrawlerMode } = require('../crawler');
 
 const router = express.Router();
 
 router.get('/', (req, res) => {
-  const launcher = detectLauncher();
+  const crawlerMode = detectCrawlerMode();
   const queue = req.app.get('queue');
   res.json({
     status: 'ok',
-    launcher: launcher.path,
-    launcher_found: launcher.found,
+    crawler_mode: crawlerMode.mode,
+    docker_image: crawlerMode.docker_image,
+    launcher: crawlerMode.launcher,
+    launcher_found: crawlerMode.launcher_found,
     node_version: process.version,
     uptime_seconds: Math.floor(process.uptime()),
     queue_concurrency: queue ? queue.concurrency : 1,

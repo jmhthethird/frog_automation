@@ -16,6 +16,7 @@ describe('GET /api/health', () => {
 
     expect(res.body).toMatchObject({
       status: 'ok',
+      crawler_mode: expect.any(String),
       launcher_found: expect.any(Boolean),
       launcher: expect.any(String),
       node_version: expect.any(String),
@@ -24,6 +25,14 @@ describe('GET /api/health', () => {
       queue_running: expect.any(Number),
       queue_pending: expect.any(Number),
     });
+  });
+
+  it('crawler_mode is "direct" when SF_DOCKER_IMAGE is not set', async () => {
+    // SF_DOCKER_IMAGE is captured as a module-level constant at module load time.
+    // makeApp() creates the app without SF_DOCKER_IMAGE set, so crawler_mode is 'direct'.
+    const res = await ctx.request.get('/api/health').expect(200);
+    expect(res.body.crawler_mode).toBe('direct');
+    expect(res.body.docker_image).toBeNull();
   });
 
   it('launcher_found is false when the SF binary is absent (CI environment)', async () => {

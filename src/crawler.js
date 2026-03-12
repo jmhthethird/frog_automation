@@ -17,6 +17,16 @@ const SF_LAUNCHER =
     ? '/usr/bin/ScreamingFrogSEOSpiderLauncher'
     : '/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher');
 
+/**
+ * When set, crawls run inside isolated Docker containers using this image name.
+ * Each container gets its own filesystem (including ~/.ScreamingFrogSEOSpider/)
+ * so multiple concurrent crawls never share state or lock files.
+ *
+ * Build the image with: bash scripts/build-sf-docker.sh
+ * Example value: "frog-automation-sf:latest"
+ */
+const SF_DOCKER_IMAGE = process.env.SF_DOCKER_IMAGE || null;
+
 /** Map from jobId (number) → ChildProcess for currently running crawl jobs. */
 const runningProcs = new Map();
 
@@ -193,10 +203,11 @@ async function runJob(jobId) {
   logStream.on('error', (err) => console.error(`[crawler] logStream error (job ${jobId}):`, err));
 
   try {
-    // When a spider config is selected, the swap must be held for the entire
-    // duration of the crawl to prevent concurrent jobs from clobbering the
-    // shared spider.config file.  Jobs without a spider config run freely.
-    if (job.spider_config_path) {
+    // In Docker mode each container has its own isolated ~/.ScreamingFrogSEOSpider/
+    // so the host-side spider.config swizzle is neither needed nor safe.
+    // In direct mode, the swizzle must be serialised to prevent concurrent jobs
+    // from clobbering the single shared spider.config on the host filesystem.
+    if (job.spider_config_path && !SF_DOCKER_IMAGE) {
       await _withSpiderConfigLock(async () => {
         const swizzleState = swapInSpiderConfig(job.spider_config_path, logStream);
         try {
@@ -266,6 +277,47 @@ async function runJob(jobId) {
 }
 
 /**
+ * Build the `docker run` argument list for a containerised crawl.
+ *
+ * The output directory is bind-mounted with an identical path inside the
+ * container, so every SF `--output-folder` argument can be passed unchanged.
+ * Profile and spider-config files are also bind-mounted read-only if present.
+ *
+ * `--network=host` gives the container the same network stack as the host,
+ * which lets SF reach URLs on 127.0.0.1 (integration-test sites, LAN servers,
+ * etc.) without any URL rewriting.
+ *
+ * @param {object} job
+ * @param {string} outputDir
+ * @param {string[]} sfArgs  - The raw SF CLI arguments (already assembled).
+ * @param {string} dockerImage
+ * @returns {string[]}
+ */
+function buildDockerArgs(job, outputDir, sfArgs, dockerImage) {
+  const args = [
+    'run',
+    '--rm',
+    '--network=host',
+    // Mount the output directory with the same path so SF can write directly.
+    '-v', `${outputDir}:${outputDir}`,
+  ];
+
+  // Mount the profile (.seospiderconfig) so the --config path resolves inside.
+  if (job.profile_path) {
+    args.push('-v', `${job.profile_path}:${job.profile_path}:ro`);
+  }
+
+  // Mount the spider config directly into the container's SF config directory.
+  // The container is isolated, so no host swizzle or mutex is needed.
+  if (job.spider_config_path) {
+    args.push('-v', `${job.spider_config_path}:/root/.ScreamingFrogSEOSpider/spider.config:ro`);
+  }
+
+  args.push(dockerImage, ...sfArgs);
+  return args;
+}
+
+/**
  * Spawn the Screaming Frog CLI process.
  */
 function spawnCrawl(job, outputDir, logStream) {
@@ -314,13 +366,24 @@ function spawnCrawl(job, outputDir, logStream) {
       }
     };
 
-    logStream.write(`[INFO] Spawning: ${SF_LAUNCHER} ${args.map(a => JSON.stringify(a)).join(' ')}\n`);
-
+    // In Docker mode, wrap the SF invocation in a `docker run` command so that
+    // each crawl gets its own isolated container (and ~/.ScreamingFrogSEOSpider/).
     let proc;
-    try {
-      proc = spawn(SF_LAUNCHER, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (spawnErr) {
-      return reject(new Error(`Failed to spawn crawler: ${spawnErr.message}`));
+    if (SF_DOCKER_IMAGE) {
+      const dockerArgs = buildDockerArgs(job, outputDir, args, SF_DOCKER_IMAGE);
+      logStream.write(`[INFO] Spawning (Docker): docker ${dockerArgs.map(a => JSON.stringify(a)).join(' ')}\n`);
+      try {
+        proc = spawn('docker', dockerArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (spawnErr) {
+        return reject(new Error(`Failed to spawn Docker container: ${spawnErr.message}`));
+      }
+    } else {
+      logStream.write(`[INFO] Spawning: ${SF_LAUNCHER} ${args.map(a => JSON.stringify(a)).join(' ')}\n`);
+      try {
+        proc = spawn(SF_LAUNCHER, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (spawnErr) {
+        return reject(new Error(`Failed to spawn crawler: ${spawnErr.message}`));
+      }
     }
 
     runningProcs.set(job.id, proc);
@@ -459,4 +522,19 @@ function detectLauncher() {
   }
 }
 
-module.exports = { runJob, stopJob, detectLauncher, zipOutput, findSeospiderFile, spawnCompare, swapInSpiderConfig, restoreSpiderConfig, SF_LAUNCHER };
+/**
+ * Describe the current crawler mode.
+ * In Docker mode (SF_DOCKER_IMAGE is set) each crawl runs in an isolated container.
+ * In direct mode the SF launcher is invoked directly on the host.
+ *
+ * @returns {{ mode: 'docker'|'direct', docker_image: string|null, launcher: string, launcher_found: boolean }}
+ */
+function detectCrawlerMode() {
+  const { path: launcher, found: launcher_found } = detectLauncher();
+  if (SF_DOCKER_IMAGE) {
+    return { mode: 'docker', docker_image: SF_DOCKER_IMAGE, launcher, launcher_found };
+  }
+  return { mode: 'direct', docker_image: null, launcher, launcher_found };
+}
+
+module.exports = { runJob, stopJob, detectLauncher, detectCrawlerMode, zipOutput, findSeospiderFile, spawnCompare, swapInSpiderConfig, restoreSpiderConfig, SF_LAUNCHER, buildDockerArgs };
