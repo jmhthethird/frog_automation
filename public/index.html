@@ -746,6 +746,13 @@ async function loadJobs() {
   }
 }
 
+function equalizeExportTabHeights() {
+  const items = document.querySelectorAll('#et-all-grid .et-all-item');
+  let maxH = 0;
+  items.forEach(el => { el.style.height = ''; maxH = Math.max(maxH, el.offsetHeight); });
+  if (maxH > 0) items.forEach(el => { el.style.height = maxH + 'px'; });
+}
+
 async function loadLog(id) {
   if (logAbortController) logAbortController.abort();
   logAbortController = new AbortController();
@@ -1493,13 +1500,6 @@ async function _initApiSettingsBtn() {
       _updateApiSettingsBtn(services);
     }
   } catch { /* non-critical */ }
-}
-
-function equalizeExportTabHeights() {
-  const items = document.querySelectorAll('#et-all-grid .et-all-item');
-  let maxH = 0;
-  items.forEach(el => { el.style.height = ''; maxH = Math.max(maxH, el.offsetHeight); });
-  if (maxH > 0) items.forEach(el => { el.style.height = maxH + 'px'; });
 }
 
 async function stopJobClick(id) {
