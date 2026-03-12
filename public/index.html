@@ -739,12 +739,13 @@ async function loadJobs(page) {
       return;
     }
     const tableHtml = `<table>
-      <tr><th>#</th><th>URL</th><th>Profile</th><th>Status</th><th>Created</th><th></th></tr>
+      <tr><th>#</th><th>URL</th><th>Profile</th><th>Status</th><th>Duration</th><th>Created</th><th></th></tr>
       ${jobs.map(j => `<tr>
         <td>${j.id}${j.status === 'running' ? ` <button class="btn btn-danger" style="font-size:10px;padding:2px 7px;" onclick="stopJobClick(${j.id})">■ Stop</button>` : ''}</td>
         <td class="url-cell" title="${escHtml(j.url)}">${escHtml(j.url)}</td>
         <td style="color:var(--text-dim);">${escHtml(j.profile_name || '—')}</td>
         <td><span class="badge badge-${j.status}">${j.status}</span>${j.diff_summary ? ' <span title="Diff available" aria-label="Diff available" role="img">🔀</span>' : ''}</td>
+        <td style="color:var(--text-dim);white-space:nowrap;">${j.duration_seconds !== undefined ? fmtDuration(j.duration_seconds) : '—'}</td>
         <td style="color:var(--text-dim);white-space:nowrap;">${fmtDate(j.created_at)}</td>
         <td>
           <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" onclick="showJobDetail(${j.id})">View</button>

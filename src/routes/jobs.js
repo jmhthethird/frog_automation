@@ -19,6 +19,14 @@ const router = express.Router();
 const readLimit  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
 const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true, legacyHeaders: false });
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function computeDurationSeconds(started_at, completed_at) {
+  if (!started_at || !completed_at) return undefined;
+  const startMs = new Date(started_at + 'Z').getTime();
+  const endMs   = new Date(completed_at + 'Z').getTime();
+  return Math.round((endMs - startMs) / 1000);
+}
+
 // ─── List jobs ───────────────────────────────────────────────────────────────
 router.get('/', readLimit, (req, res) => {
   const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
@@ -39,6 +47,11 @@ router.get('/', readLimit, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(limit, safeOffset);
 
+  for (const job of jobs) {
+    const dur = computeDurationSeconds(job.started_at, job.completed_at);
+    if (dur !== undefined) job.duration_seconds = dur;
+  }
+
   res.json({ jobs, total, page: safePage, totalPages });
 });
 
@@ -56,11 +69,8 @@ router.get('/:id', readLimit, (req, res) => {
   if (!job) return res.status(404).json({ error: 'Job not found' });
 
   // Compute duration whenever both timestamps are available
-  if (job.started_at && job.completed_at) {
-    const startMs = new Date(job.started_at + 'Z').getTime();
-    const endMs   = new Date(job.completed_at + 'Z').getTime();
-    job.duration_seconds = Math.round((endMs - startMs) / 1000);
-  }
+  const dur = computeDurationSeconds(job.started_at, job.completed_at);
+  if (dur !== undefined) job.duration_seconds = dur;
 
   // Look up the most recent previous completed crawl for the same URL
   const prevJob = db.prepare(`
@@ -69,11 +79,12 @@ router.get('/:id', readLimit, (req, res) => {
     ORDER BY completed_at DESC LIMIT 1
   `).get(job.url, job.id);
 
-  if (prevJob && prevJob.started_at && prevJob.completed_at) {
-    const startMs = new Date(prevJob.started_at + 'Z').getTime();
-    const endMs   = new Date(prevJob.completed_at + 'Z').getTime();
-    job.prev_duration_seconds = Math.round((endMs - startMs) / 1000);
-    job.prev_completed_at = prevJob.completed_at;
+  if (prevJob) {
+    const prevDur = computeDurationSeconds(prevJob.started_at, prevJob.completed_at);
+    if (prevDur !== undefined) {
+      job.prev_duration_seconds = prevDur;
+      job.prev_completed_at = prevJob.completed_at;
+    }
   }
 
   res.json(job);

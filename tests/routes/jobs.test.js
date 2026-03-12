@@ -72,6 +72,34 @@ describe('GET /api/jobs', () => {
     const res = await ctx.request.get('/api/jobs?page=9999&limit=10').expect(200);
     expect(res.body.page).toBeLessThanOrEqual(res.body.totalPages);
   });
+
+  it('does not include duration_seconds when job has no started_at or completed_at', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status)
+      VALUES ('https://list-no-duration.example.com', 'Internal:All', 'queued')
+    `).run();
+
+    const res = await ctx.request.get('/api/jobs').expect(200);
+    const job = res.body.jobs.find(j => j.url === 'https://list-no-duration.example.com');
+    expect(job).toBeDefined();
+    expect(job.duration_seconds).toBeUndefined();
+  });
+
+  it('includes duration_seconds for a completed job in the list', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, started_at, completed_at)
+      VALUES ('https://list-duration-test.example.com', 'Internal:All', 'completed',
+              datetime('now', '-45 seconds'), datetime('now'))
+    `).run();
+
+    const res = await ctx.request.get('/api/jobs').expect(200);
+    const job = res.body.jobs.find(j => j.url === 'https://list-duration-test.example.com');
+    expect(job).toBeDefined();
+    expect(job.duration_seconds).toBeGreaterThanOrEqual(44);
+    expect(job.duration_seconds).toBeLessThanOrEqual(46);
+  });
 });
 
 // ─── GET /api/jobs/:id ────────────────────────────────────────────────────────
