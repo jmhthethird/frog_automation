@@ -10,6 +10,7 @@ const { validateCronExpression, computeNextRun } = require('../scheduler');
 const { parseCSV } = require('../differ');
 const { DEFAULT_EXPORT_TABS } = require('../constants/exportTabs');
 const { buildJobLabel } = require('../utils');
+const { stopJob } = require('../crawler');
 
 const router = express.Router();
 
@@ -283,6 +284,45 @@ router.get('/:id/compare/download', readLimit, (req, res) => {
   archive.pipe(res);
   archive.directory(compareDir, `${label}-compare`);
   archive.finalize();
+});
+
+// ─── Stop a running job ───────────────────────────────────────────────────────
+router.post('/:id/stop', writeLimit, (req, res) => {
+  const job = db.prepare('SELECT id, status FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status !== 'running') return res.status(409).json({ error: 'Job is not running' });
+
+  const killed = stopJob(job.id);
+  if (!killed) return res.status(409).json({ error: 'Job process not found' });
+
+  const updated = db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id);
+  res.json(updated);
+});
+
+// ─── Rerun a stopped/failed/completed job ─────────────────────────────────────
+router.post('/:id/rerun', writeLimit, (req, res) => {
+  const original = db.prepare('SELECT * FROM jobs WHERE id = ?').get(req.params.id);
+  if (!original) return res.status(404).json({ error: 'Job not found' });
+
+  const jobRow = db.prepare(`
+    INSERT INTO jobs (url, profile_id, spider_config_id, export_tabs, status, output_dir)
+    VALUES (?, ?, ?, ?, 'queued', ?)
+  `).run(
+    original.url,
+    original.profile_id || null,
+    original.spider_config_id || null,
+    original.export_tabs || DEFAULT_EXPORT_TABS,
+    null,
+  );
+
+  const jobId = jobRow.lastInsertRowid;
+  const outputDir = path.join(DATA_DIR, 'jobs', String(jobId));
+  db.prepare('UPDATE jobs SET output_dir = ? WHERE id = ?').run(outputDir, jobId);
+
+  req.app.get('queue').push(jobId);
+
+  const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+  res.status(201).json(job);
 });
 
 module.exports = router;
