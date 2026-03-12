@@ -15,13 +15,10 @@ const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true
  */
 const SERVICE_FIELDS = {
   google_search_console: [],
-  pagespeed:             [{ name: 'api_key',    label: 'API Key',    sensitive: true }],
-  majestic:              [{ name: 'api_key',    label: 'API Key',    sensitive: true }],
-  mozscape:              [
-    { name: 'access_id',  label: 'Access ID',   sensitive: false },
-    { name: 'secret_key', label: 'Secret Key',  sensitive: true  },
-  ],
-  ahrefs:                [{ name: 'api_key',    label: 'API Key',    sensitive: true }],
+  pagespeed:             [],
+  majestic:              [],
+  mozscape:              [],
+  ahrefs:                [],
   google_analytics:      [],
   google_analytics_4:    [],
 };
