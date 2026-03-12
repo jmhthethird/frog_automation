@@ -4,12 +4,14 @@ const { makeApp } = require('../helpers/app-factory');
 
 let ctx;
 let db;
+let SERVICE_FIELDS;
 
 beforeAll(() => {
   ctx = makeApp('api-creds');
   // Capture the db instance that was loaded as part of this app context.
   // Must be required AFTER makeApp() since makeApp() calls jest.resetModules().
   ({ db } = require('../../src/db'));
+  ({ SERVICE_FIELDS } = require('../../src/routes/api-credentials'));
 });
 
 afterAll(() => ctx.cleanup());
@@ -177,5 +179,101 @@ describe('PUT /api/api-credentials/:service', () => {
       .send({ enabled: true, credentials: { api_key: '' } })
       .expect(200);
     expect(res.body.credentials).toEqual({});
+  });
+});
+
+// ─── Credential field handling (with injected test fields) ───────────────────
+// These tests temporarily add a field definition to a service so the masking
+// and field-seeding code paths can be exercised.
+describe('PUT/GET credential field handling with defined fields', () => {
+  beforeEach(() => {
+    // Temporarily give google_analytics_4 a sensitive field so we can test
+    // the masking logic and the allowed-fields seeding in the PUT handler.
+    SERVICE_FIELDS.google_analytics_4 = [{ name: 'api_secret', sensitive: true }];
+  });
+
+  afterEach(() => {
+    SERVICE_FIELDS.google_analytics_4 = [];
+  });
+
+  it('stores and masks a sensitive field via PUT, returns masked value in response', async () => {
+    const res = await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'supersecret-1234' } })
+      .expect(200);
+    expect(res.body.enabled).toBe(true);
+    expect(res.body.credentials.api_secret).toMatch(/●/);
+    expect(res.body.credentials.api_secret).not.toContain('supersecret');
+  });
+
+  it('GET returns masked sensitive credential value', async () => {
+    // First store a value
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'verylongsecret' } })
+      .expect(200);
+
+    const getRes = await ctx.request.get('/api/api-credentials').expect(200);
+    const ga4 = getRes.body.find(s => s.service === 'google_analytics_4');
+    expect(ga4.credentials.api_secret).toMatch(/●/);
+  });
+
+  it('leaves existing value unchanged when masked string is re-submitted', async () => {
+    // Store original value
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'original-secret' } })
+      .expect(200);
+
+    // Fetch the masked value
+    const getRes = await ctx.request.get('/api/api-credentials').expect(200);
+    const masked = getRes.body.find(s => s.service === 'google_analytics_4').credentials.api_secret;
+    expect(masked).toMatch(/●/);
+
+    // Re-submit the masked value; the stored secret should be unchanged
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: masked } })
+      .expect(200);
+
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('google_analytics_4');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored.api_secret).toBe('original-secret');
+  });
+
+  it('seeds existing stored value when field is already in the DB', async () => {
+    // Store a value, then call PUT without credentials – field should be preserved
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'stored-value' } })
+      .expect(200);
+
+    const res = await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: false })
+      .expect(200);
+
+    expect(res.body.enabled).toBe(false);
+    // The stored credential is not exposed in the response only when sensitive
+    expect(res.body.credentials.api_secret).toMatch(/●/);
+
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('google_analytics_4');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored.api_secret).toBe('stored-value');
+  });
+
+  it('maskValue handles short values (≤4 chars) and empty values', async () => {
+    // Store a short secret (≤4 chars) and verify it is fully masked
+    const res = await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: 'abc' } })
+      .expect(200);
+    // Short value: every char should be masked as ●
+    expect(res.body.credentials.api_secret).toMatch(/^●+$/);
+    expect(res.body.credentials.api_secret).toHaveLength(3);
+  });
+
+  it('maskValue handles empty/null stored value', async () => {
+    // Store empty value
+    await ctx.request.put('/api/api-credentials/google_analytics_4')
+      .send({ enabled: true, credentials: { api_secret: '' } })
+      .expect(200);
+
+    const getRes = await ctx.request.get('/api/api-credentials').expect(200);
+    const ga4 = getRes.body.find(s => s.service === 'google_analytics_4');
+    expect(ga4.credentials.api_secret).toBe('');
   });
 });
