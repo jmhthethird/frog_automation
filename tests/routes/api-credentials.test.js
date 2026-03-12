@@ -3,9 +3,13 @@
 const { makeApp } = require('../helpers/app-factory');
 
 let ctx;
+let db;
 
 beforeAll(() => {
   ctx = makeApp('api-creds');
+  // Capture the db instance that was loaded as part of this app context.
+  // Must be required AFTER makeApp() since makeApp() calls jest.resetModules().
+  ({ db } = require('../../src/db'));
 });
 
 afterAll(() => ctx.cleanup());
@@ -93,7 +97,7 @@ describe('PUT /api/api-credentials/:service', () => {
     expect(res.body.enabled).toBe(false);
   });
 
-  it('stores credentials and masks sensitive fields in the response', async () => {
+  it('returns empty credentials for services with no defined fields', async () => {
     const res = await ctx.request.put('/api/api-credentials/pagespeed')
       .send({ enabled: true, credentials: { api_key: 'abc-secret-key' } })
       .expect(200);
@@ -113,8 +117,8 @@ describe('PUT /api/api-credentials/:service', () => {
     expect(maj.fields).toHaveLength(0);
   });
 
-  it('returns empty credentials for services without defined credential fields', async () => {
-    // ahrefs no longer has credential fields; sending api_key should be accepted but not returned
+  it('returns empty credentials for services without defined credential fields and does not persist them', async () => {
+    // ahrefs no longer has credential fields; sending api_key should be accepted but not persisted
     await ctx.request.put('/api/api-credentials/ahrefs')
       .send({ enabled: true, credentials: { api_key: 'real-secret-value' } })
       .expect(200);
@@ -123,6 +127,21 @@ describe('PUT /api/api-credentials/:service', () => {
     const ahrefs = getRes.body.find(s => s.service === 'ahrefs');
     expect(ahrefs.enabled).toBe(true);
     expect(ahrefs.credentials).toEqual({});
+
+    // Verify the secret was not silently persisted in the database.
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('ahrefs');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored).toEqual({});
+  });
+
+  it('does not persist credentials for pagespeed', async () => {
+    await ctx.request.put('/api/api-credentials/pagespeed')
+      .send({ enabled: true, credentials: { api_key: 'ps-secret-123' } })
+      .expect(200);
+
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('pagespeed');
+    const stored = JSON.parse(row?.credentials || '{}');
+    expect(stored).toEqual({});
   });
 
   it('can update mozscape (no credential fields exposed)', async () => {
