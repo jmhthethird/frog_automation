@@ -63,14 +63,6 @@ describe('GET /api/google-drive/auth-url', () => {
   });
 
   it('returns a URL when credentials are present', async () => {
-    // Mock googleapis so we don't make real network calls.
-    jest.mock('googleapis', () => {
-      const OAuth2 = jest.fn(function () {});
-      OAuth2.prototype.generateAuthUrl = jest.fn(() => 'https://mocked-auth-url.example.com');
-      OAuth2.prototype.setCredentials  = jest.fn();
-      return { google: { auth: { OAuth2 }, drive: jest.fn(() => ({ files: { list: jest.fn(), create: jest.fn() } })) } };
-    });
-
     seedDriveCreds({ client_id: 'my-client-id', client_secret: 'my-secret' });
     const res = await ctx.request.get('/api/google-drive/auth-url').expect(200);
     expect(typeof res.body.url).toBe('string');

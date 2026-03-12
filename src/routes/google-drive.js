@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto    = require('crypto');
 const express   = require('express');
 const rateLimit = require('express-rate-limit');
 const { db }    = require('../db');
@@ -9,6 +10,40 @@ const router = express.Router();
 
 const readLimit  = rateLimit({ windowMs: 60_000, max: 60,  standardHeaders: true, legacyHeaders: false });
 const writeLimit = rateLimit({ windowMs: 60_000, max: 10,  standardHeaders: true, legacyHeaders: false });
+
+// ─── OAuth CSRF state store ───────────────────────────────────────────────────
+
+/** In-memory map of state token → expiry timestamp (ms). One-time use. */
+const _pendingStates = new Map();
+const STATE_TTL_MS   = 10 * 60 * 1_000; // 10 minutes
+
+/** Generate a one-time cryptographically-random CSRF state token. */
+function _generateState() {
+  // Prune expired entries only when the map is large to avoid overhead on
+  // every call (in practice the map holds at most a handful of entries).
+  const now = Date.now();
+  if (_pendingStates.size > 10) {
+    for (const [k, exp] of _pendingStates) {
+      if (exp < now) _pendingStates.delete(k);
+    }
+  }
+  const state = crypto.randomBytes(32).toString('hex');
+  _pendingStates.set(state, now + STATE_TTL_MS);
+  return state;
+}
+
+/**
+ * Validate and consume a state token.
+ * Returns true when the token is known and unexpired; false otherwise.
+ * Each token may only be used once (deleted on first successful validation).
+ */
+function _consumeState(state) {
+  if (!state) return false;
+  const expiry = _pendingStates.get(state);
+  if (!expiry) return false;
+  _pendingStates.delete(state); // one-time use
+  return Date.now() < expiry;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,9 +75,16 @@ function buildRedirectUri(req) {
 /**
  * Return an HTML page that sends a postMessage to the window opener and closes.
  * Used as the OAuth2 callback response so it works inside a popup window.
+ *
+ * The JSON payload has <, >, and & escaped to their Unicode equivalents so
+ * that no injected error message (e.g. containing </script>) can break out of
+ * the <script> block and inject HTML.
  */
 function popupResponse(res, type, extra = {}) {
-  const payload = JSON.stringify({ type, ...extra });
+  const payload = JSON.stringify({ type, ...extra })
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
   // The targetOrigin is window.location.origin so the message is scoped to
   // the same server that opened the popup.
   res.send(`<!doctype html><html><body><script>
@@ -67,7 +109,8 @@ router.get('/status', readLimit, (req, res) => {
 
 // ─── GET /api/google-drive/auth-url ───────────────────────────────────────────
 // Generates and returns the Google OAuth2 authorization URL.
-// The browser should open this URL in a popup window.
+// A one-time CSRF state token is generated, stored server-side, and included
+// in the URL. The browser should open this URL in a popup window.
 router.get('/auth-url', readLimit, (req, res) => {
   const creds = getCredentials();
   if (!creds.client_id || !creds.client_secret) {
@@ -76,27 +119,37 @@ router.get('/auth-url', readLimit, (req, res) => {
     });
   }
 
-  const redirectUri   = buildRedirectUri(req);
-  const oauth2Client  = buildOAuth2Client(creds.client_id, creds.client_secret, redirectUri);
+  const redirectUri  = buildRedirectUri(req);
+  const oauth2Client = buildOAuth2Client(creds.client_id, creds.client_secret, redirectUri);
+  const state        = _generateState();
 
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope:       ['https://www.googleapis.com/auth/drive'],
     // prompt:'consent' guarantees a refresh_token is returned on every auth.
     prompt: 'consent',
+    state,
   });
 
   res.json({ url });
 });
 
 // ─── GET /api/google-drive/callback ───────────────────────────────────────────
-// OAuth2 redirect target. Exchanges the authorization code for tokens, stores
-// the refresh token, then signals the opener via postMessage and closes itself.
+// OAuth2 redirect target. Validates the CSRF state, exchanges the authorization
+// code for tokens, stores the refresh token, then signals the opener via
+// postMessage and closes itself.
 router.get('/callback', readLimit, async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
 
   if (error) return popupResponse(res, 'drive-auth-error', { error: String(error) });
   if (!code)  return res.status(400).send('Missing authorization code');
+
+  // Validate the CSRF state token before exchanging the code.
+  if (!_consumeState(state)) {
+    return popupResponse(res, 'drive-auth-error', {
+      error: 'Invalid or expired state parameter; please try connecting again.',
+    });
+  }
 
   const creds = getCredentials();
   if (!creds.client_id || !creds.client_secret) {
@@ -108,10 +161,24 @@ router.get('/callback', readLimit, async (req, res) => {
 
   try {
     const { tokens } = await oauth2Client.getToken(code);
+
     if (tokens.refresh_token) {
+      // Store the newly issued refresh token.
       persistCredentials({ refresh_token: tokens.refresh_token });
+      return popupResponse(res, 'drive-auth-success');
     }
-    popupResponse(res, 'drive-auth-success');
+
+    // Google did not return a new refresh_token (common on re-auth when the
+    // existing grant is still valid). If we already have a stored token the
+    // session remains usable — report success.
+    if (creds.refresh_token) {
+      return popupResponse(res, 'drive-auth-success');
+    }
+
+    // No usable token at all: tell the user to disconnect and try again.
+    popupResponse(res, 'drive-auth-error', {
+      error: 'Google did not return a refresh token. Please disconnect and connect again.',
+    });
   } catch (err) {
     popupResponse(res, 'drive-auth-error', { error: err.message });
   }
@@ -133,6 +200,11 @@ router.get('/token', readLimit, async (req, res) => {
 
   try {
     const { token } = await oauth2Client.getAccessToken();
+    if (!token) {
+      return res.status(401).json({
+        error: 'Failed to obtain a valid Google access token; try reconnecting.',
+      });
+    }
     res.json({ accessToken: token, apiKey: creds.api_key || '' });
   } catch (err) {
     res.status(401).json({ error: `Failed to refresh Google access token: ${err.message}` });

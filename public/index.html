@@ -1632,8 +1632,10 @@ async function connectGoogleDrive() {
     const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
     window.open(d.url, 'gd-auth', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
 
-    // Listen for the postMessage sent by the callback popup page.
-    window.addEventListener('message', _onDriveAuthMessage);
+    // Remove any stale listener from a previous (abandoned) popup before
+    // adding a fresh one. Use { once: true } so it self-removes on receipt.
+    window.removeEventListener('message', _onDriveAuthMessage);
+    window.addEventListener('message', _onDriveAuthMessage, { once: true });
   } catch {
     alert('Network error while starting Google Drive authorization.');
   }
