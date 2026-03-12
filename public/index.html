@@ -460,6 +460,7 @@ let DEFAULT_TABS; // computed from EXPORT_TABS_DATA after it is defined below
 window.DEFAULT_EXPORT_TABS = null; // set together with DEFAULT_TABS below
 let autoRefreshTimer = null;
 let runningTimer = null;
+let logAbortController = null;
 
 function fmtDuration(seconds) {
   seconds = Math.max(0, seconds);
@@ -741,6 +742,31 @@ async function loadJobs() {
   }
 }
 
+async function loadLog(id) {
+  if (logAbortController) logAbortController.abort();
+  logAbortController = new AbortController();
+  const pre = document.getElementById('log-output');
+  try {
+    const r = await fetch(`/api/jobs/${id}/log`, { signal: logAbortController.signal });
+    if (!r.ok) { pre.textContent = '(no log output yet)'; return; }
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      pre.textContent = text;
+      pre.scrollTop = pre.scrollHeight;
+    }
+    text += decoder.decode();
+    pre.textContent = text || '(no log output yet)';
+    pre.scrollTop = pre.scrollHeight;
+  } catch (e) {
+    if (e.name !== 'AbortError') pre.textContent = '(no log output yet)';
+  }
+}
+
 async function showJobDetail(id) {
   const panel = document.getElementById('detail-panel');
   panel.style.display = 'block';
@@ -759,6 +785,7 @@ async function showJobDetail(id) {
   clearInterval(autoRefreshTimer);
   clearInterval(runningTimer);
   runningTimer = null;
+  if (logAbortController) { logAbortController.abort(); logAbortController = null; }
 
   const refresh = async () => {
     try {
@@ -805,11 +832,7 @@ async function showJobDetail(id) {
         if (!j.cron_expression) clearInterval(autoRefreshTimer);
       }
 
-      if (j.log_tail !== null && j.log_tail !== undefined) {
-        const pre = document.getElementById('log-output');
-        pre.textContent = j.log_tail || '(no log output yet)';
-        pre.scrollTop = pre.scrollHeight;
-      }
+      loadLog(id);
     } catch {}
   };
 
