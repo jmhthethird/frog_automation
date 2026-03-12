@@ -29,6 +29,15 @@ router.get('/', readLimit, (req, res) => {
     LEFT JOIN spider_configs ON jobs.spider_config_id = spider_configs.id
     ORDER BY jobs.id DESC
   `).all();
+
+  for (const job of jobs) {
+    if (job.started_at && job.completed_at) {
+      const startMs = new Date(job.started_at + 'Z').getTime();
+      const endMs   = new Date(job.completed_at + 'Z').getTime();
+      job.duration_seconds = Math.round((endMs - startMs) / 1000);
+    }
+  }
+
   res.json(jobs);
 });
 
