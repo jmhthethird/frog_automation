@@ -407,8 +407,8 @@ test.describe('Export tabs customisation', () => {
     await expect(page.locator('#submit-msg')).toBeVisible({ timeout: 5_000 });
 
     // Fetch the latest job via API and check its export_tabs.
-    const jobs = await request.get(`${baseURL}/api/jobs`).then((r) => r.json());
-    const latest = jobs[0];
+    const data = await request.get(`${baseURL}/api/jobs`).then((r) => r.json());
+    const latest = data.jobs[0];
     expect(latest.export_tabs).toBe('Internal:All,Response Codes:All');
   });
 });

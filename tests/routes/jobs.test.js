@@ -18,10 +18,10 @@ afterAll(() => ctx.cleanup());
 
 // ─── GET /api/jobs ────────────────────────────────────────────────────────────
 describe('GET /api/jobs', () => {
-  it('returns an empty array when no jobs exist', async () => {
+  it('returns a paginated response object when no jobs exist', async () => {
     const res = await ctx.request.get('/api/jobs').expect(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body).toHaveLength(0);
+    expect(res.body).toMatchObject({ jobs: [], total: 0, page: 1, totalPages: 1 });
+    expect(Array.isArray(res.body.jobs)).toBe(true);
   });
 
   it('returns a list of jobs after one is created', async () => {
@@ -30,13 +30,47 @@ describe('GET /api/jobs', () => {
       .set('Content-Type', 'application/json');
 
     const res = await ctx.request.get('/api/jobs').expect(200);
-    expect(res.body.length).toBeGreaterThan(0);
-    expect(res.body[0]).toMatchObject({ url: 'https://example.com' });
+    expect(res.body.jobs.length).toBeGreaterThan(0);
+    expect(res.body.jobs[0]).toMatchObject({ url: 'https://example.com' });
   });
 
   it('includes profile_name field (null when no profile)', async () => {
     const res = await ctx.request.get('/api/jobs').expect(200);
-    expect(res.body[0]).toHaveProperty('profile_name');
+    expect(res.body.jobs[0]).toHaveProperty('profile_name');
+  });
+
+  it('respects page and limit query params', async () => {
+    // Seed several more jobs directly to avoid triggering rate limiter
+    const { db } = getDb();
+    for (let i = 0; i < 5; i++) {
+      db.prepare(`INSERT INTO jobs (url, export_tabs, status) VALUES (?, 'Internal:All', 'queued')`)
+        .run(`https://page-test-${i}.example.com`);
+    }
+
+    const res = await ctx.request.get('/api/jobs?page=1&limit=2').expect(200);
+    expect(res.body.jobs).toHaveLength(2);
+    expect(res.body.page).toBe(1);
+    expect(res.body.total).toBeGreaterThanOrEqual(2);
+    expect(res.body.totalPages).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns page 2 when requested', async () => {
+    // Ensure at least 3 jobs exist for page 2 with limit=2
+    const { db } = getDb();
+    const count = db.prepare('SELECT COUNT(*) AS cnt FROM jobs').get().cnt;
+    if (count < 3) {
+      db.prepare(`INSERT INTO jobs (url, export_tabs, status) VALUES ('https://page2-extra.example.com', 'Internal:All', 'queued')`)
+        .run();
+    }
+
+    const res = await ctx.request.get('/api/jobs?page=2&limit=2').expect(200);
+    expect(res.body.page).toBe(2);
+    expect(res.body.jobs.length).toBeGreaterThan(0);
+  });
+
+  it('clamps page to totalPages when page exceeds total', async () => {
+    const res = await ctx.request.get('/api/jobs?page=9999&limit=10').expect(200);
+    expect(res.body.page).toBeLessThanOrEqual(res.body.totalPages);
   });
 });
 
