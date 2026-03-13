@@ -1,97 +1,41 @@
-# Frontend Design — Skills & Vision
-
-This document defines the **design philosophy, visual identity, and UX ambitions** for Frog Automation's frontend. It is a living skills reference: use it as a creative brief, not a constraint checklist. Copilot and contributors are encouraged to suggest modern patterns and bring fresh ideas that serve the goals below.
-
+---
+name: frontend-design
+description: Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.
 ---
 
-## Design Philosophy
+This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
 
-**Frog Automation is a power tool for SEO professionals.** The UI should feel like professional software — dense with information where useful, clean and calm where clarity matters. Every design decision should reduce cognitive load and help the user get their crawl job done with confidence.
+The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
 
-> **Think terminal-grade precision meets modern web polish.**
+## Design Thinking
 
-- **Clarity over decoration.** Every element earns its place. If it doesn't inform or enable an action, remove it.
-- **Speed perception matters.** Transitions, feedback states, and loading indicators should make the app feel instant and responsive — even when waiting on a crawl.
-- **Dark-first.** The dark theme is non-negotiable. It is the visual identity of this application. All design work must look great on a dark background.
-- **Data density done right.** Users run many jobs and manage multiple configs. Tables, lists, and grids should surface the most relevant data at a glance — with progressive disclosure for details.
-- **Confidence through feedback.** Every action should have immediate, unambiguous visual confirmation. Errors must be visible. Success must be satisfying.
+Before coding, understand the context and commit to a BOLD aesthetic direction:
+- **Purpose**: What problem does this interface solve? Who uses it?
+- **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
+- **Constraints**: Technical requirements (framework, performance, accessibility).
+- **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
 
----
+**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
 
-## Visual Identity
+Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
+- Production-grade and functional
+- Visually striking and memorable
+- Cohesive with a clear aesthetic point-of-view
+- Meticulously refined in every detail
 
-The application's design is built on a fixed palette of CSS custom properties. **These tokens are the brand — extend them, never replace them.**
+## Frontend Aesthetics Guidelines
 
-| Token | Purpose |
-|---|---|
-| `--bg` | Page background — the darkest layer |
-| `--surface` | Card and panel backgrounds |
-| `--surface2` | Header, elevated controls, secondary interactive elements |
-| `--text` | Primary readable content |
-| `--text-dim` | Metadata, labels, hints |
-| `--border` | All structural separators |
-| `--radius` | Consistent rounding |
-| `--green` | Success, confirmation, primary CTA |
-| `--red` | Errors, destructive actions |
-| `--orange` | Warnings, stopped/partial states |
-| `--blue` | Info, links, focus, active/running state |
-| `--gray` | Neutral, muted |
+Focus on:
+- **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
+- **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
+- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
+- **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
+- **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
 
-When a new concept genuinely requires a new colour, define it as a new `:root` token alongside the existing ones — never as an inline value.
+NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
 
----
+Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
 
-## UX Goals
+**IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
 
-### Interaction
-
-- **Responsiveness:** The layout must work at any viewport width. The primary breakpoint is `760px`. Design for mobile as a first-class constraint, not an afterthought.
-- **Keyboard accessibility:** Every interactive element must be reachable and operable via keyboard. Focus states must be visible.
-- **Loading & async states:** Every operation that hits the backend must give the user clear in-progress feedback and a clear outcome (success or error). Never leave the user guessing.
-- **Optimistic UI where safe:** For lightweight read operations, prefer showing data immediately and refreshing in the background over blocking spinners.
-
-### Information Architecture
-
-- **Progressive disclosure:** Lead with the most important information. Put advanced options behind expandable sections (using the `<details>`/`<summary>` or equivalent pattern). Don't make the user scroll past options they don't need.
-- **Status at a glance:** Job status, health, and active integrations must be visible without interaction.
-- **Consistent vocabulary:** Use the established status badge system (`queued`, `running`, `completed`, `failed`, `scheduled`, `stopped`). Status words are part of the brand.
-
-### Forms & Input
-
-- **Smart defaults.** Remember the user's last choices (last-used profile, last-used spider config, etc.).
-- **Inline validation.** Don't wait until form submission to tell the user something is wrong.
-- **Helpful affordances.** Cron scheduling, profile management, and spider config selection are complex — the UI should guide the user, not just expose raw inputs.
-
----
-
-## Opportunities for Innovation
-
-The application is at an inflection point. Consider these areas as prime candidates for design and implementation improvement:
-
-### Component Architecture
-The frontend is currently a monolithic single-file SPA. As the feature surface grows, **introducing a structured component model** — whether through a lightweight framework, web components, or a disciplined module pattern — will improve maintainability and enable richer interactions. **Propose and justify modern approaches** where they offer a clear benefit.
-
-### Animation & Micro-interactions
-The current UI is functional but relatively static. Thoughtful micro-interactions (smooth list updates, progress animations for running crawls, transition effects for panel open/close) would significantly elevate the perceived quality. Use `@keyframes` or the Web Animations API where CSS transitions fall short.
-
-### Data Visualisation
-Crawl results contain rich data. Consider opportunities for inline sparklines, progress rings, or status timelines that communicate more than raw numbers in a table.
-
-### Notifications & Real-time Feedback
-The jobs list polls for updates. Explore whether WebSockets or Server-Sent Events could deliver a better real-time experience for long-running crawls.
-
-### Theming
-The dark theme is the identity, but the token system makes alternative themes technically feasible. If a light mode or a high-contrast accessibility theme is proposed, the architecture should support it via token swapping.
-
----
-
-## Quality Bar
-
-Every frontend change, regardless of scope, must meet:
-
-- [ ] **Visual consistency** — uses design tokens, matches the dark aesthetic, no hard-coded colour values
-- [ ] **Responsive** — looks correct at `320px`, `760px`, and `1200px` viewport widths
-- [ ] **Accessible** — keyboard-operable, colour is never the sole informant, ARIA labels on icon-only controls
-- [ ] **Error-safe** — API errors surfaced to the user clearly; loading states never leave the UI frozen
-- [ ] **XSS-safe** — user-supplied content is never injected as raw HTML without sanitisation
-- [ ] **Reviewed with screenshots** — before/after screenshots attached to every UI-touching PR
+Remember: You are capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
