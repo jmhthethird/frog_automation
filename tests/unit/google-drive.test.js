@@ -6,18 +6,10 @@ const path = require('path');
 
 // ─── Mock googleapis before requiring the module under test ──────────────────
 jest.mock('googleapis', () => {
-  const OAuth2 = jest.fn(function (clientId, clientSecret, redirectUri) {
-    this.clientId    = clientId;
-    this.clientSecret = clientSecret;
-    this.redirectUri  = redirectUri;
-    this._credentials = {};
+  const GoogleAuth = jest.fn(function ({ credentials } = {}) {
+    this.credentials = credentials;
+    this.scopes      = [];
   });
-  OAuth2.prototype.setCredentials = jest.fn(function (creds) {
-    this._credentials = creds;
-  });
-  OAuth2.prototype.generateAuthUrl = jest.fn(() => 'https://accounts.google.com/o/oauth2/auth?mocked');
-  OAuth2.prototype.getToken        = jest.fn(async () => ({ tokens: { refresh_token: 'rt_mock', access_token: 'at_mock' } }));
-  OAuth2.prototype.getAccessToken  = jest.fn(async () => ({ token: 'at_refreshed' }));
 
   const mockDrive = {
     files: {
@@ -28,7 +20,7 @@ jest.mock('googleapis', () => {
 
   return {
     google: {
-      auth:  { OAuth2 },
+      auth:  { GoogleAuth },
       drive: jest.fn(() => mockDrive),
     },
     _mockDrive: mockDrive,
@@ -37,33 +29,29 @@ jest.mock('googleapis', () => {
 
 const { google, _mockDrive } = require('googleapis');
 const {
-  buildOAuth2Client,
-  buildDriveClientFromOAuth,
+  buildDriveClientFromApiKey,
   findFolder,
   ensureFolder,
   domainFromUrl,
   uploadToDrive,
 } = require('../../src/google-drive');
 
-// ─── buildOAuth2Client ────────────────────────────────────────────────────────
-describe('buildOAuth2Client()', () => {
-  it('constructs an OAuth2 instance with the supplied credentials', () => {
-    const client = buildOAuth2Client('cid', 'csecret', 'http://localhost/cb');
-    expect(client.clientId).toBe('cid');
-    expect(client.clientSecret).toBe('csecret');
-    expect(client.redirectUri).toBe('http://localhost/cb');
-  });
-
-  it('works without a redirectUri', () => {
-    expect(() => buildOAuth2Client('cid', 'csecret')).not.toThrow();
-  });
-});
-
-// ─── buildDriveClientFromOAuth ────────────────────────────────────────────────
-describe('buildDriveClientFromOAuth()', () => {
-  it('calls google.drive with v3 and sets refresh token credentials', () => {
-    buildDriveClientFromOAuth('cid', 'csecret', 'rt_token');
+// ─── buildDriveClientFromApiKey ───────────────────────────────────────────────
+describe('buildDriveClientFromApiKey()', () => {
+  it('constructs a Drive client from a JSON string key', () => {
+    const key = JSON.stringify({ type: 'service_account', project_id: 'my-project' });
+    buildDriveClientFromApiKey(key);
     expect(google.drive).toHaveBeenCalledWith(expect.objectContaining({ version: 'v3' }));
+  });
+
+  it('constructs a Drive client from a plain object key', () => {
+    const key = { type: 'service_account', project_id: 'my-project' };
+    buildDriveClientFromApiKey(key);
+    expect(google.drive).toHaveBeenCalledWith(expect.objectContaining({ version: 'v3' }));
+  });
+
+  it('throws a SyntaxError when given an invalid JSON string', () => {
+    expect(() => buildDriveClientFromApiKey('not-json')).toThrow(/Invalid service account key/);
   });
 });
 
@@ -184,17 +172,28 @@ describe('uploadToDrive()', () => {
     const localSize = fs.statSync(tmpFile).size;
     // findFolder → domain folder exists
     _mockDrive.files.list.mockResolvedValue({ data: { files: [{ id: folderId }] } });
-    // upload response
-    _mockDrive.files.create.mockResolvedValueOnce({
-      data: { id: 'file-id-abc', size: String(driveSize !== null ? driveSize : localSize) },
-    });
+    mockFilesCreate({ id: 'file-id-abc', size: String(driveSize !== null ? driveSize : localSize) });
     return localSize;
+  }
+
+  /**
+   * Queue a single mock response for drive.files.create.
+   * The body stream is cleaned up (error-handled + destroyed) to prevent
+   * unhandled ENOENT errors when afterEach deletes the temp file before
+   * Node.js has finished opening the stream.
+   */
+  function mockFilesCreate(data) {
+    _mockDrive.files.create.mockImplementationOnce(async (params) => {
+      const body = params?.media?.body;
+      if (body) { body.on('error', () => {}); body.destroy(); }
+      return { data };
+    });
   }
 
   it('resolves with fileId, domain, folderId, localSize, driveSize on success', async () => {
     const localSize = setupMocks();
     const result = await uploadToDrive({
-      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      apiKey:  JSON.stringify({ type: 'service_account' }),
       filePath: tmpFile,
       jobUrl: 'https://www.example.com',
     });
@@ -208,7 +207,7 @@ describe('uploadToDrive()', () => {
   it('uses the rootFolderId when looking up the domain subfolder', async () => {
     setupMocks({ folderId: 'subfolder-in-root' });
     await uploadToDrive({
-      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      apiKey:  JSON.stringify({ type: 'service_account' }),
       filePath: tmpFile,
       jobUrl:   'https://example.com',
       rootFolderId: 'root-folder-id',
@@ -220,11 +219,9 @@ describe('uploadToDrive()', () => {
   it('throws a validation error when Drive size does not match local size', async () => {
     const localSize = fs.statSync(tmpFile).size;
     _mockDrive.files.list.mockResolvedValue({ data: { files: [{ id: 'fid' }] } });
-    _mockDrive.files.create.mockResolvedValueOnce({
-      data: { id: 'file-id', size: String(localSize + 1) },
-    });
+    mockFilesCreate({ id: 'file-id', size: String(localSize + 1) });
     await expect(uploadToDrive({
-      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      apiKey:  JSON.stringify({ type: 'service_account' }),
       filePath: tmpFile,
       jobUrl:   'https://example.com',
     })).rejects.toThrow(/validation failed/);
@@ -233,7 +230,7 @@ describe('uploadToDrive()', () => {
   it('uploads with rootFolderId null when not provided (places domain folder at Drive root)', async () => {
     setupMocks();
     await uploadToDrive({
-      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      apiKey:  JSON.stringify({ type: 'service_account' }),
       filePath: tmpFile,
       jobUrl:   'https://example.com',
     });
