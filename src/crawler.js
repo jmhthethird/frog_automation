@@ -199,7 +199,7 @@ async function runJob(jobId) {
             `domain="${result.domain}" size=${result.localSize} bytes\n`
           );
         } else {
-          logStream.write('[WARN] Google Drive integration is enabled but not fully configured (API key and Root Folder ID required); skipping upload\n');
+          logStream.write('[WARN] Google Drive upload skipped: API key and Root Folder ID are required\n');
         }
       }
     } catch (driveErr) {

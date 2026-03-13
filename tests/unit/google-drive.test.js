@@ -51,7 +51,7 @@ describe('buildDriveClientFromApiKey()', () => {
   });
 
   it('throws a SyntaxError when given an invalid JSON string', () => {
-    expect(() => buildDriveClientFromApiKey('not-json')).toThrow(SyntaxError);
+    expect(() => buildDriveClientFromApiKey('not-json')).toThrow(/Invalid service account key/);
   });
 });
 
@@ -172,14 +172,22 @@ describe('uploadToDrive()', () => {
     const localSize = fs.statSync(tmpFile).size;
     // findFolder → domain folder exists
     _mockDrive.files.list.mockResolvedValue({ data: { files: [{ id: folderId }] } });
-    // upload response – attach an error handler and destroy the body stream so
-    // Node does not emit an unhandled ENOENT after afterEach deletes the temp file.
+    mockFilesCreate({ id: 'file-id-abc', size: String(driveSize !== null ? driveSize : localSize) });
+    return localSize;
+  }
+
+  /**
+   * Queue a single mock response for drive.files.create.
+   * The body stream is cleaned up (error-handled + destroyed) to prevent
+   * unhandled ENOENT errors when afterEach deletes the temp file before
+   * Node.js has finished opening the stream.
+   */
+  function mockFilesCreate(data) {
     _mockDrive.files.create.mockImplementationOnce(async (params) => {
       const body = params?.media?.body;
       if (body) { body.on('error', () => {}); body.destroy(); }
-      return { data: { id: 'file-id-abc', size: String(driveSize !== null ? driveSize : localSize) } };
+      return { data };
     });
-    return localSize;
   }
 
   it('resolves with fileId, domain, folderId, localSize, driveSize on success', async () => {
@@ -211,11 +219,7 @@ describe('uploadToDrive()', () => {
   it('throws a validation error when Drive size does not match local size', async () => {
     const localSize = fs.statSync(tmpFile).size;
     _mockDrive.files.list.mockResolvedValue({ data: { files: [{ id: 'fid' }] } });
-    _mockDrive.files.create.mockImplementationOnce(async (params) => {
-      const body = params?.media?.body;
-      if (body) { body.on('error', () => {}); body.destroy(); }
-      return { data: { id: 'file-id', size: String(localSize + 1) } };
-    });
+    mockFilesCreate({ id: 'file-id', size: String(localSize + 1) });
     await expect(uploadToDrive({
       apiKey:  JSON.stringify({ type: 'service_account' }),
       filePath: tmpFile,

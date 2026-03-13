@@ -12,9 +12,14 @@ const { google } = require('googleapis');
  * @returns {import('googleapis').drive_v3.Drive}
  */
 function buildDriveClientFromApiKey(serviceAccountKey) {
-  const keyObj = typeof serviceAccountKey === 'string'
-    ? JSON.parse(serviceAccountKey)
-    : serviceAccountKey;
+  let keyObj;
+  try {
+    keyObj = typeof serviceAccountKey === 'string'
+      ? JSON.parse(serviceAccountKey)
+      : serviceAccountKey;
+  } catch {
+    throw new SyntaxError('Invalid service account key: must be valid JSON');
+  }
 
   const auth = new google.auth.GoogleAuth({
     credentials: keyObj,
