@@ -33,18 +33,21 @@
   #update-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
   #update-btn:hover { color: var(--text); border-color: var(--text-dim); }
   #update-btn.has-update { border-color: var(--green); color: var(--green); font-weight: 600; }
-  /* API Settings drawer */
-  #api-drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 200; display: none; }
-  #api-drawer-backdrop.open { display: block; }
-  #api-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 400px; max-width: 100vw; background: var(--surface); border-left: 1px solid var(--border); z-index: 201; transform: translateX(100%); transition: transform .25s ease; overflow-y: auto; display: flex; flex-direction: column; }
-  #api-drawer.open { transform: translateX(0); }
-  #api-drawer-header { padding: 16px 20px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 1; }
-  #api-drawer-header h2 { font-size: 15px; font-weight: 700; flex: 1; }
-  #api-drawer-close { background: transparent; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
-  #api-drawer-close:hover { color: var(--text); background: #ffffff12; }
-  #api-drawer-body { padding: 16px; flex: 1; }
-  .api-svc-card { background: #0f0f2a; border: 1px solid var(--border); border-radius: 6px; padding: 14px; margin-bottom: 12px; }
-  .api-svc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  /* ── Inline API / accordion sections ───────────────────────────────────── */
+  .sect { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 10px; overflow: hidden; }
+  .sect > summary { padding: 10px 14px; font-size: 13px; font-weight: 600; color: #ccc; cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 8px; }
+  .sect > summary::-webkit-details-marker { display: none; }
+  .sect > summary::before { content: '▶'; font-size: 9px; color: var(--text-dim); flex-shrink: 0; }
+  .sect[open] > summary::before { content: '▼'; }
+  .sect > summary:hover { background: #ffffff06; }
+  .sect[open] > summary { border-bottom: 1px solid var(--border); }
+  .sect-body { padding: 14px; }
+  .sect-badge { font-size: 10px; padding: 1px 7px; border-radius: 10px; background: var(--surface2); color: var(--text-dim); margin-left: auto; font-weight: 400; }
+  .sect-badge.active { background: #1a2a4a; color: var(--blue); }
+  /* API integration cards */
+  .api-svc-card { background: #0f0f2a; border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+  .api-svc-card:last-child { margin-bottom: 0; }
+  .api-svc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .api-svc-name { font-size: 13px; font-weight: 600; flex: 1; }
   .api-svc-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
   .api-toggle-switch { position: relative; display: inline-block; width: 34px; height: 18px; flex-shrink: 0; }
@@ -53,17 +56,14 @@
   .api-toggle-slider::before { content: ''; position: absolute; width: 12px; height: 12px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .2s; }
   .api-toggle-switch input:checked + .api-toggle-slider { background: var(--green); }
   .api-toggle-switch input:checked + .api-toggle-slider::before { transform: translateX(16px); }
-  .api-svc-note { font-size: 11px; color: var(--text-dim); background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; margin-bottom: 10px; line-height: 1.5; }
+  .api-svc-note { font-size: 11px; color: var(--text-dim); background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.5; }
   .api-svc-note strong { color: var(--blue); }
   .api-svc-fields label { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; margin-top: 8px; display: block; }
   .api-svc-fields label:first-child { margin-top: 0; }
   .api-svc-fields input[type=text], .api-svc-fields input[type=password] { width: 100%; padding: 7px 9px; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; font-family: monospace; outline: none; }
   .api-svc-fields input:focus { border-color: var(--blue); }
-  .api-svc-save-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+  .api-svc-save-row { margin-top: 8px; display: flex; align-items: center; gap: 10px; }
   .api-svc-msg { font-size: 11px; padding: 3px 8px; border-radius: 4px; }
-  #api-settings-btn { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .15s, border-color .15s; }
-  #api-settings-btn:hover { color: var(--text); border-color: var(--text-dim); }
-  #api-settings-btn.has-enabled { border-color: var(--blue); color: var(--blue); }
   /* Google Drive sub-sections */
   .drive-subsection { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
   .drive-subsection-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
@@ -98,12 +98,12 @@
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
   .grid > div:last-child { min-width: 0; }
   @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-  .card h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #ccc; }
-  label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; margin-top: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #ccc; }
+  label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; margin-top: 8px; }
   label:first-child { margin-top: 0; }
   input[type=text], input[type=url], select, textarea {
-    width: 100%; padding: 8px 10px; background: #0a0a1e; border: 1px solid var(--border);
+    width: 100%; padding: 7px 9px; background: #0a0a1e; border: 1px solid var(--border);
     border-radius: 4px; color: var(--text); font-size: 13px; outline: none;
   }
   input[type=text]:focus, input[type=url]:focus, select:focus, textarea:focus {
@@ -119,7 +119,22 @@
   .btn-danger  { background: var(--red); color: #fff; font-size: 12px; padding: 4px 10px; }
   .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
   .btn:disabled { opacity: .4; cursor: default; }
-  .form-footer { margin-top: 16px; display: flex; align-items: center; gap: 12px; }
+  .form-footer { margin-top: 12px; display: flex; align-items: center; gap: 12px; }
+  /* Export Tabs sub-section */
+  .et-sect { border: 1px solid var(--border); border-radius: 4px; margin-top: 8px; overflow: hidden; }
+  .et-sect > summary { padding: 7px 10px; font-size: 12px; font-weight: 600; color: var(--text-dim); cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 6px; background: var(--surface2); }
+  .et-sect > summary::-webkit-details-marker { display: none; }
+  .et-sect > summary::before { content: '▶'; font-size: 9px; flex-shrink: 0; }
+  .et-sect[open] > summary::before { content: '▼'; }
+  .et-sect[open] > summary { border-bottom: 1px solid var(--border); color: var(--text); }
+  .et-sect-body { padding: 10px; }
+  .et-bulk-row { display: flex; gap: 5px; align-items: center; margin-bottom: 6px; }
+  .btn-xs { padding: 2px 9px; font-size: 11px; border-radius: 3px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; transition: color .12s, border-color .12s; }
+  .btn-xs:hover { color: var(--text); border-color: var(--text-dim); }
+  .btn-xs-green { border-color: var(--green); color: var(--green); }
+  .btn-xs-green:hover { background: rgba(46,204,113,.1); }
+  .btn-xs-red { border-color: var(--red); color: var(--red); }
+  .btn-xs-red:hover { background: rgba(231,76,60,.1); }
   .msg { font-size: 12px; padding: 6px 10px; border-radius: 4px; }
   .msg-ok  { background: #1a4a2e; color: var(--green); }
   .msg-err { background: #4a1a1a; color: var(--red); }
@@ -233,25 +248,8 @@
   <h1>Frog Automation</h1>
   <div id="version-badge">v…</div>
   <button id="update-btn" onclick="checkForUpdates()" title="Check for updates">↻ Updates</button>
-  <button id="api-settings-btn" onclick="openApiDrawer()" title="API Integration settings">🔑 API Settings</button>
   <div id="health-badge">checking…</div>
 </header>
-<!-- API Settings Drawer -->
-<div id="api-drawer-backdrop" onclick="closeApiDrawer()"></div>
-<div id="api-drawer" role="dialog" aria-modal="true" aria-label="API Integration Settings">
-  <div id="api-drawer-header">
-    <h2>🔑 API Integrations</h2>
-    <button id="api-drawer-close" onclick="closeApiDrawer()" title="Close" aria-label="Close">✕</button>
-  </div>
-  <div id="api-drawer-body">
-    <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.6;">
-      Enable integrations to automatically include their <code style="font-size:11px;">--use-*</code> flags when running
-      crawls. Credentials stored here that cannot be passed via CLI must also be configured in
-      <strong>Screaming Frog → Configuration → API Access</strong>.
-    </p>
-    <div id="api-services-list"><em style="color:var(--text-dim);">Loading…</em></div>
-  </div>
-</div>
 <!-- Update notification panel (shown when an update is available or in-progress) -->
 <div id="update-panel">
   <div class="upd-msg" id="update-msg">Checking…</div>
@@ -271,7 +269,7 @@
       <div class="card">
         <h2>Submit Crawl Job</h2>
 
-        <label for="cron-expression" style="margin-top:0;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – leave blank to run immediately)</span></label>
+        <label for="cron-expression" style="margin-top:0;">Cron Schedule <span style="color:var(--text-dim); font-weight:400;">(optional – blank = run immediately)</span></label>
         <button type="button" class="cron-help-btn" onclick="openCronModal()" title="Help me build a cron expression">? Schedule Helper</button>
         <input type="text" id="cron-expression" placeholder="e.g. 0 2 * * * (daily at 02:00)" autocomplete="off"/>
         <div id="cron-hint" style="font-size:11px; color:var(--text-dim); margin-top:4px; display:none;"></div>
@@ -320,30 +318,55 @@
           <input type="file"  id="sc-upload-file" accept=".seospiderconfig,.config" style="margin-top:8px;"/>
         </div>
 
-        <label style="margin-top:14px;">Export Tabs</label>
-        <div class="et-sub-label">:All flags</div>
-        <div id="et-all-grid" class="et-all-grid"></div>
-        <div class="et-sub-label">Individual options <span style="text-transform:none;letter-spacing:0;font-size:10px;">(expand a category · Ctrl/⌘+click for multi-select)</span></div>
-        <div id="et-cat-list" class="et-cat-list"></div>
-        <label style="margin-top:4px;">Selected tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated, editable)</span></label>
-        <textarea id="export-tabs" style="height:46px;">Internal:All</textarea>
+        <details id="et-section" class="et-sect" open>
+          <summary>Export Tabs <span id="et-count-badge" class="sect-badge" style="margin-left:auto;margin-right:6px;"></span></summary>
+          <div class="et-sect-body">
+            <div class="et-bulk-row">
+              <span style="font-size:11px;color:var(--text-dim);">Bulk:</span>
+              <button class="btn-xs btn-xs-green" onclick="enableAllTabs()" title="Check all :All flags">✓ Enable All</button>
+              <button class="btn-xs btn-xs-red" onclick="disableAllTabs()" title="Uncheck all flags">✕ Disable All</button>
+            </div>
+            <div class="et-sub-label">:All flags</div>
+            <div id="et-all-grid" class="et-all-grid"></div>
+            <div class="et-sub-label" style="margin-top:6px;">Individual options <span style="text-transform:none;letter-spacing:0;font-size:10px;">(expand a category · Ctrl/⌘+click for multi-select)</span></div>
+            <div id="et-cat-list" class="et-cat-list"></div>
+            <label style="margin-top:4px;">Selected tabs <span style="color:var(--text-dim); font-weight:400;">(comma-separated, editable)</span></label>
+            <textarea id="export-tabs" style="height:46px;">Internal:All</textarea>
+          </div>
+        </details>
       </div>
 
-      <!-- Profile Library -->
-      <div class="card" style="margin-top:20px;">
-        <h2>Profile Library</h2>
-        <div id="profile-list-area"><em style="color:var(--text-dim);">Loading…</em></div>
-      </div>
-
-      <!-- Spider Config Library -->
-      <div class="card" style="margin-top:20px;">
-        <h2>Spider Config Library</h2>
-        <div style="margin-bottom:10px;">
-          <button class="btn btn-secondary" id="import-local-sc-btn" onclick="importLocalSpiderConfig()" style="font-size:12px;padding:5px 12px;" title="Import spider.config from the local Screaming Frog installation">⬆ Import from local SF</button>
-          <span id="import-local-sc-msg" class="msg" style="display:none;margin-left:8px;"></span>
+      <!-- Profile Library (collapsible) -->
+      <details class="sect" id="profiles-section">
+        <summary>Profile Library <span id="profiles-count-badge" class="sect-badge"></span></summary>
+        <div class="sect-body">
+          <div id="profile-list-area"><em style="color:var(--text-dim);">Loading…</em></div>
         </div>
-        <div id="sc-list-area"><em style="color:var(--text-dim);">Loading…</em></div>
-      </div>
+      </details>
+
+      <!-- Spider Config Library (collapsible) -->
+      <details class="sect" id="sc-library-section">
+        <summary>Spider Config Library <span id="sc-count-badge" class="sect-badge"></span></summary>
+        <div class="sect-body">
+          <div style="margin-bottom:8px;">
+            <button class="btn btn-secondary" id="import-local-sc-btn" onclick="importLocalSpiderConfig()" style="font-size:12px;padding:4px 10px;" title="Import spider.config from the local Screaming Frog installation">⬆ Import from local SF</button>
+            <span id="import-local-sc-msg" class="msg" style="display:none;margin-left:8px;"></span>
+          </div>
+          <div id="sc-list-area"><em style="color:var(--text-dim);">Loading…</em></div>
+        </div>
+      </details>
+
+      <!-- API Integrations (collapsible) -->
+      <details class="sect" id="api-section" ontoggle="if(this.open&&!_apiSectionLoaded)_loadApiSectionOnce()">
+        <summary>🔑 API Integrations <span id="api-enabled-badge" class="sect-badge"></span></summary>
+        <div class="sect-body">
+          <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.6;">
+            Enable integrations to pass their <code style="font-size:11px;">--use-*</code> flags when crawling.
+            Credentials must also be configured in <strong>Screaming Frog → Configuration → API Access</strong>.
+          </p>
+          <div id="api-services-list"><em style="color:var(--text-dim);">Loading…</em></div>
+        </div>
+      </details>
     </div>
 
     <!-- Jobs list -->
@@ -476,6 +499,7 @@ window.DEFAULT_EXPORT_TABS = null; // set together with DEFAULT_TABS below
 let autoRefreshTimer = null;
 let runningTimer = null;
 let logAbortController = null;
+let _etUserCleared = false; // true when Disable All was last bulk action
 
 function fmtDuration(seconds) {
   seconds = Math.max(0, seconds);
@@ -540,6 +564,14 @@ async function loadProfiles() {
         </tr>`).join('')}
       </table>`;
     }
+    // update badge and auto-open section when profiles exist
+    const badge = document.getElementById('profiles-count-badge');
+    if (badge) {
+      badge.textContent = profiles.length ? profiles.length + (profiles.length === 1 ? ' profile' : ' profiles') : 'empty';
+      badge.className = 'sect-badge' + (profiles.length ? ' active' : '');
+    }
+    const sect = document.getElementById('profiles-section');
+    if (sect && profiles.length > 0) sect.open = true;
   } catch (e) {
     listArea.innerHTML = '<span style="color:var(--red);">Failed to load profiles</span>';
   }
@@ -590,6 +622,14 @@ async function loadSpiderConfigs() {
         </tr>`).join('')}
       </table>`;
     }
+    // update badge and auto-open section when configs exist
+    const badge = document.getElementById('sc-count-badge');
+    if (badge) {
+      badge.textContent = configs.length ? configs.length + (configs.length === 1 ? ' config' : ' configs') : 'empty';
+      badge.className = 'sect-badge' + (configs.length ? ' active' : '');
+    }
+    const sect = document.getElementById('sc-library-section');
+    if (sect && configs.length > 0) sect.open = true;
   } catch (e) {
     listArea.innerHTML = '<span style="color:var(--red);">Failed to load spider configs</span>';
   }
@@ -640,7 +680,7 @@ async function submitJob() {
   const btn = document.getElementById('submit-btn');
   const msgEl = document.getElementById('submit-msg');
   const url = document.getElementById('job-url').value.trim();
-  const exportTabs = document.getElementById('export-tabs').value.trim() || DEFAULT_TABS;
+  const exportTabs = document.getElementById('export-tabs').value.trim() || (_etUserCleared ? '' : DEFAULT_TABS);
   const profSrc = document.querySelector('input[name=prof-src]:checked').value;
   const scSrc   = document.querySelector('input[name=sc-src]:checked').value;
   const cronExpression = document.getElementById('cron-expression').value.trim();
@@ -1325,7 +1365,38 @@ function buildExportTabsUI() {
   });
 }
 
+function enableAllTabs() {
+  _etUserCleared = false;
+  document.querySelectorAll('.et-all-cb').forEach(cb => { cb.checked = true; });
+  document.querySelectorAll('.et-indiv-select').forEach(sel => {
+    Array.from(sel.options).forEach(o => { o.selected = false; });
+  });
+  _rebuildExportTabsTextarea();
+}
+
+function disableAllTabs() {
+  _etUserCleared = true;
+  document.querySelectorAll('.et-all-cb').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('.et-indiv-select').forEach(sel => {
+    Array.from(sel.options).forEach(o => { o.selected = false; });
+  });
+  document.getElementById('export-tabs').value = '';
+  _updateEtCountBadge();
+}
+
+function _updateEtCountBadge() {
+  const badge = document.getElementById('et-count-badge');
+  if (!badge) return;
+  const allChecked = document.querySelectorAll('.et-all-cb:checked').length;
+  const indivChecked = document.querySelectorAll('.et-indiv-select option:checked').length;
+  const total = allChecked + indivChecked;
+  badge.textContent = total ? total + ' selected' : 'none';
+  badge.className = 'sect-badge' + (total ? ' active' : '');
+}
+
+
 function onExportTabsUIChange(evt) {
+  _etUserCleared = false;
   const el = evt.target;
   if (el.classList.contains('et-all-cb') && el.checked) {
     // Checking :All clears the paired individual select
@@ -1354,6 +1425,7 @@ function _rebuildExportTabsTextarea() {
     }
   });
   document.getElementById('export-tabs').value = selected.join(',') || DEFAULT_TABS;
+  _updateEtCountBadge();
 }
 
 function syncUIFromTextarea() {
@@ -1367,9 +1439,34 @@ function syncUIFromTextarea() {
     const sel = document.querySelector('.et-indiv-select[data-category="' + cat.key + '"]');
     if (sel) Array.from(sel.options).forEach(o => { o.selected = tabs.has(o.value); });
   });
+  _updateEtCountBadge();
 }
 
-// ── API Integrations Drawer ───────────────────────────────────────────────────
+// ── API Integrations Inline Section ──────────────────────────────────────────
+
+let _apiSectionLoaded = false;  // true once the service list UI has been rendered
+
+function _loadApiSectionOnce() {
+  _apiSectionLoaded = true;
+  if (_apiCredentialsCache) {
+    // Data was already fetched by _initApiSettingsBtn(); render from cache
+    // to avoid a duplicate request.
+    renderApiServicesList(_apiCredentialsCache);
+    loadDriveStatus();
+  } else {
+    loadApiCredentials();
+  }
+}
+
+function openApiDrawer() {
+  const sect = document.getElementById('api-section');
+  if (sect) { sect.open = true; if (!_apiSectionLoaded) _loadApiSectionOnce(); }
+}
+
+function closeApiDrawer() {
+  const sect = document.getElementById('api-section');
+  if (sect) sect.open = false;
+}
 
 const API_SERVICE_META = {
   google_search_console: {
@@ -1409,19 +1506,6 @@ const API_SERVICE_META = {
 };
 
 let _apiCredentialsCache = null;
-
-function openApiDrawer() {
-  document.getElementById('api-drawer').classList.add('open');
-  document.getElementById('api-drawer-backdrop').classList.add('open');
-  document.body.style.overflow = 'hidden';
-  loadApiCredentials();
-}
-
-function closeApiDrawer() {
-  document.getElementById('api-drawer').classList.remove('open');
-  document.getElementById('api-drawer-backdrop').classList.remove('open');
-  document.body.style.overflow = '';
-}
 
 async function loadApiCredentials() {
   const list = document.getElementById('api-services-list');
@@ -1572,13 +1656,16 @@ function _showApiMsg(el, text, type) {
 }
 
 function _updateApiSettingsBtn(services) {
-  const btn = document.getElementById('api-settings-btn');
-  if (!btn || !services) return;
-  const anyEnabled = services.some(s => s.enabled);
-  btn.classList.toggle('has-enabled', anyEnabled);
-  btn.title = anyEnabled
-    ? 'API Integrations (' + services.filter(s => s.enabled).length + ' enabled)'
-    : 'API Integration settings';
+  const badge = document.getElementById('api-enabled-badge');
+  if (!badge || !services) return;
+  const enabledCount = services.filter(s => s.enabled).length;
+  if (enabledCount > 0) {
+    badge.textContent = enabledCount + ' enabled';
+    badge.className = 'sect-badge active';
+  } else {
+    badge.textContent = '0 enabled';
+    badge.className = 'sect-badge';
+  }
 }
 
 async function _initApiSettingsBtn() {
@@ -1586,7 +1673,10 @@ async function _initApiSettingsBtn() {
     const r = await fetch('/api/api-credentials');
     if (r.ok) {
       const services = await r.json();
+      _apiCredentialsCache = services;
       _updateApiSettingsBtn(services);
+      // Note: _apiSectionLoaded is NOT set here; we want the first expand
+      // to render the list from this cached data (avoiding a second fetch).
     }
   } catch { /* non-critical */ }
 }
@@ -1793,7 +1883,7 @@ buildExportTabsUI();
 requestAnimationFrame(equalizeExportTabHeights);
 document.getElementById('export-tabs').value = DEFAULT_TABS;
 syncUIFromTextarea();
-document.getElementById('export-tabs').addEventListener('input', syncUIFromTextarea);
+document.getElementById('export-tabs').addEventListener('input', () => { _etUserCleared = false; syncUIFromTextarea(); });
 checkHealth();
 loadProfiles();
 loadSpiderConfigs();

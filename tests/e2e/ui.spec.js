@@ -411,4 +411,80 @@ test.describe('Export tabs customisation', () => {
     const latest = data.jobs[0];
     expect(latest.export_tabs).toBe('Internal:All,Response Codes:All');
   });
+
+  test('Export Tabs section is expanded by default', async ({ page }) => {
+    await page.goto('/');
+    const section = page.locator('#et-section');
+    await expect(section).toHaveAttribute('open', '');
+    await expect(page.locator('#export-tabs')).toBeVisible();
+  });
+
+  test('Export Tabs section can be collapsed', async ({ page }) => {
+    await page.goto('/');
+    // Click the summary to collapse it.
+    await page.locator('#et-section > summary').click();
+    await expect(page.locator('#export-tabs')).toBeHidden();
+    // Re-expand.
+    await page.locator('#et-section > summary').click();
+    await expect(page.locator('#export-tabs')).toBeVisible();
+  });
+
+  test('"Enable All" button checks all :All flags and updates textarea', async ({ page }) => {
+    await page.goto('/');
+    // Uncheck everything first via "Disable All".
+    await page.locator('button', { hasText: 'Disable All' }).click();
+    await expect(page.locator('#export-tabs')).toHaveValue('');
+
+    // Now enable all.
+    await page.locator('button', { hasText: 'Enable All' }).click();
+    const value = await page.locator('#export-tabs').inputValue();
+    // Every category should have an :All entry present.
+    expect(value).toContain('Internal:All');
+    expect(value).toContain('AMP:All');
+    // Count badge should reflect selections.
+    await expect(page.locator('#et-count-badge')).toContainText('selected');
+  });
+
+  test('"Disable All" button unchecks all flags and empties textarea', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('button', { hasText: 'Disable All' }).click();
+    await expect(page.locator('#export-tabs')).toHaveValue('');
+    await expect(page.locator('#et-count-badge')).toHaveText('none');
+  });
+});
+
+// ─── Collapsible sections ─────────────────────────────────────────────────────
+test.describe('Collapsible sections', () => {
+  test('Profile Library section shows count badge when profiles exist', async ({ page, request, baseURL }) => {
+    await apiUploadProfile(request, baseURL, 'badge-count-profile');
+    await page.goto('/');
+    const sect = page.locator('#profiles-section');
+    await expect(sect).toHaveAttribute('open', '');
+    await expect(page.locator('#profiles-count-badge')).toContainText('profile');
+  });
+
+  test('Spider Config Library starts collapsed when empty', async ({ page }) => {
+    await page.goto('/');
+    const sect = page.locator('#sc-library-section');
+    await expect(sect).not.toHaveAttribute('open', '');
+  });
+
+  test('Profile Library auto-opens when profiles exist', async ({ page, request, baseURL }) => {
+    await apiUploadProfile(request, baseURL, 'auto-open-profile');
+    await page.goto('/');
+    await expect(page.locator('#profiles-section')).toHaveAttribute('open', '');
+    await expect(page.locator('#profile-list-area table')).toBeVisible();
+  });
+
+  test('API Integrations section starts collapsed', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#api-section')).not.toHaveAttribute('open', '');
+  });
+
+  test('API Integrations section loads credentials when expanded', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#api-section > summary').click();
+    // After expanding, the service list should populate (no longer show initial "Loading…").
+    await expect(page.locator('#api-services-list .api-svc-card').first()).toBeVisible({ timeout: 5_000 });
+  });
 });

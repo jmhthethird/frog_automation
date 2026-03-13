@@ -46,6 +46,10 @@ jobs:
       # ── Dependencies ─────────────────────────────────────────────────────
       - name: Install dependencies
         run: npm ci
+        env:
+          # The CI test jobs never launch the Electron desktop app, so skip
+          # downloading the Electron binary (avoids 404s on unavailable versions).
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       # ── Unit & route tests with coverage ─────────────────────────────────
       - name: Run Jest tests (unit + routes + integration)
@@ -78,5 +82,3 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
-
-
