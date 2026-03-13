@@ -186,22 +186,20 @@ async function runJob(jobId) {
       ).get();
       if (gdRow && gdRow.enabled === 1) {
         const creds = JSON.parse(gdRow.credentials || '{}');
-        if (creds.client_id && creds.client_secret && creds.refresh_token) {
+        if (creds.api_key && creds.root_folder_id) {
           logStream.write('[INFO] Uploading ZIP to Google Drive…\n');
           const result = await uploadToDrive({
-            clientId:     creds.client_id,
-            clientSecret: creds.client_secret,
-            refreshToken: creds.refresh_token,
+            apiKey:       creds.api_key,
             filePath:     zipPath,
             jobUrl:       job.url,
-            rootFolderId: creds.root_folder_id || undefined,
+            rootFolderId: creds.root_folder_id,
           });
           logStream.write(
             `[INFO] Google Drive upload complete: fileId=${result.fileId} ` +
             `domain="${result.domain}" size=${result.localSize} bytes\n`
           );
         } else {
-          logStream.write('[WARN] Google Drive integration is enabled but not yet authenticated; skipping upload\n');
+          logStream.write('[WARN] Google Drive integration is enabled but not fully configured (API key and Root Folder ID required); skipping upload\n');
         }
       }
     } catch (driveErr) {

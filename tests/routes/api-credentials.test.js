@@ -58,28 +58,28 @@ describe('GET /api/api-credentials', () => {
     expect(gsc.fields).toHaveLength(0);
   });
 
-  it('google_drive has api_key, client_id, and client_secret fields', async () => {
+  it('google_drive has api_key and root_folder_id fields', async () => {
     const res = await ctx.request.get('/api/api-credentials').expect(200);
     const gd = res.body.find(s => s.service === 'google_drive');
     expect(gd).toBeDefined();
     const names = gd.fields.map(f => f.name);
     expect(names).toContain('api_key');
-    expect(names).toContain('client_id');
-    expect(names).toContain('client_secret');
+    expect(names).toContain('root_folder_id');
+    expect(names).not.toContain('client_id');
+    expect(names).not.toContain('client_secret');
   });
 
-  it('google_drive client_secret field is marked sensitive', async () => {
+  it('google_drive api_key field is marked sensitive', async () => {
     const res = await ctx.request.get('/api/api-credentials').expect(200);
     const gd = res.body.find(s => s.service === 'google_drive');
-    const secretField = gd.fields.find(f => f.name === 'client_secret');
-    expect(secretField.sensitive).toBe(true);
+    const apiKeyField = gd.fields.find(f => f.name === 'api_key');
+    expect(apiKeyField.sensitive).toBe(true);
   });
 
-  it('google_drive api_key and client_id fields are not marked sensitive', async () => {
+  it('google_drive root_folder_id field is not marked sensitive', async () => {
     const res = await ctx.request.get('/api/api-credentials').expect(200);
     const gd = res.body.find(s => s.service === 'google_drive');
-    expect(gd.fields.find(f => f.name === 'api_key').sensitive).toBeFalsy();
-    expect(gd.fields.find(f => f.name === 'client_id').sensitive).toBeFalsy();
+    expect(gd.fields.find(f => f.name === 'root_folder_id').sensitive).toBeFalsy();
   });
 });
 

@@ -5,32 +5,22 @@ const path = require('path');
 const { google } = require('googleapis');
 
 /**
- * Build an OAuth2 client.
+ * Build an authenticated Drive v3 client from a service account JSON key.
+ * The key may be passed as a JSON string or as a plain object.
  *
- * redirectUri is only required during the initial authorization-code exchange.
- * When the client is used solely for refreshing tokens it may be omitted.
- *
- * @param {string} clientId
- * @param {string} clientSecret
- * @param {string} [redirectUri]
- * @returns {import('google-auth-library').OAuth2Client}
- */
-function buildOAuth2Client(clientId, clientSecret, redirectUri) {
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-}
-
-/**
- * Build an authenticated Drive v3 client using a stored OAuth2 refresh token.
- * googleapis automatically refreshes the access token when it expires.
- *
- * @param {string} clientId
- * @param {string} clientSecret
- * @param {string} refreshToken
+ * @param {string|object} serviceAccountKey - Service account credentials JSON.
  * @returns {import('googleapis').drive_v3.Drive}
  */
-function buildDriveClientFromOAuth(clientId, clientSecret, refreshToken) {
-  const auth = buildOAuth2Client(clientId, clientSecret);
-  auth.setCredentials({ refresh_token: refreshToken });
+function buildDriveClientFromApiKey(serviceAccountKey) {
+  const keyObj = typeof serviceAccountKey === 'string'
+    ? JSON.parse(serviceAccountKey)
+    : serviceAccountKey;
+
+  const auth = new google.auth.GoogleAuth({
+    credentials: keyObj,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  });
+
   return google.drive({ version: 'v3', auth });
 }
 
@@ -101,12 +91,12 @@ function domainFromUrl(url) {
 }
 
 /**
- * Upload a crawl ZIP to Google Drive.
+ * Upload a crawl ZIP to Google Drive using a service account API key.
  *
  * Folder structure created/verified on Drive:
  *
- *   My Drive
- *     └── [user-selected root folder]   ← rootFolderId from the folder picker
+ *   My Drive (service account)
+ *     └── [user-specified root folder]   ← rootFolderId entered in settings
  *           └── <domain>/               ← derived from jobUrl; created if absent
  *                 └── <filename.zip>
  *
@@ -115,17 +105,15 @@ function domainFromUrl(url) {
  * throws an error.
  *
  * @param {object} options
- * @param {string}  options.clientId      - OAuth2 Client ID.
- * @param {string}  options.clientSecret  - OAuth2 Client Secret.
- * @param {string}  options.refreshToken  - Stored OAuth2 refresh token.
+ * @param {string}  options.apiKey        - Service account JSON key (string or object).
  * @param {string}  options.filePath      - Absolute path to the local ZIP file.
  * @param {string}  options.jobUrl        - Crawled URL (used to derive the domain folder name).
- * @param {string} [options.rootFolderId] - Drive folder ID selected via the folder picker.
- *   When absent the domain folder is placed directly in My Drive root.
+ * @param {string} [options.rootFolderId] - Drive folder ID. When absent the domain folder
+ *   is placed directly in the service account's My Drive root.
  * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number }>}
  */
-async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, jobUrl, rootFolderId }) {
-  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
+async function uploadToDrive({ apiKey, filePath, jobUrl, rootFolderId }) {
+  const drive = buildDriveClientFromApiKey(apiKey);
 
   const domain = domainFromUrl(jobUrl);
   const filename = path.basename(filePath);
@@ -156,4 +144,4 @@ async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, j
   return { fileId, domain, folderId, localSize, driveSize };
 }
 
-module.exports = { uploadToDrive, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl };
+module.exports = { uploadToDrive, buildDriveClientFromApiKey, ensureFolder, findFolder, domainFromUrl };
