@@ -41,8 +41,8 @@ tests/              – Jest unit/route tests + Playwright e2e
 
 Read the full skills and vision document before suggesting or making any frontend change:
 
-- **[`.github/skills/frontend-design.md`](.github/skills/frontend-design.md)** — Design philosophy, visual identity, UX goals, and opportunities for innovation. This is your creative brief.
-- **[`.github/instructions/ui-ux.instructions.md`](.github/instructions/ui-ux.instructions.md)** — Component patterns, design tokens, layout rules, and the quality bar every UI change must meet.
+- **[`skills/frontend-design.md`](skills/frontend-design.md)** — Design philosophy, visual identity, UX goals, and opportunities for innovation. This is your creative brief.
+- **[`instructions/ui-ux.instructions.md`](instructions/ui-ux.instructions.md)** — Component patterns, design tokens, layout rules, and the quality bar every UI change must meet.
 
 ### Non-negotiable design constraints
 1. **Dark theme is the identity.** All UI work must be designed for the dark theme (`--bg`, `--surface`, `--surface2` tokens).
