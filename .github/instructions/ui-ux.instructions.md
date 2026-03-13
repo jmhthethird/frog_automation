@@ -12,7 +12,7 @@ The frontend is a single-page application. Its current form is a single HTML fil
 
 ## 1. Design Tokens (CSS Custom Properties)
 
-All colours, surfaces, and the shared border-radius live in `:root`. **Always use these tokens; never hard-code the raw values.**
+All core colours, surfaces, and the shared border-radius live in `:root`. **When adding or updating styles, use these tokens instead of introducing new hard-coded colour values.** Some legacy styles still use non-token hex values; avoid adding new ones and prefer defining or reusing a token in `:root`, gradually migrating existing colours into tokens when you touch that code.
 
 | Token | Value | Usage |
 |---|---|---|
