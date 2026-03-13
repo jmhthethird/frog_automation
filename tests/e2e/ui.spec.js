@@ -455,9 +455,8 @@ test.describe('Export tabs customisation', () => {
 
 // ─── Collapsible sections ─────────────────────────────────────────────────────
 test.describe('Collapsible sections', () => {
-  test('Profile Library section shows count badge when profiles exist', async ({ page }) => {
-    // By the time this test runs, earlier profile tests have added profiles,
-    // so the section should be open with a count badge.
+  test('Profile Library section shows count badge when profiles exist', async ({ page, request, baseURL }) => {
+    await apiUploadProfile(request, baseURL, 'badge-count-profile');
     await page.goto('/');
     const sect = page.locator('#profiles-section');
     await expect(sect).toHaveAttribute('open', '');
