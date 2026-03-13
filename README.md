@@ -341,27 +341,6 @@ Every pull request runs all tests automatically via **GitHub Actions CI** (`.git
 | Job | Description |
 |-----|-------------|
 | `test` | Unit, route, and E2E tests — always runs on every PR and push to `main` |
-| `SF integration tests (Linux)` | Downloads and installs Screaming Frog on Linux (free mode — no licence required), accepts the EULA, and runs both the Jest crawl tests and the Playwright UI tests against a local deterministic fixture. Runs on PRs from the same repository only. |
-
-#### SF integration tests in CI
-
-The `sf-integration` CI job runs on every same-repo PR and push to `main`.  It
-installs Screaming Frog and immediately runs both the Jest and Playwright
-integration tests without any additional secrets.
-
-Screaming Frog's free mode (up to 500 URLs per crawl) is sufficient for all
-integration test crawls — no paid licence is required.
-
-If you have a paid licence and want to enable unlimited crawling in CI, add two
-optional repository secrets:
-
-1. Go to **Settings → Secrets and variables → Actions** in the GitHub repository.
-2. Add:
-   - `SF_LICENSE_USERNAME` — your Screaming Frog account e-mail address
-   - `SF_LICENSE_KEY` — your Screaming Frog licence key
-
-When present the install step will activate the licence automatically.  The
-tests pass regardless of whether the secrets are set.
 
 ### Enabling branch protection (one-time admin step)
 
