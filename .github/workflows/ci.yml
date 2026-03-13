@@ -46,6 +46,10 @@ jobs:
       # ── Dependencies ─────────────────────────────────────────────────────
       - name: Install dependencies
         run: npm ci
+        env:
+          # The CI test jobs never launch the Electron desktop app, so skip
+          # downloading the Electron binary (avoids 404s on unavailable versions).
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       # ── Unit & route tests with coverage ─────────────────────────────────
       - name: Run Jest tests (unit + routes + integration)
@@ -110,6 +114,8 @@ jobs:
       # ── Dependencies ─────────────────────────────────────────────────────
       - name: Install dependencies
         run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
       # ── Cache SF installer to avoid re-downloading on every run ──────────
       - name: Cache Screaming Frog installer
