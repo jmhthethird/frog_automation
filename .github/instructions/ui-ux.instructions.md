@@ -2,9 +2,11 @@
 applyTo: "public/**"
 ---
 
-# UI / UX & Design Skills — `public/index.html`
+# UI / UX & Design Skills — Frontend
 
-This file is the **only** frontend asset. It contains all HTML structure, embedded `<style>` CSS, and embedded `<script>` JavaScript. There is no build step and no frontend framework. Every UI change happens here.
+> **Read [`.github/skills/frontend-design.md`](../skills/frontend-design.md) first.** It defines the design philosophy, visual identity, and UX goals that govern every decision in this file.
+
+The frontend is a single-page application. Its current form is a single HTML file with embedded styles and scripts, but **the implementation is open to modernisation** — component frameworks, build tooling, and module architecture are all on the table when they serve the user and the design goals. Propose improvements with confidence.
 
 ---
 
@@ -182,30 +184,31 @@ The drawer slides in from the right with `transform: translateX(100%)` → `tran
 
 ---
 
-## 7. JavaScript Conventions
+## 7. Frontend Implementation Guidance
 
-- **No framework, no modules.** All JS is in one `<script>` block at the bottom of `public/index.html`.
-- **API calls** use `fetch('/api/…')` with `async/await`. Always `await response.json()` and check for `data.error`.
-- **DOM manipulation** uses `document.getElementById`, `querySelector`, `innerHTML` (for list rendering), and `textContent` (for single-value updates). Prefer `textContent` over `innerHTML` when inserting untrusted data to avoid XSS.
-- **Initialization** calls live between the existing `loadJobs()` and `_initUpdateCheck()` calls in the `// ── Init` section. Add new init calls inside that block to avoid merge conflicts with the main branch.
-- **New function definitions** should be placed before the `// ── Init` section, not after it.
-- **localStorage** is used for persisting UI state (e.g. last-used profile, last-used spider config). Follow the pattern `localStorage.setItem('frog_<key>', value)` / `localStorage.getItem('frog_<key>')`.
+**The current implementation uses a single-file approach (embedded HTML/CSS/JS), but this is a starting point, not a ceiling.**
+
+When proposing or implementing changes to `public/`:
+
+- **Suggest modern patterns** where they improve maintainability, performance, or user experience. A component model, a build step, or a lightweight framework are all worth proposing if the benefit is clear.
+- **API communication** uses `fetch('/api/…')` with `async/await`. Always handle errors and surface them to the user via `.msg-err`. Re-enable any disabled buttons in `finally`.
+- **XSS safety is mandatory.** Prefer `textContent` over `innerHTML` when rendering user-supplied data. If you use `innerHTML`, ensure the content is sanitised first.
+- **State persistence** for UI preferences (last-used profile, last-used config, etc.) currently uses `localStorage` with the key prefix `frog_`. Maintain this convention or propose a migration path.
+- **Initialisation order** matters in the current codebase: new init calls belong between `loadJobs()` and `_initUpdateCheck()` in the `// ── Init` section. If restructuring, document the new pattern clearly.
+- **Polling:** The jobs list currently refreshes via `setInterval` / `_tick()`. If proposing a real-time alternative (WebSockets, SSE), document the trade-offs.
 
 ---
 
 ## 8. Adding a New UI Feature — Checklist
 
-When Copilot suggests or generates a new UI section, verify:
+Before opening a PR for any frontend change, verify against the full quality bar in [`.github/skills/frontend-design.md`](../skills/frontend-design.md). At minimum:
 
-- [ ] Uses only CSS custom properties from `:root` for colours and `--radius` for rounding
-- [ ] New CSS classes are added inside the existing `<style>` block, grouped near related rules
-- [ ] HTML structure follows the card / form / table patterns above
+- [ ] Uses design tokens from `:root` for all colours; no hard-coded colour values
+- [ ] Dark theme looks correct — tested on the dark background
+- [ ] HTML structure follows the card / form / table patterns above where applicable
 - [ ] Status is shown with `.badge-*` classes; feedback uses `.msg-ok` / `.msg-err`
-- [ ] Interactive elements are `<button>` elements with `.btn` + modifier class
-- [ ] New collapsibles use `<details class="sect">` / `<summary>`
-- [ ] The layout is responsive (tested at ≤ 760 px)
-- [ ] Keyboard navigation works (Tab + Enter/Space activates buttons and opens details)
-- [ ] `textContent` used instead of `innerHTML` for user-supplied strings
-- [ ] New fetch calls handle errors and re-enable any disabled buttons in `finally`
-- [ ] Initialisation call added between `loadJobs()` and `_initUpdateCheck()` in `// ── Init`
+- [ ] Interactive elements are focusable and keyboard-operable
+- [ ] Layout is responsive — tested at ≤ 760 px
+- [ ] User-supplied content never injected as raw HTML (XSS safety)
+- [ ] API calls handle errors and re-enable UI controls in `finally`
 - [ ] Before/after screenshots attached in the PR (required by PR template)
