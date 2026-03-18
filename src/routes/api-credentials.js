@@ -30,6 +30,16 @@ const SERVICE_FIELDS = {
 
 const KNOWN_SERVICES = Object.keys(SERVICE_FIELDS);
 
+/**
+ * Keys that are managed programmatically by dedicated routes (not the UI) and
+ * must be preserved when a PUT updates the user-editable credential fields.
+ * These keys are intentionally absent from SERVICE_FIELDS so they are never
+ * exposed or overwritten via the generic credentials API.
+ */
+const PROGRAMMATIC_KEYS = {
+  google_drive: ['refresh_token', 'root_folder_id', 'root_folder_name'],
+};
+
 /** Mask a single credential value for display (keep first 4 chars, rest as ●). */
 function maskValue(value) {
   if (!value) return '';
@@ -96,9 +106,20 @@ router.put('/:service', writeLimit, (req, res) => {
   // never written to the database, even if the client sends them.
   const allowedFields = new Set((SERVICE_FIELDS[service] || []).map(f => f.name));
 
-  // Preserve all existing credential fields (including programmatically-set fields
-  // like OAuth refresh_token and root_folder_id managed by other routes).
-  const newCreds = { ...existingCreds };
+  // Seed newCreds from existing stored values (allowed keys only).
+  const newCreds = {};
+  for (const field of allowedFields) {
+    newCreds[field] = existingCreds[field] || '';
+  }
+  // Also preserve any programmatically-managed keys for this service.
+  // These are set by other routes (e.g. OAuth callbacks, folder picker) and
+  // are intentionally absent from SERVICE_FIELDS so they are never exposed or
+  // overwritten via the user-editable credentials UI.
+  for (const key of (PROGRAMMATIC_KEYS[service] || [])) {
+    if (existingCreds[key] !== undefined) {
+      newCreds[key] = existingCreds[key];
+    }
+  }
   // Merge incoming credentials for allowed keys only.
   // If a field value contains ● (bullet) characters it is a masked display
   // value returned by GET – keep the existing stored value unchanged.
