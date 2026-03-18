@@ -73,27 +73,128 @@ function buildRedirectUri(req) {
 }
 
 /**
- * Return an HTML page that sends a postMessage to the window opener and closes.
- * Used as the OAuth2 callback response so it works inside a popup window.
+ * Return an HTML page that handles OAuth callback response.
+ * Supports both popup mode (postMessage) and redirect mode (sessionStorage).
  *
  * The JSON payload has <, >, and & escaped to their Unicode equivalents so
  * that no injected error message (e.g. containing </script>) can break out of
  * the <script> block and inject HTML.
  */
-function popupResponse(res, type, extra = {}) {
+function callbackResponse(res, type, extra = {}) {
   const payload = JSON.stringify({ type, ...extra })
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
-  // The targetOrigin is window.location.origin so the message is scoped to
-  // the same server that opened the popup.
-  res.send(`<!doctype html><html><body><script>
+
+  res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Google Drive Authorization</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      text-align: center;
+      max-width: 500px;
+      background: #16213e;
+      padding: 40px;
+      border-radius: 8px;
+      border: 1px solid #2a2a4e;
+    }
+    .icon { font-size: 48px; margin-bottom: 20px; }
+    .icon.success { color: #2ecc71; }
+    .icon.error { color: #e74c3c; }
+    h1 { font-size: 20px; margin: 0 0 12px 0; }
+    p { color: #a0a0a0; margin: 0 0 24px 0; line-height: 1.5; }
+    .btn {
+      display: inline-block;
+      background: #3498db;
+      color: #fff;
+      padding: 10px 24px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 14px;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .spinner {
+      border: 3px solid #2a2a4e;
+      border-top: 3px solid #3498db;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="content">
+    <div class="spinner"></div>
+    <p>Completing authorization...</p>
+  </div>
+  <script>
     (function () {
       var msg = ${payload};
-      try { window.opener.postMessage(msg, window.location.origin); } catch (e) { /* opener gone */ }
-      window.close();
+      var isPopup = window.opener && !window.opener.closed;
+
+      // Store result in sessionStorage for redirect mode
+      try {
+        sessionStorage.setItem('gdrive_auth_result', JSON.stringify(msg));
+      } catch (e) { /* storage unavailable */ }
+
+      // If opened as popup, send postMessage and close
+      if (isPopup) {
+        try {
+          window.opener.postMessage(msg, window.location.origin);
+        } catch (e) { /* opener gone */ }
+        window.close();
+        return;
+      }
+
+      // Redirect mode: show result and redirect after brief delay
+      var content = document.getElementById('content');
+      if (msg.type === 'drive-auth-success') {
+        content.innerHTML =
+          '<div class="icon success">✓</div>' +
+          '<h1>Authorization Successful</h1>' +
+          '<p>Your Google Drive account has been connected. Redirecting...</p>';
+        setTimeout(function() {
+          window.location.href = '/?gdrive_auth=success';
+        }, 1500);
+      } else {
+        var errorMsg = msg.error || 'Unknown error occurred';
+        content.innerHTML =
+          '<div class="icon error">✕</div>' +
+          '<h1>Authorization Failed</h1>' +
+          '<p>' + escapeHtml(errorMsg) + '</p>' +
+          '<a href="/" class="btn">Return to Application</a>';
+      }
+
+      function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+      }
     })();
-  </script></body></html>`);
+  </script>
+</body>
+</html>`);
 }
 
 // ─── GET /api/google-drive/status ─────────────────────────────────────────────
@@ -141,19 +242,19 @@ router.get('/auth-url', readLimit, (req, res) => {
 router.get('/callback', readLimit, async (req, res) => {
   const { code, error, state } = req.query;
 
-  if (error) return popupResponse(res, 'drive-auth-error', { error: String(error) });
-  if (!code)  return popupResponse(res, 'drive-auth-error', { error: 'Missing authorization code' });
+  if (error) return callbackResponse(res, 'drive-auth-error', { error: String(error) });
+  if (!code)  return callbackResponse(res, 'drive-auth-error', { error: 'Missing authorization code' });
 
   // Validate the CSRF state token before exchanging the code.
   if (!_consumeState(state)) {
-    return popupResponse(res, 'drive-auth-error', {
+    return callbackResponse(res, 'drive-auth-error', {
       error: 'Invalid or expired state parameter; please try connecting again.',
     });
   }
 
   const creds = getCredentials();
   if (!creds.client_id || !creds.client_secret) {
-    return popupResponse(res, 'drive-auth-error', { error: 'OAuth2 credentials not configured' });
+    return callbackResponse(res, 'drive-auth-error', { error: 'OAuth2 credentials not configured' });
   }
 
   const redirectUri  = buildRedirectUri(req);
@@ -165,22 +266,22 @@ router.get('/callback', readLimit, async (req, res) => {
     if (tokens.refresh_token) {
       // Store the newly issued refresh token.
       persistCredentials({ refresh_token: tokens.refresh_token });
-      return popupResponse(res, 'drive-auth-success');
+      return callbackResponse(res, 'drive-auth-success');
     }
 
     // Google did not return a new refresh_token (common on re-auth when the
     // existing grant is still valid). If we already have a stored token the
     // session remains usable — report success.
     if (creds.refresh_token) {
-      return popupResponse(res, 'drive-auth-success');
+      return callbackResponse(res, 'drive-auth-success');
     }
 
     // No usable token at all: tell the user to disconnect and try again.
-    popupResponse(res, 'drive-auth-error', {
+    callbackResponse(res, 'drive-auth-error', {
       error: 'Google did not return a refresh token. Please disconnect and connect again.',
     });
   } catch (err) {
-    popupResponse(res, 'drive-auth-error', { error: err.message });
+    callbackResponse(res, 'drive-auth-error', { error: err.message });
   }
 });
 
