@@ -136,11 +136,21 @@ async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, j
   const localSize = fs.statSync(filePath).size;
   const fileStream = fs.createReadStream(filePath);
 
-  const uploadResp = await drive.files.create({
-    requestBody: { name: filename, parents: [folderId] },
-    media: { mimeType: 'application/zip', body: fileStream },
-    fields: 'id, size',
-  });
+  let uploadResp;
+  try {
+    uploadResp = await drive.files.create({
+      requestBody: { name: filename, parents: [folderId] },
+      media: { mimeType: 'application/zip', body: fileStream },
+      fields: 'id, size',
+    });
+  } finally {
+    // Suppress any error event that may fire after the stream is destroyed
+    // (e.g. the autoOpen callback completing after the file was removed in
+    // tests, or a late close error). Errors that occur during the upload are
+    // already surfaced via the rejected drive.files.create promise.
+    fileStream.on('error', () => {});
+    fileStream.destroy();
+  }
 
   const fileId = uploadResp.data.id;
   const driveSize = parseInt(uploadResp.data.size, 10);
