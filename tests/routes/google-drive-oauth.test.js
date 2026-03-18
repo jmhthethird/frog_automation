@@ -94,8 +94,10 @@ describe('GET /api/google-drive/callback', () => {
     expect(res.text).toContain('\\u003c');
   });
 
-  it('returns 400 when code is missing', async () => {
-    await ctx.request.get('/api/google-drive/callback').expect(400);
+  it('returns error postMessage when code is missing', async () => {
+    const res = await ctx.request.get('/api/google-drive/callback').expect(200);
+    expect(res.text).toContain('drive-auth-error');
+    expect(res.text).toContain('Missing authorization code');
   });
 
   it('returns error postMessage when state is missing', async () => {
@@ -185,7 +187,7 @@ describe('GET /api/google-drive/callback', () => {
     expect(res2.text).toContain('state');
   });
 
-  it('returns 400 when OAuth2 credentials are not configured', async () => {
+  it('returns error postMessage when OAuth2 credentials are not configured', async () => {
     // Temporarily seed valid creds to register a valid state via /auth-url,
     // then remove the credentials before calling the callback.
     seedCreds({ client_id: 'cid', client_secret: 'cs' });
@@ -194,9 +196,10 @@ describe('GET /api/google-drive/callback', () => {
 
     const res = await ctx.request
       .get(`/api/google-drive/callback?code=c1&state=${encodeURIComponent(state)}`)
-      .expect(400);
+      .expect(200);
 
-    expect(res.text).toMatch(/credentials not configured/i);
+    expect(res.text).toContain('drive-auth-error');
+    expect(res.text).toContain('credentials not configured');
   });
 });
 
