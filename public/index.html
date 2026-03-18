@@ -70,6 +70,20 @@
   .drive-status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
   .drive-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .drive-folder-display { font-size: 13px; margin-bottom: 8px; word-break: break-all; }
+  .drive-flow { background: #0a0a1e; border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+  .drive-flow-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .drive-flow-row:last-child { margin-bottom: 0; }
+  .drive-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+  .drive-dot.ok { background: var(--green); box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 20%, transparent); }
+  .drive-dot.warn { background: var(--orange); }
+  .drive-dot.err { background: var(--red); }
+  .drive-flow-main { flex: 1; min-width: 0; }
+  .drive-flow-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .drive-flow-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .drive-msg { font-size: 12px; margin-top: 6px; color: var(--text-dim); }
+  .drive-msg.ok { color: var(--green); }
+  .drive-msg.err { color: var(--red); }
+  .drive-inline-link { font-size: 11px; color: var(--blue); display: inline-block; margin-top: 6px; }
   /* Update notification panel */
   #update-panel { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; display: none; align-items: center; gap: 14px; flex-wrap: wrap; }
   #update-panel.visible { display: flex; }
@@ -1544,25 +1558,41 @@ function renderApiServicesList(services) {
     const driveExtra = svc.service === 'google_drive' ? `
       <div class="drive-subsection">
         <div class="drive-subsection-label">Connection</div>
-        <div class="drive-status-row">
-          <span id="drive-conn-status" style="color:var(--text-dim);">○ Not connected</span>
-        </div>
-        <div class="drive-btn-row">
-          <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
-                  onclick="connectGoogleDrive()">Connect Google Drive</button>
-          <button id="drive-disconnect-btn" class="btn btn-secondary"
-                  style="font-size:11px;padding:4px 12px;display:none;"
-                  onclick="disconnectGoogleDrive()">Disconnect</button>
+        <div class="drive-flow">
+          <div class="drive-flow-row">
+            <div id="drive-dot-conn" class="drive-dot"></div>
+            <div class="drive-flow-main">
+              <div id="drive-conn-title" class="drive-flow-title">Not connected</div>
+              <div id="drive-conn-sub" class="drive-flow-sub">Save your OAuth2 Client ID and Secret, then connect.</div>
+            </div>
+            <div class="drive-btn-row">
+              <button id="drive-connect-btn" class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
+                      onclick="connectGoogleDrive()">Connect</button>
+              <button id="drive-disconnect-btn" class="btn btn-secondary"
+                      style="font-size:11px;padding:4px 12px;display:none;"
+                      onclick="disconnectGoogleDrive()">Disconnect</button>
+            </div>
+          </div>
+          <div id="drive-conn-msg" class="drive-msg"></div>
+          <a id="drive-manual-link" class="drive-inline-link" href="#" target="_blank" rel="noopener" style="display:none;">Open auth link in browser</a>
         </div>
       </div>
       <div class="drive-subsection">
         <div class="drive-subsection-label">Root Folder</div>
-        <div id="drive-folder-display" class="drive-folder-display" style="color:var(--text-dim);">No folder selected</div>
-        <div class="drive-btn-row">
-          <button id="drive-pick-btn" class="btn btn-secondary"
-                  style="font-size:11px;padding:4px 12px;"
-                  onclick="openDrivePicker()" disabled>Select Root Folder</button>
-          <span id="drive-pick-msg" style="font-size:11px;color:var(--text-dim);"></span>
+        <div class="drive-flow">
+          <div class="drive-flow-row">
+            <div id="drive-dot-folder" class="drive-dot"></div>
+            <div class="drive-flow-main">
+              <div class="drive-flow-title">Destination</div>
+              <div id="drive-folder-display" class="drive-flow-sub drive-folder-display" style="margin-bottom:0;">No folder selected</div>
+            </div>
+            <div class="drive-btn-row">
+              <button id="drive-pick-btn" class="btn btn-secondary"
+                      style="font-size:11px;padding:4px 12px;"
+                      onclick="openDrivePicker()" disabled>Select Root Folder</button>
+            </div>
+          </div>
+          <div id="drive-pick-msg" class="drive-msg"></div>
         </div>
       </div>` : '';
 
@@ -1714,6 +1744,12 @@ async function rerunJob(id) {
 
 // ── Google Drive Integration ──────────────────────────────────────────────────
 
+let _driveAuthSession = null;
+let _driveAuthPollTimer = null;
+let _driveStatusPollTimer = null;
+let _driveBroadcastChannel = null;
+let _driveAuthTimeout = null;
+
 /** Refresh Drive connection status and update the card UI. */
 async function loadDriveStatus() {
   try {
@@ -1725,20 +1761,28 @@ async function loadDriveStatus() {
 }
 
 function _applyDriveStatus(status) {
-  const connEl    = document.getElementById('drive-conn-status');
-  const pickBtn   = document.getElementById('drive-pick-btn');
-  const disconnBtn = document.getElementById('drive-disconnect-btn');
-  const folderEl  = document.getElementById('drive-folder-display');
-  if (!connEl) return; // card not rendered
+  const pickBtn     = document.getElementById('drive-pick-btn');
+  const disconnBtn  = document.getElementById('drive-disconnect-btn');
+  const folderEl    = document.getElementById('drive-folder-display');
+  const connTitle   = document.getElementById('drive-conn-title');
+  const connSub     = document.getElementById('drive-conn-sub');
+  const connectBtn  = document.getElementById('drive-connect-btn');
+  if (!connTitle) return; // card not rendered
 
   if (status.connected) {
-    connEl.textContent = '● Connected';
-    connEl.style.color = 'var(--green)';
+    if (_driveAuthPollTimer || _driveStatusPollTimer) _stopDriveAuthPollers();
+    connTitle.textContent = 'Connected to Google Drive';
+    connSub.textContent   = 'Access token ready. Select a root folder for uploads.';
+    _setDriveDot('drive-dot-conn', 'ok');
+    _setDriveMessage('drive-conn-msg', 'Connection active.', 'ok');
     if (pickBtn)    { pickBtn.disabled = false; }
     if (disconnBtn) { disconnBtn.style.display = 'inline-block'; }
+    _setDriveConnectBusy(false);
   } else {
-    connEl.textContent = '○ Not connected';
-    connEl.style.color = 'var(--text-dim)';
+    connTitle.textContent = 'Not connected';
+    connSub.textContent   = 'Save your OAuth2 Client ID and Secret, then connect.';
+    _setDriveDot('drive-dot-conn', null);
+    _setDriveMessage('drive-conn-msg', '', '');
     if (pickBtn)    { pickBtn.disabled = true; }
     if (disconnBtn) { disconnBtn.style.display = 'none'; }
   }
@@ -1752,38 +1796,153 @@ function _applyDriveStatus(status) {
       folderEl.style.color = 'var(--text-dim)';
     }
   }
+  _setDriveDot('drive-dot-folder', status.rootFolderName ? 'ok' : (status.connected ? 'warn' : null));
+  if (connectBtn && !status.connected) connectBtn.textContent = 'Connect';
+}
+
+function _setDriveDot(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'drive-dot' + (state ? ' ' + (state === 'warn' ? 'warn' : state === 'err' ? 'err' : 'ok') : '');
+}
+
+function _setDriveMessage(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'drive-msg' + (type ? ' ' + type : '');
+}
+
+function _setDriveManualLink(url) {
+  const el = document.getElementById('drive-manual-link');
+  if (!el) return;
+  if (url) {
+    el.href = url;
+    el.style.display = 'inline-block';
+  } else {
+    el.removeAttribute('href');
+    el.style.display = 'none';
+  }
+}
+
+function _setDriveConnectBusy(isBusy, label) {
+  const btn = document.getElementById('drive-connect-btn');
+  if (!btn) return;
+  btn.disabled = !!isBusy;
+  btn.textContent = isBusy ? (label || 'Connecting…') : 'Connect';
 }
 
 /** Open a popup for the Google OAuth2 consent flow. */
 async function connectGoogleDrive() {
+  _setDriveManualLink('');
+  _setDriveMessage('drive-conn-msg', 'Opening Google authorization…', '');
+  _setDriveConnectBusy(true, 'Waiting…');
   try {
     const r = await fetch('/api/google-drive/auth-url');
     const d = await r.json();
-    if (!r.ok) { alert(d.error || 'Could not get authorization URL'); return; }
+    if (!r.ok) {
+      _setDriveMessage('drive-conn-msg', d.error || 'Could not get authorization URL', 'err');
+      _setDriveConnectBusy(false);
+      return;
+    }
+
+    const state = d.state || new URL(d.url).searchParams.get('state');
+    _driveAuthSession = { state, startedAt: Date.now() };
 
     const w = 600, h = 700;
     const left = Math.round(window.screenX + (window.outerWidth  - w) / 2);
     const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
-    window.open(d.url, 'gd-auth', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    const popup = window.open(d.url, 'gd-auth', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      _setDriveManualLink(d.url);
+      _setDriveMessage('drive-conn-msg', 'Popup blocked. Use the link below to continue.', 'err');
+    } else {
+      _setDriveMessage('drive-conn-msg', 'Waiting for Google authorization…', '');
+    }
 
-    // Remove any stale listener from a previous (abandoned) popup before
-    // adding a fresh one. Use { once: true } so it self-removes on receipt.
-    window.removeEventListener('message', _onDriveAuthMessage);
-    window.addEventListener('message', _onDriveAuthMessage, { once: true });
+    _startDriveAuthPollers(state);
   } catch {
-    alert('Network error while starting Google Drive authorization.');
+    _setDriveMessage('drive-conn-msg', 'Network error while starting Google Drive authorization.', 'err');
+    _setDriveConnectBusy(false);
   }
+}
+
+function _startDriveAuthPollers(state) {
+  _stopDriveAuthPollers();
+  if (state) {
+    _driveAuthPollTimer = setInterval(() => _pollDriveAuthStatus(state), 1500);
+  }
+  _driveStatusPollTimer = setInterval(loadDriveStatus, 2500);
+  _driveAuthTimeout = setTimeout(() => {
+    if (_driveAuthPollTimer || _driveStatusPollTimer) {
+      _stopDriveAuthPollers();
+      _setDriveConnectBusy(false);
+      _setDriveMessage('drive-conn-msg', 'Timed out waiting for Google authorization. Try again.', 'err');
+    }
+  }, 5 * 60_000);
+}
+
+function _stopDriveAuthPollers() {
+  if (_driveAuthPollTimer) clearInterval(_driveAuthPollTimer);
+  if (_driveStatusPollTimer) clearInterval(_driveStatusPollTimer);
+  if (_driveAuthTimeout) clearTimeout(_driveAuthTimeout);
+  _driveAuthPollTimer = null;
+  _driveStatusPollTimer = null;
+  _driveAuthTimeout = null;
+}
+
+async function _pollDriveAuthStatus(state) {
+  if (!state) return;
+  try {
+    const r = await fetch(`/api/google-drive/auth-status?state=${encodeURIComponent(state)}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.status === 'success') {
+      _handleDriveAuthPayload({ type: 'drive-auth-success', state });
+    } else if (d.status === 'error') {
+      _handleDriveAuthPayload({ type: 'drive-auth-error', state, error: d.error });
+    }
+  } catch { /* swallow network errors while polling */ }
 }
 
 function _onDriveAuthMessage(event) {
   if (event.origin !== window.location.origin) return;
-  window.removeEventListener('message', _onDriveAuthMessage);
+  _handleDriveAuthPayload(event.data || {});
+}
 
-  const msg = event.data || {};
+function _onDriveStorageMessage(event) {
+  if (event.key !== 'frog_drive_auth_result' || !event.newValue) return;
+  try {
+    const payload = JSON.parse(event.newValue);
+    _handleDriveAuthPayload(payload);
+    localStorage.removeItem('frog_drive_auth_result');
+  } catch { /* ignore parse errors */ }
+}
+
+function _handleDriveAuthPayload(msg) {
+  if (!msg || (msg.type !== 'drive-auth-success' && msg.type !== 'drive-auth-error')) return;
+  if (_driveAuthSession && _driveAuthSession.state && msg.state && msg.state !== _driveAuthSession.state) return;
+
+  _stopDriveAuthPollers();
+  _setDriveConnectBusy(false);
+  _setDriveManualLink('');
+
   if (msg.type === 'drive-auth-success') {
+    _setDriveMessage('drive-conn-msg', 'Connected. Select a root folder for uploads.', 'ok');
     loadDriveStatus();
-  } else if (msg.type === 'drive-auth-error') {
-    alert('Google Drive authorization failed: ' + (msg.error || 'unknown error'));
+  } else {
+    _setDriveMessage('drive-conn-msg', 'Google Drive authorization failed: ' + (msg.error || 'Unknown error'), 'err');
+  }
+}
+
+function _initDriveBridge() {
+  window.addEventListener('message', _onDriveAuthMessage);
+  window.addEventListener('storage', _onDriveStorageMessage);
+  if (!_driveBroadcastChannel) {
+    try {
+      _driveBroadcastChannel = new BroadcastChannel('frog_drive_auth');
+      _driveBroadcastChannel.addEventListener('message', ev => _handleDriveAuthPayload(ev.data));
+    } catch { /* Browser does not support BroadcastChannel */ }
   }
 }
 
@@ -1793,6 +1952,10 @@ async function disconnectGoogleDrive() {
   try {
     const r = await fetch('/api/google-drive/auth', { method: 'DELETE' });
     if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Disconnect failed'); return; }
+    _stopDriveAuthPollers();
+    _driveAuthSession = null;
+    _setDriveManualLink('');
+    _setDriveMessage('drive-conn-msg', 'Disconnected from Google Drive.', '');
     loadDriveStatus();
   } catch {
     alert('Network error while disconnecting.');
@@ -1807,22 +1970,21 @@ async function disconnectGoogleDrive() {
 let _activePicker = null;
 
 async function openDrivePicker() {
-  const pickMsgEl = document.getElementById('drive-pick-msg');
-  if (pickMsgEl) { pickMsgEl.textContent = 'Loading…'; pickMsgEl.style.color = 'var(--text-dim)'; }
+  _setDriveMessage('drive-pick-msg', 'Loading…', '');
 
   try {
     const tokenRes = await fetch('/api/google-drive/token');
     if (!tokenRes.ok) {
       const d = await tokenRes.json().catch(() => ({}));
       alert(d.error || 'Could not get Drive access token. Please connect first.');
-      if (pickMsgEl) { pickMsgEl.textContent = ''; }
+      _setDriveMessage('drive-pick-msg', '', '');
       return;
     }
     const { accessToken, apiKey } = await tokenRes.json();
 
     // Load the GAPI script lazily on first use.
     await _loadGapiScript();
-    if (pickMsgEl) { pickMsgEl.textContent = ''; }
+    _setDriveMessage('drive-pick-msg', '', '');
 
     gapi.load('picker', () => {
       const view = new google.picker.DocsView()
@@ -1841,8 +2003,7 @@ async function openDrivePicker() {
       _activePicker.setVisible(true);
     });
   } catch {
-    if (pickMsgEl) { pickMsgEl.textContent = ''; }
-    alert('Network error while opening the folder picker.');
+    _setDriveMessage('drive-pick-msg', 'Network error while opening the folder picker.', 'err');
   }
 }
 
@@ -1853,17 +2014,13 @@ async function _onPickerCallback(data) {
       _activePicker = null;
     }
     const pickMsgEl = document.getElementById('drive-pick-msg');
-    if (pickMsgEl) {
-      pickMsgEl.textContent = 'Picker error - check your API key in API Settings.';
-      pickMsgEl.style.color = 'var(--red)';
-    }
+    _setDriveMessage('drive-pick-msg', 'Picker error - check your API key in API Settings.', 'err');
     return;
   }
   if (data.action !== google.picker.Action.PICKED) return;
   const folder = data.docs && data.docs[0];
   if (!folder) return;
 
-  const pickMsgEl = document.getElementById('drive-pick-msg');
   try {
     const r = await fetch('/api/google-drive/root-folder', {
       method:  'POST',
@@ -1872,13 +2029,13 @@ async function _onPickerCallback(data) {
     });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      if (pickMsgEl) { pickMsgEl.textContent = d.error || 'Save failed'; }
+      _setDriveMessage('drive-pick-msg', d.error || 'Save failed', 'err');
       return;
     }
     loadDriveStatus();
-    if (pickMsgEl) { pickMsgEl.textContent = ''; }
+    _setDriveMessage('drive-pick-msg', '', '');
   } catch {
-    if (pickMsgEl) { pickMsgEl.textContent = 'Network error'; }
+    _setDriveMessage('drive-pick-msg', 'Network error', 'err');
   }
 }
 
@@ -1904,6 +2061,7 @@ loadProfiles();
 loadSpiderConfigs();
 loadJobs();
 _initApiSettingsBtn();
+_initDriveBridge();
 _initUpdateCheck();
 
 // ── Cron Modal ────────────────────────────────────────────────────────────────

@@ -67,6 +67,10 @@ describe('GET /api/google-drive/auth-url', () => {
     const res = await ctx.request.get('/api/google-drive/auth-url').expect(200);
     expect(typeof res.body.url).toBe('string');
     expect(res.body.url.length).toBeGreaterThan(0);
+    expect(typeof res.body.state).toBe('string');
+    expect(res.body.state.length).toBe(64); // 32 bytes hex
+    expect(typeof res.body.redirectUri).toBe('string');
+    expect(res.body.redirectUri).toContain('/api/google-drive/callback');
   });
 });
 

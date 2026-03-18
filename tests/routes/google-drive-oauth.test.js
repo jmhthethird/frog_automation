@@ -201,6 +201,63 @@ describe('GET /api/google-drive/callback', () => {
     expect(res.text).toContain('drive-auth-error');
     expect(res.text).toContain('credentials not configured');
   });
+
+  it('includes storage and BroadcastChannel fallbacks so non-popup callbacks can notify the app', async () => {
+    const state = await getValidState();
+    mockGetToken.mockResolvedValueOnce({ tokens: { refresh_token: 'bridge_rt' } });
+
+    const res = await ctx.request
+      .get(`/api/google-drive/callback?code=authcode&state=${encodeURIComponent(state)}`)
+      .expect(200);
+
+    expect(res.text).toContain("BroadcastChannel('frog_drive_auth'");
+    expect(res.text).toContain("localStorage.setItem('frog_drive_auth_result'");
+    expect(res.text).toContain(state);
+  });
+});
+
+// ─── GET /api/google-drive/auth-status ───────────────────────────────────────
+describe('GET /api/google-drive/auth-status', () => {
+  it('returns 400 when state is missing', async () => {
+    const res = await ctx.request.get('/api/google-drive/auth-status').expect(400);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('returns pending for an unknown state', async () => {
+    const res = await ctx.request
+      .get('/api/google-drive/auth-status?state=unknown')
+      .expect(200);
+    expect(res.body.status).toBe('pending');
+  });
+
+  it('returns success after a successful callback', async () => {
+    const state = await getValidState();
+    mockGetToken.mockResolvedValueOnce({ tokens: { refresh_token: 'rt' } });
+    await ctx.request
+      .get(`/api/google-drive/callback?code=good&state=${encodeURIComponent(state)}`)
+      .expect(200);
+
+    const res = await ctx.request
+      .get(`/api/google-drive/auth-status?state=${encodeURIComponent(state)}`)
+      .expect(200);
+    expect(res.body.status).toBe('success');
+    expect(res.body.error).toBeNull();
+  });
+
+  it('returns error after a failed callback', async () => {
+    const state = await getValidState();
+    mockGetToken.mockRejectedValueOnce(new Error('invalid_grant'));
+
+    await ctx.request
+      .get(`/api/google-drive/callback?code=bad&state=${encodeURIComponent(state)}`)
+      .expect(200);
+
+    const res = await ctx.request
+      .get(`/api/google-drive/auth-status?state=${encodeURIComponent(state)}`)
+      .expect(200);
+    expect(res.body.status).toBe('error');
+    expect(res.body.error).toMatch(/invalid_grant/);
+  });
 });
 
 // ─── GET /api/google-drive/token ─────────────────────────────────────────────
