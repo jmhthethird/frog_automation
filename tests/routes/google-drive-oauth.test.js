@@ -128,6 +128,22 @@ describe('GET /api/google-drive/callback', () => {
     expect(JSON.parse(row.credentials).refresh_token).toBe('new_rt');
   });
 
+  it('sets auth_completed_at timestamp on successful token exchange', async () => {
+    const before = Date.now();
+    const state  = await getValidState();
+    mockGetToken.mockResolvedValueOnce({ tokens: { refresh_token: 'rt', access_token: 'at' } });
+
+    await ctx.request
+      .get(`/api/google-drive/callback?code=authcode&state=${encodeURIComponent(state)}`)
+      .expect(200);
+
+    const row   = db.prepare("SELECT credentials FROM api_credentials WHERE service='google_drive'").get();
+    const creds = JSON.parse(row.credentials);
+    expect(typeof creds.auth_completed_at).toBe('number');
+    expect(creds.auth_completed_at).toBeGreaterThanOrEqual(before);
+    expect(creds.auth_completed_at).toBeLessThanOrEqual(Date.now());
+  });
+
   it('returns success when Google returns no refresh_token but one is already stored', async () => {
     seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'existing_rt' });
     const state = await getValidState();
@@ -142,6 +158,21 @@ describe('GET /api/google-drive/callback', () => {
     // Existing refresh token must be preserved.
     const row = db.prepare("SELECT credentials FROM api_credentials WHERE service='google_drive'").get();
     expect(JSON.parse(row.credentials).refresh_token).toBe('existing_rt');
+  });
+
+  it('updates auth_completed_at even when re-using an existing refresh_token', async () => {
+    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'existing_rt', auth_completed_at: 1000 });
+    const before = Date.now();
+    const state  = await getValidState();
+    mockGetToken.mockResolvedValueOnce({ tokens: { access_token: 'at' } }); // no new refresh_token
+
+    await ctx.request
+      .get(`/api/google-drive/callback?code=authcode&state=${encodeURIComponent(state)}`)
+      .expect(200);
+
+    const row   = db.prepare("SELECT credentials FROM api_credentials WHERE service='google_drive'").get();
+    const creds = JSON.parse(row.credentials);
+    expect(creds.auth_completed_at).toBeGreaterThanOrEqual(before);
   });
 
   it('returns error postMessage when no refresh_token returned and none stored', async () => {

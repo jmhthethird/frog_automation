@@ -52,6 +52,19 @@ describe('GET /api/google-drive/status', () => {
     expect(res.body.rootFolderId).toBe('folder-abc');
     expect(res.body.rootFolderName).toBe('SEO Crawls');
   });
+
+  it('returns authCompletedAt as null when not yet authenticated', async () => {
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
+    const res = await ctx.request.get('/api/google-drive/status').expect(200);
+    expect(res.body.authCompletedAt).toBeNull();
+  });
+
+  it('returns authCompletedAt when it is stored', async () => {
+    const ts = Date.now();
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt', auth_completed_at: ts });
+    const res = await ctx.request.get('/api/google-drive/status').expect(200);
+    expect(res.body.authCompletedAt).toBe(ts);
+  });
 });
 
 // ─── GET /api/google-drive/auth-url ──────────────────────────────────────────
@@ -67,6 +80,33 @@ describe('GET /api/google-drive/auth-url', () => {
     const res = await ctx.request.get('/api/google-drive/auth-url').expect(200);
     expect(typeof res.body.url).toBe('string');
     expect(res.body.url.length).toBeGreaterThan(0);
+  });
+
+  it('returns a redirectUri field alongside the auth URL', async () => {
+    seedDriveCreds({ client_id: 'my-client-id', client_secret: 'my-secret' });
+    const res = await ctx.request.get('/api/google-drive/auth-url').expect(200);
+    expect(typeof res.body.redirectUri).toBe('string');
+    expect(res.body.redirectUri).toMatch(/\/api\/google-drive\/callback$/);
+  });
+
+  it('uses X-Forwarded-Proto to build the redirect URI', async () => {
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
+    const res = await ctx.request
+      .get('/api/google-drive/auth-url')
+      .set('x-forwarded-proto', 'https')
+      .expect(200);
+    expect(res.body.redirectUri).toMatch(/^https:\/\//);
+  });
+
+  it('uses GOOGLE_DRIVE_REDIRECT_URI env var when set', async () => {
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
+    process.env.GOOGLE_DRIVE_REDIRECT_URI = 'https://example.com/api/google-drive/callback';
+    try {
+      const res = await ctx.request.get('/api/google-drive/auth-url').expect(200);
+      expect(res.body.redirectUri).toBe('https://example.com/api/google-drive/callback');
+    } finally {
+      delete process.env.GOOGLE_DRIVE_REDIRECT_URI;
+    }
   });
 });
 
@@ -144,6 +184,22 @@ describe('DELETE /api/google-drive/auth', () => {
     expect(creds.refresh_token).toBeUndefined();
     expect(creds.root_folder_id).toBeUndefined();
     expect(creds.root_folder_name).toBeUndefined();
+  });
+
+  it('clears auth_completed_at after disconnect', async () => {
+    seedDriveCreds({
+      client_id: 'cid', client_secret: 'cs',
+      refresh_token: 'rt', auth_completed_at: Date.now(),
+    });
+
+    await ctx.request.delete('/api/google-drive/auth').expect(200);
+
+    const row   = db.prepare("SELECT credentials FROM api_credentials WHERE service='google_drive'").get();
+    const creds = JSON.parse(row.credentials);
+    expect(creds.auth_completed_at).toBeUndefined();
+    // Status endpoint also reflects the cleared timestamp.
+    const status = await ctx.request.get('/api/google-drive/status').expect(200);
+    expect(status.body.authCompletedAt).toBeNull();
   });
 
   it('preserves api_key, client_id, and client_secret after disconnect', async () => {

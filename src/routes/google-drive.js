@@ -67,9 +67,22 @@ function persistCredentials(updates) {
   `).run(JSON.stringify(merged));
 }
 
-/** Build the OAuth2 redirect URI from the incoming request. */
+/** Build the OAuth2 redirect URI from the incoming request.
+ *
+ * Priority:
+ *  1. GOOGLE_DRIVE_REDIRECT_URI env var – explicit override, useful when the
+ *     auto-detected URI doesn't match what is registered in Google Cloud Console.
+ *  2. X-Forwarded-Proto header – respected when the app runs behind a reverse
+ *     proxy (e.g. nginx) that terminates TLS so that `req.protocol` would
+ *     otherwise return `http` even though clients access over `https`.
+ *  3. req.protocol + req.get('host') – default for direct connections.
+ */
 function buildRedirectUri(req) {
-  return `${req.protocol}://${req.get('host')}/api/google-drive/callback`;
+  if (process.env.GOOGLE_DRIVE_REDIRECT_URI) {
+    return process.env.GOOGLE_DRIVE_REDIRECT_URI;
+  }
+  const proto = req.get('x-forwarded-proto') || req.protocol;
+  return `${proto}://${req.get('host')}/api/google-drive/callback`;
 }
 
 /**
@@ -98,12 +111,15 @@ function popupResponse(res, type, extra = {}) {
 
 // ─── GET /api/google-drive/status ─────────────────────────────────────────────
 // Returns whether the user is authenticated and which root folder is selected.
+// authCompletedAt is the Unix timestamp (ms) of the last successful OAuth flow;
+// the frontend uses it to detect new authorizations via polling.
 router.get('/status', readLimit, (req, res) => {
   const creds = getCredentials();
   res.json({
-    connected:      !!(creds.client_id && creds.client_secret && creds.refresh_token),
-    rootFolderId:   creds.root_folder_id   || null,
-    rootFolderName: creds.root_folder_name || null,
+    connected:       !!(creds.client_id && creds.client_secret && creds.refresh_token),
+    rootFolderId:    creds.root_folder_id    || null,
+    rootFolderName:  creds.root_folder_name  || null,
+    authCompletedAt: creds.auth_completed_at || null,
   });
 });
 
@@ -131,7 +147,9 @@ router.get('/auth-url', readLimit, (req, res) => {
     state,
   });
 
-  res.json({ url });
+  // Return both the auth URL and the redirect URI so the client can display
+  // the exact URI that must be registered in Google Cloud Console.
+  res.json({ url, redirectUri });
 });
 
 // ─── GET /api/google-drive/callback ───────────────────────────────────────────
@@ -163,15 +181,18 @@ router.get('/callback', readLimit, async (req, res) => {
     const { tokens } = await oauth2Client.getToken(code);
 
     if (tokens.refresh_token) {
-      // Store the newly issued refresh token.
-      persistCredentials({ refresh_token: tokens.refresh_token });
+      // Store the newly issued refresh token and record the completion timestamp.
+      // auth_completed_at lets the frontend detect a new authorization via polling
+      // even when window.opener is unavailable (e.g. after cross-origin navigation).
+      persistCredentials({ refresh_token: tokens.refresh_token, auth_completed_at: Date.now() });
       return popupResponse(res, 'drive-auth-success');
     }
 
     // Google did not return a new refresh_token (common on re-auth when the
     // existing grant is still valid). If we already have a stored token the
-    // session remains usable — report success.
+    // session remains usable — report success and update the timestamp.
     if (creds.refresh_token) {
+      persistCredentials({ auth_completed_at: Date.now() });
       return popupResponse(res, 'drive-auth-success');
     }
 

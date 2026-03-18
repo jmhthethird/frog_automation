@@ -70,6 +70,9 @@
   .drive-status-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
   .drive-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .drive-folder-display { font-size: 13px; margin-bottom: 8px; word-break: break-all; }
+  .drive-connect-msg { font-size: 12px; margin-top: 6px; min-height: 16px; color: var(--text-dim); }
+  .drive-connect-msg.ok  { color: var(--green); }
+  .drive-connect-msg.err { color: var(--red); }
   /* Update notification panel */
   #update-panel { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 24px; display: none; align-items: center; gap: 14px; flex-wrap: wrap; }
   #update-panel.visible { display: flex; }
@@ -1548,12 +1551,13 @@ function renderApiServicesList(services) {
           <span id="drive-conn-status" style="color:var(--text-dim);">○ Not connected</span>
         </div>
         <div class="drive-btn-row">
-          <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
+          <button id="drive-connect-btn" class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
                   onclick="connectGoogleDrive()">Connect Google Drive</button>
           <button id="drive-disconnect-btn" class="btn btn-secondary"
                   style="font-size:11px;padding:4px 12px;display:none;"
                   onclick="disconnectGoogleDrive()">Disconnect</button>
         </div>
+        <div id="drive-connect-msg" class="drive-connect-msg"></div>
       </div>
       <div class="drive-subsection">
         <div class="drive-subsection-label">Root Folder</div>
@@ -1754,36 +1758,141 @@ function _applyDriveStatus(status) {
   }
 }
 
+/** Show an inline message in the Drive connection area. */
+function _showDriveConnectMsg(text, type) {
+  const el = document.getElementById('drive-connect-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.className   = 'drive-connect-msg' + (type ? ' ' + type : '');
+}
+
+/** Set the connect button to a loading / idle state. */
+function _setDriveConnectingState(connecting) {
+  const btn = document.getElementById('drive-connect-btn');
+  if (!btn) return;
+  btn.disabled    = connecting;
+  btn.textContent = connecting ? 'Connecting…' : 'Connect Google Drive';
+}
+
+// ── Drive auth polling ────────────────────────────────────────────────────────
+// After opening the OAuth popup, we poll /api/google-drive/status as a fallback
+// to detect successful authorization.  This is necessary because browsers
+// nullify window.opener after a cross-origin navigation, meaning the postMessage
+// sent from the callback page may never reach the parent window.
+
+let _driveAuthPollId = null;
+
+/**
+ * Start polling /api/google-drive/status every 2 s for up to 60 s.
+ * @param {number|null} knownAuthTs  The authCompletedAt value recorded BEFORE
+ *   the popup was opened.  A change in this value indicates a new auth.
+ */
+function _startDriveAuthPoll(knownAuthTs) {
+  _stopDriveAuthPoll(); // clear any previous poll
+  let attempts = 0;
+  _driveAuthPollId = setInterval(async () => {
+    attempts++;
+    try {
+      const r = await fetch('/api/google-drive/status');
+      if (!r.ok) return;
+      const status = await r.json();
+      const isNewAuth = status.authCompletedAt && status.authCompletedAt !== knownAuthTs;
+      if (isNewAuth) {
+        window.removeEventListener('message', _onDriveAuthMessage);
+        _stopDriveAuthPoll();
+        _setDriveConnectingState(false);
+        _applyDriveStatus(status);
+        _showDriveConnectMsg('✓ Google Drive connected successfully', 'ok');
+        return;
+      }
+    } catch { /* non-critical */ }
+    if (attempts >= 30) { // 60 s timeout
+      _stopDriveAuthPoll();
+      _setDriveConnectingState(false);
+      // Clear the "waiting…" hint but don't overwrite a success message.
+      const el = document.getElementById('drive-connect-msg');
+      if (el && !el.classList.contains('ok')) {
+        _showDriveConnectMsg('', null);
+      }
+    }
+  }, 2000);
+}
+
+function _stopDriveAuthPoll() {
+  if (_driveAuthPollId) { clearInterval(_driveAuthPollId); _driveAuthPollId = null; }
+}
+
 /** Open a popup for the Google OAuth2 consent flow. */
 async function connectGoogleDrive() {
+  _setDriveConnectingState(true);
+  _showDriveConnectMsg('Fetching authorization URL…', null);
+
+  // Record the current auth timestamp BEFORE opening the popup so the polling
+  // fallback can detect a new authorization by comparing timestamps.
+  let knownAuthTs = null;
+  try {
+    const sr = await fetch('/api/google-drive/status');
+    if (sr.ok) { const sd = await sr.json(); knownAuthTs = sd.authCompletedAt; }
+  } catch { /* non-critical */ }
+
   try {
     const r = await fetch('/api/google-drive/auth-url');
     const d = await r.json();
-    if (!r.ok) { alert(d.error || 'Could not get authorization URL'); return; }
+    if (!r.ok) {
+      _showDriveConnectMsg(d.error || 'Could not get authorization URL', 'err');
+      _setDriveConnectingState(false);
+      return;
+    }
 
     const w = 600, h = 700;
     const left = Math.round(window.screenX + (window.outerWidth  - w) / 2);
     const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
-    window.open(d.url, 'gd-auth', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    const popup = window.open(
+      d.url, 'gd-auth',
+      `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
 
-    // Remove any stale listener from a previous (abandoned) popup before
-    // adding a fresh one. Use { once: true } so it self-removes on receipt.
+    if (!popup || popup.closed) {
+      _showDriveConnectMsg(
+        'Popup was blocked. Please allow pop-ups for this page and try again.', 'err');
+      _setDriveConnectingState(false);
+      return;
+    }
+
+    _showDriveConnectMsg('Complete the Google sign-in in the popup window…', null);
+
+    // Listen for postMessage from the popup callback page.
+    // Do NOT use { once: true } – an unrelated message event (e.g. from a
+    // browser extension) would consume it before the drive-auth message arrives.
     window.removeEventListener('message', _onDriveAuthMessage);
-    window.addEventListener('message', _onDriveAuthMessage, { once: true });
+    window.addEventListener('message', _onDriveAuthMessage);
+
+    // Poll as a fallback in case postMessage is not delivered.
+    // window.opener is nullified after cross-origin navigation in many browsers,
+    // so the callback page's postMessage may silently fail.
+    _startDriveAuthPoll(knownAuthTs);
   } catch {
-    alert('Network error while starting Google Drive authorization.');
+    _showDriveConnectMsg('Network error while starting Google Drive authorization.', 'err');
+    _setDriveConnectingState(false);
   }
 }
 
 function _onDriveAuthMessage(event) {
   if (event.origin !== window.location.origin) return;
-  window.removeEventListener('message', _onDriveAuthMessage);
-
   const msg = event.data || {};
+  // Only handle drive-auth messages; ignore any other postMessage traffic so
+  // this listener is not accidentally consumed by unrelated events.
+  if (msg.type !== 'drive-auth-success' && msg.type !== 'drive-auth-error') return;
+
+  window.removeEventListener('message', _onDriveAuthMessage);
+  _stopDriveAuthPoll();
+  _setDriveConnectingState(false);
+
   if (msg.type === 'drive-auth-success') {
     loadDriveStatus();
-  } else if (msg.type === 'drive-auth-error') {
-    alert('Google Drive authorization failed: ' + (msg.error || 'unknown error'));
+    _showDriveConnectMsg('✓ Google Drive connected successfully', 'ok');
+  } else {
+    _showDriveConnectMsg('Authorization failed: ' + (msg.error || 'unknown error'), 'err');
   }
 }
 
@@ -1792,10 +1901,15 @@ async function disconnectGoogleDrive() {
   if (!confirm('Disconnect Google Drive? Stored tokens and root folder will be cleared.')) return;
   try {
     const r = await fetch('/api/google-drive/auth', { method: 'DELETE' });
-    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Disconnect failed'); return; }
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      _showDriveConnectMsg(d.error || 'Disconnect failed', 'err');
+      return;
+    }
+    _showDriveConnectMsg('', null);
     loadDriveStatus();
   } catch {
-    alert('Network error while disconnecting.');
+    _showDriveConnectMsg('Network error while disconnecting.', 'err');
   }
 }
 

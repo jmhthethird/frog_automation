@@ -37,7 +37,7 @@ const KNOWN_SERVICES = Object.keys(SERVICE_FIELDS);
  * exposed or overwritten via the generic credentials API.
  */
 const PROGRAMMATIC_KEYS = {
-  google_drive: ['refresh_token', 'root_folder_id', 'root_folder_name'],
+  google_drive: ['refresh_token', 'root_folder_id', 'root_folder_name', 'auth_completed_at'],
 };
 
 /** Mask a single credential value for display (keep first 4 chars, rest as ●). */
