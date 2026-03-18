@@ -428,12 +428,70 @@ function _fetchJson(url) {
   });
 }
 
+// ── resolvePRBuild ────────────────────────────────────────────────────────────
+
+/**
+ * Parse a GitHub PR URL, locate the corresponding pre-release test build, and
+ * set it as the installation target via selectVersionForInstall().
+ *
+ * The CI workflow publishes a pre-release tagged `pr-{number}-preview` whenever
+ * the "test-build" label is applied to a pull-request.  This function looks up
+ * that release and — if found — places the updater into the 'available' state
+ * so the existing download / install flow can proceed unchanged.
+ *
+ * @param {string} prUrl  e.g. https://github.com/jmhthethird/frog_automation/pull/42
+ * @returns {Promise<UpdateState>}
+ */
+async function resolvePRBuild(prUrl) {
+  const match = (prUrl || '').match(
+    /^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/i
+  );
+  if (!match) {
+    _patch({ status: 'error', error: 'Invalid GitHub PR URL — expected https://github.com/{owner}/{repo}/pull/{number}' });
+    return getState();
+  }
+
+  const [, owner, repo, prNumber] = match;
+  const tag = `pr-${prNumber}-preview`;
+
+  _patch({ status: 'checking', error: null });
+
+  let release;
+  try {
+    release = await _fetchJson(
+      `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`
+    );
+  } catch (err) {
+    const notFound = /not found/i.test(err.message);
+    const msg = notFound
+      ? `No test build found for PR #${prNumber}. Apply the "test-build" label on the PR to trigger a build.`
+      : err.message;
+    _patch({ status: 'error', error: msg });
+    return getState();
+  }
+
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const arch   = process.arch;
+  const asset  = arch === 'arm64'
+    ? assets.find(a => a.name.endsWith('-arm64.dmg'))
+    : assets.find(a => a.name.endsWith('.dmg') && !a.name.includes('arm64'));
+
+  selectVersionForInstall(
+    tag,
+    asset ? asset.browser_download_url : null,
+    release.html_url  || null,
+    release.body      || null
+  );
+  return getState();
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────────
 
 module.exports = {
   checkForUpdate,
   listAllReleases,
   selectVersionForInstall,
+  resolvePRBuild,
   downloadUpdate,
   installUpdate,
   getState,

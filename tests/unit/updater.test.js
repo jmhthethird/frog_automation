@@ -599,3 +599,78 @@ describe('selectVersionForInstall()', () => {
     expect(state.releaseNotes).toBeNull();
   });
 });
+
+// ─── resolvePRBuild ───────────────────────────────────────────────────────────
+
+describe('resolvePRBuild()', () => {
+  let updater;
+
+  beforeEach(() => { jest.resetModules(); updater = require('../../src/updater'); });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('sets status to error for an invalid URL', async () => {
+    const state = await updater.resolvePRBuild('not-a-url');
+    expect(state.status).toBe('error');
+    expect(state.error).toMatch(/Invalid GitHub PR URL/);
+  });
+
+  it('sets status to error for a GitHub URL that is not a pull-request', async () => {
+    const state = await updater.resolvePRBuild('https://github.com/jmhthethird/frog_automation');
+    expect(state.status).toBe('error');
+    expect(state.error).toMatch(/Invalid GitHub PR URL/);
+  });
+
+  it('sets status to available and picks arm64 asset when release exists', async () => {
+    const tag = 'pr-42-preview';
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+    makeHttpsSpy({
+      body: {
+        tag_name: tag,
+        html_url: `https://github.com/jmhthethird/frog_automation/releases/tag/${tag}`,
+        body:     'Test build notes',
+        assets:   [
+          { name: 'Frog Automation-1.0.0-arm64.dmg', browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/pr-42-preview/Frog Automation-1.0.0-arm64.dmg' },
+          { name: 'Frog Automation-1.0.0.dmg',       browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/pr-42-preview/Frog Automation-1.0.0.dmg' },
+        ],
+      },
+    });
+    const state = await updater.resolvePRBuild('https://github.com/jmhthethird/frog_automation/pull/42');
+    expect(state.status).toBe('available');
+    expect(state.latestVersion).toBe(tag);
+    expect(state.downloadUrl).toContain('arm64');
+    expect(state.releaseNotes).toBe('Test build notes');
+  });
+
+  it('sets downloadUrl to null when no matching DMG asset is present', async () => {
+    const tag = 'pr-7-preview';
+    makeHttpsSpy({
+      body: {
+        tag_name: tag,
+        html_url: `https://github.com/jmhthethird/frog_automation/releases/tag/${tag}`,
+        body:     null,
+        assets:   [],
+      },
+    });
+    const state = await updater.resolvePRBuild('https://github.com/jmhthethird/frog_automation/pull/7');
+    expect(state.status).toBe('available');
+    expect(state.downloadUrl).toBeNull();
+  });
+
+  it('sets status to error with a friendly message when no pre-release exists (404)', async () => {
+    makeHttpsSpy({ body: { message: 'Not Found' } });
+    const state = await updater.resolvePRBuild('https://github.com/jmhthethird/frog_automation/pull/99');
+    expect(state.status).toBe('error');
+    expect(state.error).toMatch(/PR #99/);
+    expect(state.error).toMatch(/test-build/);
+  });
+
+  it('sets status to error on network failure', async () => {
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      const req = { on: jest.fn().mockReturnThis() };
+      process.nextTick(() => req.on.mock.calls.find(([e]) => e === 'error')?.[1]?.(new Error('ECONNREFUSED')));
+      return req;
+    });
+    const state = await updater.resolvePRBuild('https://github.com/jmhthethird/frog_automation/pull/1');
+    expect(state.status).toBe('error');
+  });
+});

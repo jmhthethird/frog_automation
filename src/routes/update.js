@@ -10,6 +10,7 @@
  *   POST /api/update/install    — install the downloaded update and restart
  *   GET  /api/update/releases   — list all GitHub releases (for rollback support)
  *   POST /api/update/select     — select a specific version for installation
+ *   POST /api/update/pr         — resolve a GitHub PR URL to its test-build pre-release
  */
 
 const express = require('express');
@@ -85,6 +86,22 @@ router.get('/releases', async (req, res) => {
   try {
     const releases = await updater.listAllReleases();
     res.json(releases);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/update/pr ───────────────────────────────────────────────────────
+// Look up the pre-release test build for a GitHub PR URL and set it as the
+// installation target, so the existing download / install flow can proceed.
+router.post('/pr', async (req, res) => {
+  const { prUrl } = req.body || {};
+  if (!prUrl || typeof prUrl !== 'string') {
+    return res.status(400).json({ error: 'prUrl is required' });
+  }
+  try {
+    const state = await updater.resolvePRBuild(prUrl);
+    res.json(state);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

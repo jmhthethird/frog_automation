@@ -94,6 +94,15 @@
   .rel-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #2a2a2a; color: var(--text-dim); white-space: nowrap; }
   .rel-badge.is-current { background: #1a2a1a; color: var(--green); }
   .rel-badge.is-newer { background: #1a2a3a; color: #6ab0f5; }
+  /* PR build section */
+  #pr-build { flex-basis: 100%; margin-top: 2px; }
+  #pr-build > summary { font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; }
+  #pr-build > summary:hover { color: var(--text); }
+  #pr-build-body { margin-top: 8px; }
+  #pr-build-row { display: flex; gap: 8px; align-items: center; }
+  #pr-build-url { flex: 1; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; padding: 6px 8px; min-width: 0; }
+  #pr-build-url:focus { border-color: var(--blue); outline: none; }
+  #pr-build-msg { font-size: 12px; color: var(--text-dim); margin-top: 6px; min-height: 16px; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
   .grid > div:last-child { min-width: 0; }
@@ -260,6 +269,17 @@
   <details id="version-history" ontoggle="if(this.open)_loadVersionHistory()">
     <summary>Version History</summary>
     <div id="version-history-list"></div>
+  </details>
+  <details id="pr-build">
+    <summary>🧪 Install a PR build</summary>
+    <div id="pr-build-body">
+      <div id="pr-build-row">
+        <input type="url" id="pr-build-url" placeholder="https://github.com/jmhthethird/frog_automation/pull/42"
+               aria-label="GitHub PR URL" autocomplete="off">
+        <button class="btn btn-secondary" style="font-size:11px;padding:5px 12px;" onclick="loadPRBuild()">Load</button>
+      </div>
+      <div id="pr-build-msg"></div>
+    </div>
   </details>
 </div>
 <main>
@@ -1235,6 +1255,41 @@ async function selectAndDownload(version) {
   } catch {
     const msgEl = document.getElementById('update-msg');
     if (msgEl) msgEl.textContent = 'Failed to start download — please try again.';
+  }
+}
+
+// ── PR Build ──────────────────────────────────────────────────────────────────
+
+async function loadPRBuild() {
+  const urlEl = document.getElementById('pr-build-url');
+  const msgEl = document.getElementById('pr-build-msg');
+  const btn   = document.querySelector('#pr-build .btn');
+  const prUrl = urlEl ? urlEl.value.trim() : '';
+  if (!prUrl) return;
+
+  if (btn) btn.disabled = true;
+  if (msgEl) msgEl.textContent = 'Looking up PR build…';
+
+  try {
+    const r = await fetch('/api/update/pr', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ prUrl }),
+    });
+    const state = await r.json();
+    if (state.error) {
+      if (msgEl) msgEl.textContent = state.error;
+      return;
+    }
+    // Collapse the PR build section and show the main update panel.
+    if (msgEl) msgEl.textContent = '';
+    const sect = document.getElementById('pr-build');
+    if (sect) sect.removeAttribute('open');
+    _renderUpdatePanel(state);
+  } catch {
+    if (msgEl) msgEl.textContent = 'Failed to look up PR build — please try again.';
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
