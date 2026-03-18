@@ -96,11 +96,9 @@ router.put('/:service', writeLimit, (req, res) => {
   // never written to the database, even if the client sends them.
   const allowedFields = new Set((SERVICE_FIELDS[service] || []).map(f => f.name));
 
-  // Seed newCreds from existing stored values (allowed keys only).
-  const newCreds = {};
-  for (const field of allowedFields) {
-    newCreds[field] = existingCreds[field] || '';
-  }
+  // Preserve all existing credential fields (including programmatically-set fields
+  // like OAuth refresh_token and root_folder_id managed by other routes).
+  const newCreds = { ...existingCreds };
   // Merge incoming credentials for allowed keys only.
   // If a field value contains ● (bullet) characters it is a masked display
   // value returned by GET – keep the existing stored value unchanged.
