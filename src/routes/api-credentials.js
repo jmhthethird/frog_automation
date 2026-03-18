@@ -40,11 +40,11 @@ const PROGRAMMATIC_KEYS = {
   google_drive: ['refresh_token', 'root_folder_id', 'root_folder_name'],
 };
 
-/** Mask a single credential value for display (keep first 4 chars, rest as ●). */
+/** Mask a single credential value for display (keep first 4 chars, rest as •). */
 function maskValue(value) {
   if (!value) return '';
-  if (value.length <= 4) return '●'.repeat(value.length);
-  return value.slice(0, 4) + '●'.repeat(Math.min(value.length - 4, 8));
+  if (value.length <= 4) return '•'.repeat(value.length);
+  return value.slice(0, 4) + '•'.repeat(Math.min(value.length - 4, 8));
 }
 
 // ─── GET /api/api-credentials ──────────────────────────────────────────────
