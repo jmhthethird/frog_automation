@@ -1782,6 +1782,9 @@ function _setDriveConnectingState(connecting) {
 
 let _driveAuthPollId = null;
 
+/** Maximum number of 2-second poll intervals before giving up (60 s total). */
+const _DRIVE_POLL_MAX_ATTEMPTS = 30;
+
 /**
  * Start polling /api/google-drive/status every 2 s for up to 60 s.
  * @param {number|null} knownAuthTs  The authCompletedAt value recorded BEFORE
@@ -1805,8 +1808,10 @@ function _startDriveAuthPoll(knownAuthTs) {
         _showDriveConnectMsg('✓ Google Drive connected successfully', 'ok');
         return;
       }
-    } catch { /* non-critical */ }
-    if (attempts >= 30) { // 60 s timeout
+    } catch (err) {
+      console.debug('[drive-poll] status check failed:', err);
+    }
+    if (attempts >= _DRIVE_POLL_MAX_ATTEMPTS) {
       _stopDriveAuthPoll();
       _setDriveConnectingState(false);
       // Clear the "waiting…" hint but don't overwrite a success message.
@@ -1833,7 +1838,9 @@ async function connectGoogleDrive() {
   try {
     const sr = await fetch('/api/google-drive/status');
     if (sr.ok) { const sd = await sr.json(); knownAuthTs = sd.authCompletedAt; }
-  } catch { /* non-critical */ }
+  } catch (err) {
+    console.debug('[drive] failed to fetch initial auth timestamp:', err);
+  }
 
   try {
     const r = await fetch('/api/google-drive/auth-url');
