@@ -142,7 +142,7 @@ router.get('/callback', readLimit, async (req, res) => {
   const { code, error, state } = req.query;
 
   if (error) return popupResponse(res, 'drive-auth-error', { error: String(error) });
-  if (!code)  return res.status(400).send('Missing authorization code');
+  if (!code)  return popupResponse(res, 'drive-auth-error', { error: 'Missing authorization code' });
 
   // Validate the CSRF state token before exchanging the code.
   if (!_consumeState(state)) {
@@ -153,7 +153,7 @@ router.get('/callback', readLimit, async (req, res) => {
 
   const creds = getCredentials();
   if (!creds.client_id || !creds.client_secret) {
-    return res.status(400).send('OAuth2 credentials not configured');
+    return popupResponse(res, 'drive-auth-error', { error: 'OAuth2 credentials not configured' });
   }
 
   const redirectUri  = buildRedirectUri(req);
