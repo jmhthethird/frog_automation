@@ -1804,9 +1804,11 @@ async function disconnectGoogleDrive() {
  * The user browses their Drive and clicks a folder; the selection is posted
  * back to the server via POST /api/google-drive/root-folder.
  */
+let _activePicker = null;
+
 async function openDrivePicker() {
   const pickMsgEl = document.getElementById('drive-pick-msg');
-  if (pickMsgEl) { pickMsgEl.textContent = 'Loading…'; }
+  if (pickMsgEl) { pickMsgEl.textContent = 'Loading…'; pickMsgEl.style.color = 'var(--text-dim)'; }
 
   try {
     const tokenRes = await fetch('/api/google-drive/token');
@@ -1835,7 +1837,8 @@ async function openDrivePicker() {
         .setCallback(_onPickerCallback);
 
       if (apiKey) builder.setDeveloperKey(apiKey);
-      builder.build().setVisible(true);
+      _activePicker = builder.build();
+      _activePicker.setVisible(true);
     });
   } catch {
     if (pickMsgEl) { pickMsgEl.textContent = ''; }
@@ -1844,6 +1847,18 @@ async function openDrivePicker() {
 }
 
 async function _onPickerCallback(data) {
+  if (data.action === google.picker.Action.ERROR) {
+    if (_activePicker) {
+      _activePicker.setVisible(false);
+      _activePicker = null;
+    }
+    const pickMsgEl = document.getElementById('drive-pick-msg');
+    if (pickMsgEl) {
+      pickMsgEl.textContent = 'Picker error - check your API key in API Settings.';
+      pickMsgEl.style.color = 'var(--red)';
+    }
+    return;
+  }
   if (data.action !== google.picker.Action.PICKED) return;
   const folder = data.docs && data.docs[0];
   if (!folder) return;
