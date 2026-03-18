@@ -5,6 +5,7 @@ const express   = require('express');
 const rateLimit = require('express-rate-limit');
 const { db }    = require('../db');
 const { buildOAuth2Client } = require('../google-drive');
+const { encrypt, decrypt, isEncrypted } = require('../crypto-utils');
 
 const router = express.Router();
 
@@ -47,19 +48,46 @@ function _consumeState(state) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Read the raw credentials object stored for the google_drive service. */
+/**
+ * Read the raw credentials object stored for the google_drive service.
+ * Automatically decrypts the refresh_token if it's encrypted.
+ */
 function getCredentials() {
   const row = db.prepare("SELECT credentials FROM api_credentials WHERE service = 'google_drive'").get();
-  return JSON.parse(row?.credentials || '{}');
+  const creds = JSON.parse(row?.credentials || '{}');
+
+  // Decrypt refresh_token if it's encrypted
+  if (creds.refresh_token && isEncrypted(creds.refresh_token)) {
+    try {
+      creds.refresh_token = decrypt(creds.refresh_token);
+    } catch (err) {
+      console.error('[google-drive] Failed to decrypt refresh_token:', err.message);
+      // Leave encrypted value in place - OAuth flow will need to re-auth
+    }
+  }
+
+  return creds;
 }
 
 /**
  * Merge `updates` into the existing google_drive credentials object and persist.
  * Keys present in `updates` overwrite existing values; all other keys are kept.
+ * Automatically encrypts the refresh_token before storage.
  */
 function persistCredentials(updates) {
   const current = getCredentials();
   const merged  = { ...current, ...updates };
+
+  // Encrypt refresh_token before storage
+  if (merged.refresh_token && !isEncrypted(merged.refresh_token)) {
+    merged.refresh_token = encrypt(merged.refresh_token);
+  }
+
+  // Track when the token was last refreshed
+  if (updates.refresh_token) {
+    merged.token_refreshed_at = Date.now();
+  }
+
   db.prepare(`
     INSERT INTO api_credentials (service, enabled, credentials)
     VALUES ('google_drive', 0, ?)
@@ -187,6 +215,7 @@ router.get('/callback', readLimit, async (req, res) => {
 // ─── GET /api/google-drive/token ──────────────────────────────────────────────
 // Returns a fresh OAuth2 access token and the stored API key.
 // The browser uses these to open the Google Drive folder picker.
+// Implements automatic token refresh with exponential backoff on failures.
 router.get('/token', readLimit, async (req, res) => {
   const creds = getCredentials();
   if (!creds.client_id || !creds.client_secret || !creds.refresh_token) {
@@ -198,17 +227,42 @@ router.get('/token', readLimit, async (req, res) => {
   const oauth2Client = buildOAuth2Client(creds.client_id, creds.client_secret);
   oauth2Client.setCredentials({ refresh_token: creds.refresh_token });
 
-  try {
-    const { token } = await oauth2Client.getAccessToken();
-    if (!token) {
-      return res.status(401).json({
-        error: 'Failed to obtain a valid Google access token; try reconnecting.',
-      });
+  // Retry logic with exponential backoff
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const { token } = await oauth2Client.getAccessToken();
+      if (!token) {
+        return res.status(401).json({
+          error: 'Failed to obtain a valid Google access token; try reconnecting.',
+        });
+      }
+
+      // Update the last refresh timestamp on successful refresh
+      if (attempt > 0 || !creds.token_refreshed_at || Date.now() - creds.token_refreshed_at > 60_000) {
+        persistCredentials({ token_refreshed_at: Date.now() });
+      }
+
+      return res.json({ accessToken: token, apiKey: creds.api_key || '' });
+    } catch (err) {
+      lastError = err;
+      console.warn(`[google-drive] Token refresh attempt ${attempt + 1}/${maxRetries} failed:`, err.message);
+
+      // Don't retry on client errors (invalid grant, etc.)
+      if (err.code === 'invalid_grant' || err.code === 400) {
+        break;
+      }
+
+      // Exponential backoff: 100ms, 200ms, 400ms
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)));
+      }
     }
-    res.json({ accessToken: token, apiKey: creds.api_key || '' });
-  } catch (err) {
-    res.status(401).json({ error: `Failed to refresh Google access token: ${err.message}` });
   }
+
+  res.status(401).json({ error: `Failed to refresh Google access token: ${lastError.message}` });
 });
 
 // ─── POST /api/google-drive/root-folder ───────────────────────────────────────

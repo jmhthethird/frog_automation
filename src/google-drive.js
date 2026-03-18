@@ -122,9 +122,10 @@ function domainFromUrl(url) {
  * @param {string}  options.jobUrl        - Crawled URL (used to derive the domain folder name).
  * @param {string} [options.rootFolderId] - Drive folder ID selected via the folder picker.
  *   When absent the domain folder is placed directly in My Drive root.
+ * @param {Function} [options.onProgress] - Optional progress callback: ({ bytesUploaded, totalBytes, percentage }) => void
  * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number }>}
  */
-async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, jobUrl, rootFolderId }) {
+async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, jobUrl, rootFolderId, onProgress }) {
   const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
 
   const domain = domainFromUrl(jobUrl);
@@ -135,6 +136,16 @@ async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, j
 
   const localSize = fs.statSync(filePath).size;
   const fileStream = fs.createReadStream(filePath);
+
+  // Track upload progress if callback provided
+  let bytesUploaded = 0;
+  if (onProgress && typeof onProgress === 'function') {
+    fileStream.on('data', (chunk) => {
+      bytesUploaded += chunk.length;
+      const percentage = Math.min(100, Math.round((bytesUploaded / localSize) * 100));
+      onProgress({ bytesUploaded, totalBytes: localSize, percentage });
+    });
+  }
 
   let uploadResp;
   try {

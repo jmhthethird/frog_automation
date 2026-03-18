@@ -188,6 +188,14 @@ async function runJob(jobId) {
         const creds = JSON.parse(gdRow.credentials || '{}');
         if (creds.client_id && creds.client_secret && creds.refresh_token) {
           logStream.write('[INFO] Uploading ZIP to Google Drive…\n');
+
+          // Progress callback to log upload progress
+          const onProgress = ({ bytesUploaded, totalBytes, percentage }) => {
+            const uploadedMB = (bytesUploaded / 1024 / 1024).toFixed(2);
+            const totalMB = (totalBytes / 1024 / 1024).toFixed(2);
+            logStream.write(`[INFO] Upload progress: ${uploadedMB}MB / ${totalMB}MB (${percentage}%)\n`);
+          };
+
           const result = await uploadToDrive({
             clientId:     creds.client_id,
             clientSecret: creds.client_secret,
@@ -195,6 +203,7 @@ async function runJob(jobId) {
             filePath:     zipPath,
             jobUrl:       job.url,
             rootFolderId: creds.root_folder_id || undefined,
+            onProgress,
           });
           logStream.write(
             `[INFO] Google Drive upload complete: fileId=${result.fileId} ` +

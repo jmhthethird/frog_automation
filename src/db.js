@@ -76,6 +76,14 @@ db.exec(`
     enabled     INTEGER NOT NULL DEFAULT 0,
     credentials TEXT    NOT NULL DEFAULT '{}'
   );
+
+  CREATE TABLE IF NOT EXISTS webhooks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    url        TEXT    NOT NULL,
+    event_type TEXT    NOT NULL,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Seed a row for every known integration so GET always returns the full list.
