@@ -207,6 +207,46 @@ describe('PUT /api/api-credentials/:service', () => {
   });
 });
 
+// ─── Google Drive: preserve programmatic fields through user-editable saves ───
+describe('PUT /api/api-credentials/google_drive preserves OAuth fields', () => {
+  it('does not wipe refresh_token, root_folder_id, root_folder_name when user saves editable fields', async () => {
+    // Simulate what the OAuth callback and root-folder picker store directly.
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled = excluded.enabled, credentials = excluded.credentials
+    `).run(JSON.stringify({
+      api_key:          'test-api-key',
+      client_id:        'test-client-id',
+      client_secret:    'test-client-secret',
+      refresh_token:    'stored-refresh-token',
+      root_folder_id:   'stored-folder-id',
+      root_folder_name: 'My SEO Crawls',
+    }));
+
+    // User saves their editable credentials (api_key / client_id / client_secret).
+    await ctx.request.put('/api/api-credentials/google_drive')
+      .send({
+        enabled:     true,
+        credentials: { api_key: 'new-api-key', client_id: 'new-client-id', client_secret: 'new-secret' },
+      })
+      .expect(200);
+
+    const row = db.prepare('SELECT credentials FROM api_credentials WHERE service = ?').get('google_drive');
+    const stored = JSON.parse(row?.credentials || '{}');
+
+    // Programmatic fields must survive the PUT.
+    expect(stored.refresh_token).toBe('stored-refresh-token');
+    expect(stored.root_folder_id).toBe('stored-folder-id');
+    expect(stored.root_folder_name).toBe('My SEO Crawls');
+
+    // User-editable fields should be updated.
+    expect(stored.api_key).toBe('new-api-key');
+    expect(stored.client_id).toBe('new-client-id');
+    expect(stored.client_secret).toBe('new-secret');
+  });
+});
+
 // ─── Credential field handling (with injected test fields) ───────────────────
 // These tests temporarily add a field definition to a service so the masking
 // and field-seeding code paths can be exercised.
