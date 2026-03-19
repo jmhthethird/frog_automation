@@ -55,7 +55,13 @@ db.exec(`
 `);
 
 // Idempotent migrations for databases created before cron/diff/spider-config support was added.
-for (const col of ['cron_expression TEXT', 'next_run_at TEXT', 'diff_summary TEXT', 'spider_config_id INTEGER']) {
+for (const col of [
+  'cron_expression TEXT',
+  'next_run_at TEXT',
+  'diff_summary TEXT',
+  'spider_config_id INTEGER',
+  'drive_upload_progress INTEGER',
+]) {
   try {
     db.exec(`ALTER TABLE jobs ADD COLUMN ${col}`);
   } catch {

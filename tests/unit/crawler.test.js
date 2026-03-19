@@ -826,6 +826,162 @@ describe('runJob() – Google Drive upload', () => {
       rootFolderId: undefined,
     }));
   });
+
+  it('sets drive_upload_progress to 100 after a successful upload (Enhancement #2)', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' }));
+
+    mockUploadToDrive.mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 100, driveSize: 100,
+    });
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.drive_upload_progress).toBe(100);
+  });
+
+  it('passes onProgress and onTokenRefresh callbacks to uploadToDrive (Enhancements #2 & #3)', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' }));
+
+    mockUploadToDrive.mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 100, driveSize: 100,
+    });
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    const callArg = mockUploadToDrive.mock.calls[0][0];
+    expect(typeof callArg.onProgress).toBe('function');
+    expect(typeof callArg.onTokenRefresh).toBe('function');
+  });
+
+  it('decrypts the refresh_token before passing it to uploadToDrive (Enhancement #1)', async () => {
+    // Store an encrypted refresh token (simulate what persistCredentials writes).
+    const { encrypt } = require('../../src/crypto-utils');
+    process.env.ENCRYPTION_SECRET = 'crawler-test-secret';
+    const encrypted = encrypt('my_real_rt');
+    delete process.env.ENCRYPTION_SECRET;
+
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({ client_id: 'cid', client_secret: 'cs', refresh_token: encrypted }));
+
+    // Set ENCRYPTION_SECRET so decrypt() works inside the crawler.
+    process.env.ENCRYPTION_SECRET = 'crawler-test-secret';
+
+    mockUploadToDrive.mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 50, driveSize: 50,
+    });
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    delete process.env.ENCRYPTION_SECRET;
+
+    // uploadToDrive must receive the decrypted plain-text token.
+    expect(mockUploadToDrive).toHaveBeenCalledWith(expect.objectContaining({
+      refreshToken: 'my_real_rt',
+    }));
+  });
+
+  it('sends a webhook notification after a successful upload (Enhancement #4)', async () => {
+    const mockSendWebhook = jest.fn().mockResolvedValueOnce({ statusCode: 200 });
+    jest.doMock('../../src/webhook', () => ({ sendWebhook: mockSendWebhook }));
+    // Re-require crawler to pick up the new mock.
+    jest.resetModules();
+    cp = require('child_process');
+    jest.spyOn(cp, 'spawn');
+    const dbMod = require('../../src/db');
+    db = dbMod.db;
+    const localMockUpload = jest.fn().mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 50, driveSize: 50,
+    });
+    jest.doMock('../../src/google-drive', () => ({
+      uploadToDrive:             localMockUpload,
+      buildOAuth2Client:         jest.fn(),
+      buildDriveClientFromOAuth: jest.fn(),
+      ensureFolder:              jest.fn(),
+      findFolder:                jest.fn(),
+      domainFromUrl: (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } },
+    }));
+    crawler = require('../../src/crawler');
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({
+      client_id: 'cid', client_secret: 'cs', refresh_token: 'rt',
+      webhook_url: 'https://example.com/hook',
+    }));
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    expect(mockSendWebhook).toHaveBeenCalledWith(
+      'https://example.com/hook',
+      expect.objectContaining({
+        event:  'drive_upload_complete',
+        jobId,
+        domain: 'example.com',
+      })
+    );
+  });
+
+  it('does not fail the job when the webhook throws an error (Enhancement #4)', async () => {
+    const mockSendWebhook = jest.fn().mockRejectedValueOnce(new Error('Webhook timeout'));
+    jest.doMock('../../src/webhook', () => ({ sendWebhook: mockSendWebhook }));
+    jest.resetModules();
+    cp = require('child_process');
+    jest.spyOn(cp, 'spawn');
+    const dbMod = require('../../src/db');
+    db = dbMod.db;
+    const localMockUpload = jest.fn().mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 50, driveSize: 50,
+    });
+    jest.doMock('../../src/google-drive', () => ({
+      uploadToDrive:             localMockUpload,
+      buildOAuth2Client:         jest.fn(),
+      buildDriveClientFromOAuth: jest.fn(),
+      ensureFolder:              jest.fn(),
+      findFolder:                jest.fn(),
+      domainFromUrl: (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } },
+    }));
+    crawler = require('../../src/crawler');
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({
+      client_id: 'cid', client_secret: 'cs', refresh_token: 'rt',
+      webhook_url: 'https://example.com/hook',
+    }));
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('completed');
+  });
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

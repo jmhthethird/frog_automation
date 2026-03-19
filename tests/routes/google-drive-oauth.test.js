@@ -18,6 +18,7 @@ const mockGetAccessToken = jest.fn();
 jest.mock('googleapis', () => {
   const OAuth2 = jest.fn(function () {
     this.setCredentials = jest.fn();
+    this.on = jest.fn();
   });
   // Include the state parameter in the mock URL so tests can extract it.
   OAuth2.prototype.generateAuthUrl = jest.fn(opts =>

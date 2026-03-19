@@ -5,6 +5,7 @@ const express   = require('express');
 const rateLimit = require('express-rate-limit');
 const { db }    = require('../db');
 const { buildOAuth2Client } = require('../google-drive');
+const { decrypt, ensureEncrypted } = require('../crypto-utils');
 
 const router = express.Router();
 
@@ -50,16 +51,38 @@ function _consumeState(state) {
 /** Read the raw credentials object stored for the google_drive service. */
 function getCredentials() {
   const row = db.prepare("SELECT credentials FROM api_credentials WHERE service = 'google_drive'").get();
-  return JSON.parse(row?.credentials || '{}');
+  const creds = JSON.parse(row?.credentials || '{}');
+  // Transparently decrypt the refresh_token when ENCRYPTION_SECRET is set.
+  if (creds.refresh_token) {
+    try {
+      creds.refresh_token = decrypt(creds.refresh_token);
+    } catch {
+      // Decryption failure (e.g. wrong key) – surface as missing token so the
+      // caller will ask the user to reconnect rather than silently failing.
+      creds.refresh_token = '';
+    }
+  }
+  return creds;
 }
 
 /**
  * Merge `updates` into the existing google_drive credentials object and persist.
  * Keys present in `updates` overwrite existing values; all other keys are kept.
+ * When ENCRYPTION_SECRET is set the refresh_token is transparently encrypted.
  */
 function persistCredentials(updates) {
-  const current = getCredentials();
-  const merged  = { ...current, ...updates };
+  // Read the raw (possibly encrypted) row so we do not needlessly
+  // decrypt-then-re-encrypt an existing token on every write.
+  const rawRow = db.prepare("SELECT credentials FROM api_credentials WHERE service = 'google_drive'").get();
+  const current = JSON.parse(rawRow?.credentials || '{}');
+
+  const merged = { ...current, ...updates };
+
+  // Encrypt the refresh_token whenever it changes or was previously plain-text.
+  if (merged.refresh_token) {
+    merged.refresh_token = ensureEncrypted(merged.refresh_token);
+  }
+
   db.prepare(`
     INSERT INTO api_credentials (service, enabled, credentials)
     VALUES ('google_drive', 0, ?)
@@ -187,6 +210,8 @@ router.get('/callback', readLimit, async (req, res) => {
 // ─── GET /api/google-drive/token ──────────────────────────────────────────────
 // Returns a fresh OAuth2 access token and the stored API key.
 // The browser uses these to open the Google Drive folder picker.
+// When a previously-cached access token has not yet expired it is returned
+// directly, avoiding an unnecessary token-refresh round-trip.
 router.get('/token', readLimit, async (req, res) => {
   const creds = getCredentials();
   if (!creds.client_id || !creds.client_secret || !creds.refresh_token) {
@@ -195,8 +220,24 @@ router.get('/token', readLimit, async (req, res) => {
     });
   }
 
+  // ── Use cached access token when still valid (> 60 s remaining) ──────────
+  const nowMs = Date.now();
+  if (creds.access_token && creds.token_expiry && creds.token_expiry > nowMs + 60_000) {
+    return res.json({ accessToken: creds.access_token, apiKey: creds.api_key || '' });
+  }
+
   const oauth2Client = buildOAuth2Client(creds.client_id, creds.client_secret);
   oauth2Client.setCredentials({ refresh_token: creds.refresh_token });
+
+  // Persist any newly-issued access token so subsequent calls can reuse it.
+  oauth2Client.on('tokens', (tokens) => {
+    if (tokens.access_token) {
+      persistCredentials({
+        access_token: tokens.access_token,
+        token_expiry: tokens.expiry_date || null,
+      });
+    }
+  });
 
   try {
     const { token } = await oauth2Client.getAccessToken();

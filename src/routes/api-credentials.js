@@ -22,9 +22,10 @@ const SERVICE_FIELDS = {
   google_analytics:      [],
   google_analytics_4:    [],
   google_drive: [
-    { name: 'api_key',       label: 'Google API Key',         sensitive: true  },
-    { name: 'client_id',     label: 'OAuth2 Client ID',       sensitive: false },
-    { name: 'client_secret', label: 'OAuth2 Client Secret',   sensitive: true  },
+    { name: 'api_key',       label: 'Google API Key',       sensitive: true  },
+    { name: 'client_id',     label: 'OAuth2 Client ID',     sensitive: false },
+    { name: 'client_secret', label: 'OAuth2 Client Secret', sensitive: true  },
+    { name: 'webhook_url',   label: 'Upload Webhook URL',   sensitive: false },
   ],
 };
 
@@ -37,7 +38,7 @@ const KNOWN_SERVICES = Object.keys(SERVICE_FIELDS);
  * exposed or overwritten via the generic credentials API.
  */
 const PROGRAMMATIC_KEYS = {
-  google_drive: ['refresh_token', 'root_folder_id', 'root_folder_name'],
+  google_drive: ['refresh_token', 'root_folder_id', 'root_folder_name', 'access_token', 'token_expiry'],
 };
 
 /** Mask a single credential value for display (keep first 4 chars, rest as ●). */

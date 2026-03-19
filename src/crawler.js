@@ -11,6 +11,8 @@ const { DEFAULT_EXPORT_TABS } = require('./constants/exportTabs');
 const { buildJobLabel } = require('./utils');
 const { getLocalSfDataDir } = require('./sf-paths');
 const { uploadToDrive } = require('./google-drive');
+const { decrypt } = require('./crypto-utils');
+const { sendWebhook } = require('./webhook');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -186,20 +188,75 @@ async function runJob(jobId) {
       ).get();
       if (gdRow && gdRow.enabled === 1) {
         const creds = JSON.parse(gdRow.credentials || '{}');
-        if (creds.client_id && creds.client_secret && creds.refresh_token) {
+        // Transparently decrypt the refresh_token (no-op when encryption is off).
+        const refreshToken = decrypt(creds.refresh_token || '');
+        if (creds.client_id && creds.client_secret && refreshToken) {
           logStream.write('[INFO] Uploading ZIP to Google Drive…\n');
+
+          // Mark upload as in-progress (0%).
+          db.prepare('UPDATE jobs SET drive_upload_progress = 0 WHERE id = ?').run(jobId);
+
           const result = await uploadToDrive({
             clientId:     creds.client_id,
             clientSecret: creds.client_secret,
-            refreshToken: creds.refresh_token,
+            refreshToken,
             filePath:     zipPath,
             jobUrl:       job.url,
             rootFolderId: creds.root_folder_id || undefined,
+
+            // Enhancement #2 – upload progress
+            onProgress: (pct) => {
+              try {
+                db.prepare('UPDATE jobs SET drive_upload_progress = ? WHERE id = ?').run(pct, jobId);
+              } catch { /* non-critical */ }
+            },
+
+            // Enhancement #3 – auto token refresh: persist refreshed access token
+            onTokenRefresh: (tokens) => {
+              try {
+                if (tokens.access_token) {
+                  const rawRow = db.prepare(
+                    "SELECT credentials FROM api_credentials WHERE service = 'google_drive'"
+                  ).get();
+                  const existing = JSON.parse(rawRow?.credentials || '{}');
+                  existing.access_token = tokens.access_token;
+                  existing.token_expiry = tokens.expiry_date || null;
+                  db.prepare(
+                    "UPDATE api_credentials SET credentials = ? WHERE service = 'google_drive'"
+                  ).run(JSON.stringify(existing));
+                }
+              } catch { /* non-critical */ }
+            },
           });
+
+          // Mark upload as complete (100%).
+          db.prepare('UPDATE jobs SET drive_upload_progress = 100 WHERE id = ?').run(jobId);
+
           logStream.write(
             `[INFO] Google Drive upload complete: fileId=${result.fileId} ` +
             `domain="${result.domain}" size=${result.localSize} bytes\n`
           );
+
+          // Enhancement #4 – webhook notification
+          const webhookUrl = creds.webhook_url && creds.webhook_url.trim();
+          if (webhookUrl) {
+            try {
+              await sendWebhook(webhookUrl, {
+                event:       'drive_upload_complete',
+                jobId,
+                url:         job.url,
+                fileId:      result.fileId,
+                domain:      result.domain,
+                folderId:    result.folderId,
+                localSize:   result.localSize,
+                driveSize:   result.driveSize,
+                completedAt: new Date().toISOString(),
+              });
+              logStream.write('[INFO] Webhook notification sent\n');
+            } catch (whErr) {
+              logStream.write(`[WARN] Webhook notification failed: ${whErr.message}\n`);
+            }
+          }
         } else {
           logStream.write('[WARN] Google Drive integration is enabled but not yet authenticated; skipping upload\n');
         }

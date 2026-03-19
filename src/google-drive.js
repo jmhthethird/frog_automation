@@ -1,7 +1,8 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const fs     = require('fs');
+const path   = require('path');
+const stream = require('stream');
 const { google } = require('googleapis');
 
 /**
@@ -23,14 +24,20 @@ function buildOAuth2Client(clientId, clientSecret, redirectUri) {
  * Build an authenticated Drive v3 client using a stored OAuth2 refresh token.
  * googleapis automatically refreshes the access token when it expires.
  *
- * @param {string} clientId
- * @param {string} clientSecret
- * @param {string} refreshToken
+ * @param {string}   clientId
+ * @param {string}   clientSecret
+ * @param {string}   refreshToken
+ * @param {function} [onTokenRefresh] - Optional callback invoked with new token
+ *   data whenever the OAuth2 library automatically refreshes the access token.
+ *   Signature: (tokens: { access_token, expiry_date, … }) => void
  * @returns {import('googleapis').drive_v3.Drive}
  */
-function buildDriveClientFromOAuth(clientId, clientSecret, refreshToken) {
+function buildDriveClientFromOAuth(clientId, clientSecret, refreshToken, onTokenRefresh) {
   const auth = buildOAuth2Client(clientId, clientSecret);
   auth.setCredentials({ refresh_token: refreshToken });
+  if (typeof onTokenRefresh === 'function') {
+    auth.on('tokens', onTokenRefresh);
+  }
   return google.drive({ version: 'v3', auth });
 }
 
@@ -114,45 +121,79 @@ function domainFromUrl(url) {
  * reported by Drive is compared against the local file size.  A mismatch
  * throws an error.
  *
- * @param {object} options
- * @param {string}  options.clientId      - OAuth2 Client ID.
- * @param {string}  options.clientSecret  - OAuth2 Client Secret.
- * @param {string}  options.refreshToken  - Stored OAuth2 refresh token.
- * @param {string}  options.filePath      - Absolute path to the local ZIP file.
- * @param {string}  options.jobUrl        - Crawled URL (used to derive the domain folder name).
- * @param {string} [options.rootFolderId] - Drive folder ID selected via the folder picker.
+ * @param {object}   options
+ * @param {string}   options.clientId        - OAuth2 Client ID.
+ * @param {string}   options.clientSecret    - OAuth2 Client Secret.
+ * @param {string}   options.refreshToken    - Stored OAuth2 refresh token.
+ * @param {string}   options.filePath        - Absolute path to the local ZIP file.
+ * @param {string}   options.jobUrl          - Crawled URL (used to derive the domain folder name).
+ * @param {string}  [options.rootFolderId]   - Drive folder ID selected via the folder picker.
  *   When absent the domain folder is placed directly in My Drive root.
+ * @param {function} [options.onProgress]    - Optional callback invoked periodically during upload
+ *   with the current upload percentage (0–100).
+ *   Signature: (percent: number) => void
+ * @param {function} [options.onTokenRefresh] - Optional callback invoked when the OAuth2 library
+ *   automatically obtains a fresh access token.
+ *   Signature: (tokens: { access_token, expiry_date, … }) => void
  * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number }>}
  */
-async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, jobUrl, rootFolderId }) {
-  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
+async function uploadToDrive({
+  clientId, clientSecret, refreshToken, filePath, jobUrl, rootFolderId,
+  onProgress, onTokenRefresh,
+}) {
+  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken, onTokenRefresh);
 
-  const domain = domainFromUrl(jobUrl);
+  const domain   = domainFromUrl(jobUrl);
   const filename = path.basename(filePath);
 
   // Ensure the per-domain subfolder exists inside the user-selected root folder.
   const folderId = await ensureFolder(drive, domain, rootFolderId || null);
 
-  const localSize = fs.statSync(filePath).size;
+  const localSize  = fs.statSync(filePath).size;
   const fileStream = fs.createReadStream(filePath);
+
+  // ── Upload progress tracking ───────────────────────────────────────────────
+  // Wrap the file stream in a Transform that counts bytes as they pass through
+  // and fires onProgress approximately once per second.
+  let bytesRead        = 0;
+  let progressInterval = null;
+
+  const progressStream = new stream.Transform({
+    transform(chunk, _encoding, callback) {
+      bytesRead += chunk.length;
+      callback(null, chunk);
+    },
+  });
+
+  if (typeof onProgress === 'function' && localSize > 0) {
+    progressInterval = setInterval(() => {
+      const pct = Math.min(99, Math.round((bytesRead / localSize) * 100));
+      onProgress(pct);
+    }, 1_000);
+  }
+
+  fileStream.pipe(progressStream);
 
   let uploadResp;
   try {
     uploadResp = await drive.files.create({
       requestBody: { name: filename, parents: [folderId] },
-      media: { mimeType: 'application/zip', body: fileStream },
+      media: { mimeType: 'application/zip', body: progressStream },
       fields: 'id, size',
     });
   } finally {
+    clearInterval(progressInterval);
     // Suppress any error event that may fire after the stream is destroyed
     // (e.g. the autoOpen callback completing after the file was removed in
     // tests, or a late close error). Errors that occur during the upload are
     // already surfaced via the rejected drive.files.create promise.
     fileStream.on('error', () => {});
     fileStream.destroy();
+    progressStream.on('error', () => {});
+    progressStream.destroy();
   }
 
-  const fileId = uploadResp.data.id;
+  const fileId    = uploadResp.data.id;
   const driveSize = parseInt(uploadResp.data.size, 10);
 
   // ── Post-upload validation ────────────────────────────────────────────────

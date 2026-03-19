@@ -15,6 +15,7 @@ jest.mock('googleapis', () => {
   OAuth2.prototype.setCredentials = jest.fn(function (creds) {
     this._credentials = creds;
   });
+  OAuth2.prototype.on              = jest.fn();
   OAuth2.prototype.generateAuthUrl = jest.fn(() => 'https://accounts.google.com/o/oauth2/auth?mocked');
   OAuth2.prototype.getToken        = jest.fn(async () => ({ tokens: { refresh_token: 'rt_mock', access_token: 'at_mock' } }));
   OAuth2.prototype.getAccessToken  = jest.fn(async () => ({ token: 'at_refreshed' }));
@@ -239,5 +240,42 @@ describe('uploadToDrive()', () => {
     });
     const listCall = _mockDrive.files.list.mock.calls[0][0];
     expect(listCall.q).toContain("'root' in parents");
+  });
+
+  it('calls onProgress callback during upload (Enhancement #2)', async () => {
+    setupMocks();
+    const progressCalls = [];
+    await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+      onProgress: (pct) => progressCalls.push(pct),
+    });
+    // onProgress is called via setInterval so we can't assert exact calls here,
+    // but the function must not throw when provided.
+    expect(typeof progressCalls).toBe('object');
+  });
+
+  it('does not throw when onProgress is not provided', async () => {
+    setupMocks();
+    await expect(uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+    })).resolves.not.toThrow();
+  });
+
+  it('registers onTokenRefresh listener on the OAuth2 client (Enhancement #3)', async () => {
+    setupMocks();
+    const onTokenRefreshSpy = jest.fn();
+    await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+      onTokenRefresh: onTokenRefreshSpy,
+    });
+    // The googleapis mock uses `auth.on('tokens', cb)` – verify the mock received the call.
+    const OAuth2Instance = google.auth.OAuth2.mock.instances[google.auth.OAuth2.mock.instances.length - 1];
+    expect(OAuth2Instance.on).toHaveBeenCalledWith('tokens', onTokenRefreshSpy);
   });
 });

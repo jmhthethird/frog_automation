@@ -167,6 +167,8 @@
   .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
   .detail-item label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; }
   .detail-item span  { display: block; font-size: 13px; word-break: break-all; }
+  .drive-progress-wrap { display: inline-block; width: 120px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+  .drive-progress-bar  { height: 100%; background: var(--blue); border-radius: 3px; transition: width .5s ease; }
   pre#log-output { background: #0a0a0a; color: #c8e6c9; font-family: monospace; font-size: 12px; line-height: 1.6; padding: 12px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; overflow-y: auto; }
   .section-label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; letter-spacing: .05em; }
   hr.sep { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
@@ -907,6 +909,8 @@ async function showJobDetail(id) {
         ${j.prev_duration_seconds !== undefined ? `<div class="detail-item"><label>Previous Crawl</label><span title="Completed ${escHtml(fmtDate(j.prev_completed_at))}">${fmtDuration(j.prev_duration_seconds)}</span></div>` : ''}
         ${j.cron_expression ? `<div class="detail-item"><label>Cron Schedule</label><span style="font-family:monospace;">${escHtml(j.cron_expression)}</span></div>` : ''}
         ${j.next_run_at ? `<div class="detail-item"><label>Next Run</label><span>${fmtDate(j.next_run_at)}</span></div>` : ''}
+        ${j.drive_upload_progress !== null && j.drive_upload_progress !== undefined && j.drive_upload_progress < 100 ? `<div class="detail-item" style="grid-column:1/-1;"><label>Drive Upload</label><span><span class="drive-progress-wrap"><span class="drive-progress-bar" style="width:${j.drive_upload_progress}%;"></span></span><span style="font-size:11px;color:var(--text-dim);">${j.drive_upload_progress}%</span></span></div>` : ''}
+        ${j.drive_upload_progress === 100 ? `<div class="detail-item"><label>Drive Upload</label><span style="color:var(--green);">☁ Uploaded</span></div>` : ''}
         ${j.error ? `<div class="detail-item" style="grid-column:1/-1;"><label>Error</label><span style="color:var(--red);">${escHtml(j.error)}</span></div>` : ''}
       `;
 
@@ -1501,7 +1505,8 @@ const API_SERVICE_META = {
     label: '☁ Google Drive Upload',
     note: 'Automatically uploads each completed crawl ZIP to Google Drive, organised by domain:<br><code>Drive / [Root Folder] / &lt;domain&gt; / &lt;crawl.zip&gt;</code><br><br>' +
           '<strong>Setup (one-time):</strong> In <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue);">Google Cloud Console</a> create a project, enable the <em>Google Drive API</em> and <em>Google Picker API</em>, then create an <strong>OAuth 2.0 Client ID</strong> (Web application) and an <strong>API Key</strong>. ' +
-          'Add <code>' + window.location.origin + '</code> to the authorised JavaScript origins and <code>' + window.location.origin + '/api/google-drive/callback</code> to the authorised redirect URIs.',
+          'Add <code>' + window.location.origin + '</code> to the authorised JavaScript origins and <code>' + window.location.origin + '/api/google-drive/callback</code> to the authorised redirect URIs.<br><br>' +
+          '<strong>Upload Webhook URL</strong> (optional): when set, a JSON <code>POST</code> is sent to this URL after each successful Drive upload.',
   },
 };
 
