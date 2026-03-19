@@ -620,25 +620,36 @@ describe('resolvePRBuild()', () => {
     expect(state.error).toMatch(/Invalid GitHub PR URL/);
   });
 
+  it('sets status to error when the PR URL points to a different repository', async () => {
+    const state = await updater.resolvePRBuild('https://github.com/evil/other-repo/pull/1');
+    expect(state.status).toBe('error');
+    expect(state.error).toMatch(/jmhthethird\/frog_automation/);
+  });
+
   it('sets status to available and picks arm64 asset when release exists', async () => {
     const tag = 'pr-42-preview';
+    const origArch = process.arch;
     Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
-    makeHttpsSpy({
-      body: {
-        tag_name: tag,
-        html_url: `https://github.com/jmhthethird/frog_automation/releases/tag/${tag}`,
-        body:     'Test build notes',
-        assets:   [
-          { name: 'Frog Automation-1.0.0-arm64.dmg', browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/pr-42-preview/Frog Automation-1.0.0-arm64.dmg' },
-          { name: 'Frog Automation-1.0.0.dmg',       browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/pr-42-preview/Frog Automation-1.0.0.dmg' },
-        ],
-      },
-    });
-    const state = await updater.resolvePRBuild('https://github.com/jmhthethird/frog_automation/pull/42');
-    expect(state.status).toBe('available');
-    expect(state.latestVersion).toBe(tag);
-    expect(state.downloadUrl).toContain('arm64');
-    expect(state.releaseNotes).toBe('Test build notes');
+    try {
+      makeHttpsSpy({
+        body: {
+          tag_name: tag,
+          html_url: `https://github.com/jmhthethird/frog_automation/releases/tag/${tag}`,
+          body:     'Test build notes',
+          assets:   [
+            { name: 'Frog Automation-1.0.0-arm64.dmg', browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/pr-42-preview/Frog Automation-1.0.0-arm64.dmg' },
+            { name: 'Frog Automation-1.0.0.dmg',       browser_download_url: 'https://github.com/jmhthethird/frog_automation/releases/download/pr-42-preview/Frog Automation-1.0.0.dmg' },
+          ],
+        },
+      });
+      const state = await updater.resolvePRBuild('https://github.com/jmhthethird/frog_automation/pull/42');
+      expect(state.status).toBe('available');
+      expect(state.latestVersion).toBe(tag);
+      expect(state.downloadUrl).toContain('arm64');
+      expect(state.releaseNotes).toBe('Test build notes');
+    } finally {
+      Object.defineProperty(process, 'arch', { value: origArch, configurable: true });
+    }
   });
 
   it('sets downloadUrl to null when no matching DMG asset is present', async () => {

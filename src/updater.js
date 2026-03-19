@@ -452,6 +452,17 @@ async function resolvePRBuild(prUrl) {
   }
 
   const [, owner, repo, prNumber] = match;
+
+  // Security: only allow installing builds from this app's own repository.
+  if (owner.toLowerCase() !== GITHUB_OWNER.toLowerCase() ||
+      repo.toLowerCase()  !== GITHUB_REPO.toLowerCase()) {
+    _patch({
+      status: 'error',
+      error:  `PR builds can only be installed from ${GITHUB_OWNER}/${GITHUB_REPO}`,
+    });
+    return getState();
+  }
+
   const tag = `pr-${prNumber}-preview`;
 
   _patch({ status: 'checking', error: null });
