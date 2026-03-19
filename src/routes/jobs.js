@@ -16,9 +16,9 @@ const router = express.Router();
 
 // Allow generous limits – this is a LAN-only tool.
 // The primary goal is to prevent accidental runaway automation.
-const _skipInTest = process.env.NODE_ENV === 'test' ? { skip: () => true } : {};
-const readLimit  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false, ..._skipInTest });
-const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true, legacyHeaders: false, ..._skipInTest });
+const skipRateLimitInTest = process.env.NODE_ENV === 'test' ? { skip: () => true } : {};
+const readLimit  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false, ...skipRateLimitInTest });
+const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true, legacyHeaders: false, ...skipRateLimitInTest });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function computeDurationSeconds(started_at, completed_at) {
