@@ -16,6 +16,7 @@ describe('GET /api/health', () => {
 
     expect(res.body).toMatchObject({
       status: 'ok',
+      version: expect.any(String),
       launcher_found: expect.any(Boolean),
       launcher: expect.any(String),
       node_version: expect.any(String),
