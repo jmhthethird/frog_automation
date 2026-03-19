@@ -2,29 +2,48 @@
 
 Use this guide to embed screenshots in your PR description for maximum impact.
 
+> **Important:** Screenshots should be placed in a PR-specific directory: `docs/screenshots/PR-<NUMBER>-<description>/`
+> See the [main README](README.md) for full instructions.
+
+---
+
+## Setting Up Your PR Screenshots Directory
+
+```bash
+# 1. Create your PR directory
+mkdir docs/screenshots/PR-<NUMBER>-<description>
+
+# 2. Copy the template README
+cp docs/screenshots/_TEMPLATE/README.md docs/screenshots/PR-<NUMBER>-<description>/
+
+# 3. Add your screenshots
+# Place before.png, after.png, and any other screenshots in the directory
+
+# 4. Update the README with your PR details
+```
+
+---
+
 ## Main Before/After Comparison
 
 ```markdown
 ## Visual Comparison: Before vs After
 
 ### Before - Original Implementation
-![Before](docs/screenshots/before.png)
+![Before](docs/screenshots/PR-<NUMBER>-<description>/before.png)
 
 The original implementation had:
-- ❌ No visual feedback during OAuth flow
-- ❌ Basic error messages without guidance
-- ❌ Single-mode popup (no fallback for blockers)
-- ❌ Limited status indicators
+- ❌ Issue 1
+- ❌ Issue 2
+- ❌ Issue 3
 
 ### After - Refactored Implementation
-![After](docs/screenshots/after.png)
+![After](docs/screenshots/PR-<NUMBER>-<description>/after.png)
 
 The refactored version provides:
-- ✅ Real-time status updates with color coding
-- ✅ Professional callback pages with loading states
-- ✅ Dual-mode OAuth (popup + redirect)
-- ✅ Popup blocker detection and helpful messages
-- ✅ Clear visual feedback at every step
+- ✅ Improvement 1
+- ✅ Improvement 2
+- ✅ Improvement 3
 ```
 
 ---
@@ -33,28 +52,25 @@ The refactored version provides:
 
 ### 1. Initial State
 ```markdown
-### Google Drive Card - Not Connected
-![Disconnected State](docs/screenshots/google-drive-card-disconnected.png)
+### Initial State
+![Initial State](docs/screenshots/PR-<NUMBER>-<description>/initial-state.png)
 
 Initial state showing:
-- Clean credential input fields
-- Disabled folder picker (requires connection)
-- "Not connected" status indicator
+- Feature A
+- Feature B
 ```
 
-### 2. Credentials Entry
+### 2. Intermediate State
 ```markdown
-### Entering OAuth Credentials
-![Credentials Filled](docs/screenshots/google-drive-card-credentials-filled.png)
+### Intermediate State
+![Intermediate](docs/screenshots/PR-<NUMBER>-<description>/intermediate.png)
 
-User entering OAuth credentials:
-- OAuth2 Client ID (visible)
-- OAuth2 Client Secret (masked)
-- Google API Key (masked)
-- Helpful setup documentation
+User interaction:
+- Step 1
+- Step 2
 ```
 
-### 3. Connected State
+### 3. Final State
 ```markdown
 ### Successfully Connected
 ![Connected State](docs/screenshots/google-drive-card-connected.png)

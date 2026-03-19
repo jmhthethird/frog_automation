@@ -1,200 +1,129 @@
-# Google Drive OAuth2 Refactor - UI Screenshots
+# PR Screenshots Directory
 
-This directory contains before/after screenshots demonstrating the comprehensive Google Drive OAuth2 integration refactor.
-
-## Overview
-
-The refactor introduces significant improvements to the OAuth flow, user experience, and visual feedback throughout the Google Drive integration.
+This directory contains before/after screenshots for Pull Requests that include UI changes. **Each PR gets its own directory** to keep screenshots organized and easy to find.
 
 ---
 
-## Main Comparison: Before vs After
+## Directory Structure
 
-### Before (Original Implementation)
-![Before - Original OAuth UI](before.png)
-
-**Issues with original implementation:**
-- Simple popup with no visual feedback
-- No indication of loading/progress states
-- Basic error messages without guidance
-- No support for popup-blocked scenarios
-- Limited user feedback during authorization
-
-### After (Refactored Implementation)
-![After - Improved OAuth UI](after.png)
-
-**Improvements in refactored version:**
-- Dual-mode OAuth support (popup + redirect)
-- Real-time status indicators with color coding
-- Professional callback page with loading states
-- Popup blocker detection with helpful messages
-- Clear visual feedback at every step
-
----
-
-## Detailed UI Flow Screenshots
-
-### 1. Initial State - Not Connected
-![Google Drive Card - Disconnected](google-drive-card-disconnected.png)
-
-**Features shown:**
-- Clean, organized credential input fields
-- Disabled "Select Root Folder" button (requires connection first)
-- Clear "Not connected" status indicator
-- Hidden disconnect button (only shown when connected)
-
-### 2. Credentials Entry
-![Google Drive Card - Credentials Filled](google-drive-card-credentials-filled.png)
-
-**Features shown:**
-- OAuth2 Client ID field (text input)
-- OAuth2 Client Secret field (password-masked)
-- Google API Key field (password-masked)
-- Active "Save" button ready for credential storage
-- Helpful documentation note with setup instructions
-
-### 3. Credentials Saved
-![Google Drive Card - Saved State](google-drive-card-saved.png)
-
-**Features shown:**
-- Success message: "✓ Saved"
-- Credentials now masked in the UI (showing partial values + bullets)
-- "Connect Google Drive" button enabled
-- Clear visual feedback on successful save
-
-### 4. Connected State
-![Google Drive Card - Connected](google-drive-card-connected.png)
-
-**Features shown:**
-- Green status indicator: "● Connected"
-- "Disconnect" button now visible
-- "Select Root Folder" button enabled
-- Root folder name displayed: "📁 Frog Automation Uploads"
-- Toggle enabled showing integration is active
-
----
-
-## OAuth Callback Pages
-
-### Success Callback
-![OAuth Callback - Success](oauth-callback-success.png)
-
-**Features:**
-- Large green checkmark (✓) for clear success indication
-- Professional dark-themed design matching app
-- "Authorization Successful" heading
-- Auto-redirect message with countdown
-- Consistent styling with application theme
-
-**Technical details:**
-- Supports both popup mode (postMessage + close) and redirect mode (sessionStorage + redirect)
-- Uses app's design tokens (--bg, --surface, --green)
-- Responsive layout that works in popup window or full page
-
-### Error Callback
-![OAuth Callback - Error](oauth-callback-error.png)
-
-**Features:**
-- Large red X (✕) for clear error indication
-- Professional dark-themed design
-- "Authorization Failed" heading
-- Detailed error message explaining the issue
-- "Return to Application" button for easy recovery
-- Actionable guidance for next steps
-
-**Technical details:**
-- HTML-escaped error messages prevent XSS
-- Same styled template for all error types
-- Works in both popup and redirect modes
-
----
-
-## Full API Settings View
-![API Settings - Full View](api-settings-full.png)
-
-**Features shown:**
-- Complete API Integrations section expanded
-- All API service cards visible
-- Google Drive card in context of other integrations
-- Toggle switches for enabling/disabling services
-- Consistent card layout and styling
-- Badge showing number of enabled services
-
----
-
-## Key UX Improvements Demonstrated
-
-### 1. **Real-Time Status Indicators**
-- Color-coded status messages (green/red/blue/gray)
-- Status changes as user progresses through flow
-- Clear visual feedback at every step
-
-### 2. **Progressive Disclosure**
-- Buttons disabled until prerequisites met
-- Fields enabled/disabled based on connection state
-- Disconnect button only shown when connected
-
-### 3. **Professional Visual Design**
-- Consistent dark theme throughout
-- Proper use of design tokens (colors, spacing, typography)
-- High-quality icons and visual indicators
-- Smooth transitions and hover states
-
-### 4. **Error Handling & Guidance**
-- Popup blocker detection with helpful error
-- Actionable error messages with recovery steps
-- Shift+Click hint for redirect mode
-- Clear documentation and setup instructions
-
-### 5. **Dual-Mode OAuth Support**
-- Default popup mode for seamless experience
-- Redirect mode (Shift+Click) when popups blocked
-- Automatic detection and graceful fallback
-- Works in all environments (browser, Electron, mobile)
-
----
-
-## Screenshot Specifications
-
-All screenshots were captured using Playwright with the following settings:
-- **Resolution:** 1400x900 pixels (main UI), 600x700 pixels (callback popups)
-- **Device Scale Factor:** 2x (high DPI for clarity)
-- **Browser:** Chromium (headless mode)
-- **Format:** PNG with full color depth
-
----
-
-## How to Regenerate Screenshots
-
-If screenshots need to be updated:
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Install Playwright browsers
-npx playwright install chromium --with-deps
-
-# 3. Start the server
-PORT=3456 npm start
-
-# 4. Run screenshot capture script (in another terminal)
-node capture-screenshots.js
+```
+docs/screenshots/
+├── README.md                    # This file
+├── PR-GUIDE.md                  # Quick reference for embedding screenshots in PRs
+├── _TEMPLATE/                   # Template for new PR directories
+│   └── README.md                # Copy this when creating a new PR directory
+└── PR-<NUMBER>-<short-description>/
+    ├── README.md                # Links to PR, describes screenshots
+    ├── before.png               # Screenshot(s) before the change
+    ├── after.png                # Screenshot(s) after the change
+    └── ...                      # Additional screenshots as needed
 ```
 
-Screenshots will be saved to `docs/screenshots/` directory.
+### Naming Convention
+
+Each PR directory follows this pattern:
+- **Format:** `PR-<NUMBER>-<short-description>`
+- **Examples:**
+  - `PR-42-google-drive-oauth`
+  - `PR-57-job-scheduling-ui`
+  - `PR-103-dark-theme-refinements`
+
+---
+
+## How to Add Screenshots for Your PR
+
+### 1. Create the Directory
+
+```bash
+# Replace <NUMBER> with your PR number and <description> with a short identifier
+mkdir docs/screenshots/PR-<NUMBER>-<description>
+```
+
+### 2. Copy the Template README
+
+```bash
+cp docs/screenshots/_TEMPLATE/README.md docs/screenshots/PR-<NUMBER>-<description>/
+```
+
+### 3. Edit the README
+
+Update the template with:
+- Your PR number and title
+- Link to the actual PR
+- Description of what the screenshots show
+
+### 4. Add Your Screenshots
+
+Place your before/after screenshots in the directory:
+- `before.png` — UI state before your changes
+- `after.png` — UI state after your changes
+- Additional screenshots as needed (e.g., `error-state.png`, `mobile-view.png`)
+
+### 5. Reference in Your PR
+
+In your PR description, reference the screenshots using relative paths:
+
+```markdown
+### Before
+![Before](docs/screenshots/PR-123-my-feature/before.png)
+
+### After
+![After](docs/screenshots/PR-123-my-feature/after.png)
+```
+
+---
+
+## Screenshot Guidelines
+
+### Recommended Specifications
+
+- **Resolution:** 1400x900 pixels (main UI), 600x700 pixels (popups/modals)
+- **Device Scale Factor:** 2x (high DPI for clarity)
+- **Browser:** Chromium (for consistency)
+- **Format:** PNG with full color depth
+
+### What to Capture
+
+1. **Before state** — How the UI looked before your changes (or "N/A" for new features)
+2. **After state** — The final UI after your changes
+3. **Key interactions** — Different states (hover, active, error, success)
+4. **Responsive views** — Mobile/tablet views if relevant
+
+### Using Playwright for Screenshots
+
+```bash
+# Start the server
+PORT=3456 npm start
+
+# In another terminal, run Playwright to capture screenshots
+npx playwright screenshot --viewport-size=1400,900 http://localhost:3456 screenshot.png
+```
+
+---
+
+## Existing PR Directories
+
+| Directory | PR | Description |
+|-----------|-----|-------------|
+| [`PR-42-google-drive-oauth`](PR-42-google-drive-oauth/) | [#42](https://github.com/jmhthethird/frog_automation/pull/42) | Google Drive OAuth2 integration refactor |
+
+---
+
+## Why Per-PR Directories?
+
+1. **Organization** — Easy to find screenshots for any PR
+2. **History** — Screenshots are preserved even after PR is merged
+3. **Context** — Each directory's README links back to the PR
+4. **Review** — Reviewers can browse all screenshots for a PR in one place
+5. **Documentation** — Screenshots serve as visual documentation of UI evolution
 
 ---
 
 ## Related Documentation
 
-- **Implementation Guide:** [`docs/google-drive-oauth-implementation.md`](../google-drive-oauth-implementation.md)
-- **E2E Tests:** [`tests/e2e/ui.spec.js`](../../tests/e2e/ui.spec.js)
-- **Backend Routes:** [`src/routes/google-drive.js`](../../src/routes/google-drive.js)
-- **Frontend Code:** [`public/index.html`](../../public/index.html) (search for "Google Drive Integration")
+- **[PR-GUIDE.md](PR-GUIDE.md)** — Quick reference for embedding screenshots in PR descriptions
+- **[PR Template](../../.github/pull_request_template.md)** — Every UI PR requires screenshots
 
 ---
 
-**Last Updated:** 2026-03-18
-**Version:** 1.0.0
-**Author:** Claude Sonnet 4.5
+**Last Updated:** 2026-03-19
