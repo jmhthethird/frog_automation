@@ -208,7 +208,9 @@ async function runJob(jobId) {
             onProgress: (pct) => {
               try {
                 db.prepare('UPDATE jobs SET drive_upload_progress = ? WHERE id = ?').run(pct, jobId);
-              } catch { /* non-critical */ }
+              } catch (dbErr) {
+                console.warn(`[crawler] Failed to update drive_upload_progress for job ${jobId}:`, dbErr.message);
+              }
             },
 
             // Enhancement #3 – auto token refresh: persist refreshed access token

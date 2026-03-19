@@ -167,6 +167,7 @@ async function uploadToDrive({
 
   if (typeof onProgress === 'function' && localSize > 0) {
     progressInterval = setInterval(() => {
+      // Cap at 99 so 100% is only set after Drive confirms receipt (post-upload).
       const pct = Math.min(99, Math.round((bytesRead / localSize) * 100));
       onProgress(pct);
     }, 1_000);

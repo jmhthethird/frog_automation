@@ -32,7 +32,8 @@ function _deriveKey(secret) {
 /**
  * Encrypt a plain-text string.
  * Returns a prefixed base64 string, or the original value when
- * ENCRYPTION_SECRET is not set or the value is empty.
+ * ENCRYPTION_SECRET is not set or the value is empty/falsy.
+ * Falsy values (empty string, null, undefined) are always returned as-is.
  *
  * @param {string} plaintext
  * @returns {string}

@@ -909,8 +909,11 @@ async function showJobDetail(id) {
         ${j.prev_duration_seconds !== undefined ? `<div class="detail-item"><label>Previous Crawl</label><span title="Completed ${escHtml(fmtDate(j.prev_completed_at))}">${fmtDuration(j.prev_duration_seconds)}</span></div>` : ''}
         ${j.cron_expression ? `<div class="detail-item"><label>Cron Schedule</label><span style="font-family:monospace;">${escHtml(j.cron_expression)}</span></div>` : ''}
         ${j.next_run_at ? `<div class="detail-item"><label>Next Run</label><span>${fmtDate(j.next_run_at)}</span></div>` : ''}
-        ${j.drive_upload_progress !== null && j.drive_upload_progress !== undefined && j.drive_upload_progress < 100 ? `<div class="detail-item" style="grid-column:1/-1;"><label>Drive Upload</label><span><span class="drive-progress-wrap"><span class="drive-progress-bar" style="width:${j.drive_upload_progress}%;"></span></span><span style="font-size:11px;color:var(--text-dim);">${j.drive_upload_progress}%</span></span></div>` : ''}
-        ${j.drive_upload_progress === 100 ? `<div class="detail-item"><label>Drive Upload</label><span style="color:var(--green);">☁ Uploaded</span></div>` : ''}
+        ${j.drive_upload_progress !== null && j.drive_upload_progress !== undefined && j.drive_upload_progress < 100
+          ? `<div class="detail-item" style="grid-column:1/-1;"><label>Drive Upload</label><span><span class="drive-progress-wrap"><span class="drive-progress-bar" style="width:${j.drive_upload_progress}%;"></span></span><span style="font-size:11px;color:var(--text-dim);">${j.drive_upload_progress}%</span></span></div>`
+          : j.drive_upload_progress === 100
+            ? `<div class="detail-item"><label>Drive Upload</label><span style="color:var(--green);">☁ Uploaded</span></div>`
+            : ''}
         ${j.error ? `<div class="detail-item" style="grid-column:1/-1;"><label>Error</label><span style="color:var(--red);">${escHtml(j.error)}</span></div>` : ''}
       `;
 

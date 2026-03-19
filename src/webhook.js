@@ -13,6 +13,8 @@ const https = require('https');
 const http  = require('http');
 const { URL } = require('url');
 
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
 /**
  * POST a JSON payload to webhookUrl.
  *
@@ -52,8 +54,8 @@ function sendWebhook(webhookUrl, payload) {
       res.resume(); // drain to allow the socket to close
     });
 
-    req.setTimeout(10_000, () => {
-      req.destroy(new Error('Webhook request timed out after 10 s'));
+    req.setTimeout(WEBHOOK_TIMEOUT_MS, () => {
+      req.destroy(new Error(`Webhook request timed out after ${WEBHOOK_TIMEOUT_MS / 1_000} s`));
     });
 
     req.on('error', reject);

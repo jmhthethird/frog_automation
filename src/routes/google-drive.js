@@ -56,9 +56,10 @@ function getCredentials() {
   if (creds.refresh_token) {
     try {
       creds.refresh_token = decrypt(creds.refresh_token);
-    } catch {
+    } catch (err) {
       // Decryption failure (e.g. wrong key) – surface as missing token so the
       // caller will ask the user to reconnect rather than silently failing.
+      console.warn('[google-drive] Failed to decrypt stored refresh_token:', err.message);
       creds.refresh_token = '';
     }
   }
