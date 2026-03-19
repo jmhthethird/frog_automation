@@ -1857,6 +1857,7 @@ function _onDriveAuthMessage(event) {
       loadDriveStatus();
     }, 2000);
   } else if (msg.type === 'drive-auth-error') {
+    _driveAuthCompleted = true;
     _showDriveMessage('Authorization failed: ' + (msg.error || 'unknown error'), 'error');
     setTimeout(_clearDriveMessage, 5000);
   }
