@@ -1,28 +1,22 @@
 name: PR Test Build
 
-# Builds a test DMG when the "test-build" label is applied to a pull-request,
-# and re-builds when the PR is updated while the label is still present.
-# Publishes the result as a GitHub pre-release tagged  pr-{number}-preview
+# Builds a test DMG for every open pull request on every commit.
+# Publishes the result as a GitHub pre-release tagged pr-{number}-preview
 # so the Frog Automation "Install a PR build" feature can locate and install it.
 #
-# The pre-release is deleted automatically when the PR is closed or the
-# "test-build" label is removed.
+# The pre-release is deleted automatically when the PR is closed.
 
 on:
   pull_request:
-    types: [labeled, synchronize, closed, unlabeled]
+    types: [opened, reopened, synchronize, closed]
 
 jobs:
   # ── Build ─────────────────────────────────────────────────────────────────
   build:
     name: build PR test DMG
-    # Run only on PRs that currently carry the "test-build" label and that are
-    # open.  The "synchronize" event fires on every new commit; we guard with
-    # contains() so an unlabeled PR does not trigger a build on push.
-    if: >-
-      github.event.action != 'closed' &&
-      github.event.action != 'unlabeled' &&
-      contains(github.event.pull_request.labels.*.name, 'test-build')
+    # Run for every open PR event (opened, reopened, synchronize).
+    # Skip only when the PR is being closed.
+    if: github.event.action != 'closed'
 
     runs-on: macos-latest
 
@@ -133,11 +127,8 @@ jobs:
   # ── Cleanup ───────────────────────────────────────────────────────────────
   cleanup:
     name: delete PR preview release
-    # Delete the pre-release when the PR is closed or the label is removed.
-    if: >-
-      github.event.action == 'closed' ||
-      (github.event.action == 'unlabeled' &&
-       github.event.label.name == 'test-build')
+    # Delete the pre-release when the PR is closed.
+    if: github.event.action == 'closed'
 
     runs-on: ubuntu-latest
 
