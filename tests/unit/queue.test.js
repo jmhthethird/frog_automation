@@ -252,6 +252,75 @@ describe('Queue – priority (pushLow)', () => {
   });
 });
 
+// ─── remove() ─────────────────────────────────────────────────────────────────
+describe('Queue – remove()', () => {
+  it('removes a pending job from the high-priority lane', async () => {
+    const order = [];
+    let resolve1;
+    const q = new Queue(async (id) => {
+      order.push(id);
+      if (id === 'blocker') await new Promise((r) => { resolve1 = r; });
+    });
+
+    q.push('blocker');
+    await settle(10);
+
+    q.push('keep');
+    q.push('remove-me');
+    q.push('also-keep');
+
+    q.remove('remove-me');
+
+    resolve1();
+    await settle(100);
+
+    expect(order).toEqual(['blocker', 'keep', 'also-keep']);
+  });
+
+  it('removes a pending job from the low-priority lane', async () => {
+    const order = [];
+    let resolve1;
+    const q = new Queue(async (id) => {
+      order.push(id);
+      if (id === 'blocker') await new Promise((r) => { resolve1 = r; });
+    });
+
+    q.push('blocker');
+    await settle(10);
+
+    q.pushLow('low-keep');
+    q.pushLow('low-remove');
+    q.pushLow('low-also-keep');
+
+    q.remove('low-remove');
+
+    resolve1();
+    await settle(100);
+
+    expect(order).toEqual(['blocker', 'low-keep', 'low-also-keep']);
+  });
+
+  it('is a no-op when the job is not in either lane', async () => {
+    let resolve1;
+    const q = new Queue(async () => {
+      await new Promise((r) => { resolve1 = r; });
+    });
+
+    q.push(1);
+    await settle(10); // job 1 starts running
+
+    q.push(2);
+    q.pushLow(3);
+    // Should not throw when removing a non-existent id
+    q.remove(999);
+    expect(q._pending).toEqual([2]);
+    expect(q._pendingLow).toEqual([3]);
+
+    resolve1();
+    await settle(100);
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));

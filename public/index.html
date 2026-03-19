@@ -158,7 +158,7 @@
   .main-tab-pane.active { display: block; }
   /* schedules tab */
   .sched-empty { color: var(--text-dim); font-style: italic; padding: 16px 0; }
-  .sched-card { background: #0f0f2a; border: 1px solid var(--border); border-radius: 6px; padding: 14px; margin-bottom: 10px; }
+  .sched-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; }
   .sched-card:last-child { margin-bottom: 0; }
   .sched-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   .sched-card-url { font-size: 13px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -429,25 +429,25 @@
     <!-- Jobs / Schedules panel -->
     <div>
       <div class="card">
-        <div class="main-tabs" role="tablist">
-          <button class="main-tab active" role="tab" aria-selected="true" aria-controls="pane-jobs" id="tab-jobs" onclick="switchMainTab('jobs')">Jobs</button>
-          <button class="main-tab" role="tab" aria-selected="false" aria-controls="pane-schedules" id="tab-schedules" onclick="switchMainTab('schedules')">Schedules<span id="sched-count-badge" class="sect-badge" style="margin-left:6px;display:none;">0</span></button>
+        <div class="main-tabs">
+          <button class="main-tab active" id="tab-jobs" onclick="switchMainTab('jobs')">Jobs</button>
+          <button class="main-tab" id="tab-schedules" onclick="switchMainTab('schedules')">Schedules<span id="sched-count-badge" class="sect-badge" style="margin-left:6px;display:none;">0</span></button>
         </div>
 
         <!-- Jobs pane -->
-        <div id="pane-jobs" class="main-tab-pane active" role="tabpanel" aria-labelledby="tab-jobs">
+        <div id="pane-jobs" class="main-tab-pane active">
           <div class="jobs-header">
             <h2>Jobs</h2>
-            <button class="btn btn-secondary" onclick="loadJobs()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
+            <button class="btn btn-secondary" id="jobs-refresh-btn" onclick="loadJobs()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
           </div>
           <div id="jobs-area"><em style="color:var(--text-dim);">Loading…</em></div>
         </div>
 
         <!-- Schedules pane -->
-        <div id="pane-schedules" class="main-tab-pane" role="tabpanel" aria-labelledby="tab-schedules">
+        <div id="pane-schedules" class="main-tab-pane">
           <div class="jobs-header">
             <h2>Active Schedules</h2>
-            <button class="btn btn-secondary" onclick="loadSchedules()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
+            <button class="btn btn-secondary" id="schedules-refresh-btn" onclick="loadSchedules()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
           </div>
           <div id="schedules-area"><em style="color:var(--text-dim);">Loading…</em></div>
         </div>
@@ -868,9 +868,7 @@ async function submitJob() {
 // ── Main Tab Switching ────────────────────────────────────────────────────────
 function switchMainTab(tab) {
   document.querySelectorAll('.main-tab').forEach(btn => {
-    const isActive = btn.id === `tab-${tab}`;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-selected', String(isActive));
+    btn.classList.toggle('active', btn.id === `tab-${tab}`);
   });
   document.querySelectorAll('.main-tab-pane').forEach(pane => {
     pane.classList.toggle('active', pane.id === `pane-${tab}`);
@@ -905,7 +903,7 @@ async function loadSchedules() {
       <div class="sched-card">
         <div class="sched-card-header">
           <span class="sched-card-url" title="${escHtml(s.url)}">${escHtml(s.url)}</span>
-          <span class="badge badge-${s.status}">${s.status}</span>
+          ${safeBadge(s.status)}
         </div>
         <div class="sched-card-meta">
           <div><label>Job</label><span>#${s.id}</span></div>
@@ -1522,6 +1520,12 @@ async function _initUpdateCheck() {
 function escHtml(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+const _VALID_STATUSES = new Set(['queued','running','completed','failed','scheduled','stopped']);
+function safeBadge(status) {
+  const s = String(status || '');
+  const cls = _VALID_STATUSES.has(s) ? `badge-${s}` : '';
+  return `<span class="badge ${cls}">${escHtml(s)}</span>`;
 }
 function fmtDate(s) {
   if (!s) return '—';

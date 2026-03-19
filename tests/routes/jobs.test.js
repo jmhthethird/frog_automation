@@ -597,6 +597,20 @@ describe('POST /api/jobs/:id/unschedule', () => {
     const res = await ctx.request.post(`/api/jobs/${id}/unschedule`).expect(409);
     expect(res.body.error).toMatch(/running/i);
   });
+
+  it('stops a queued cron job (cron tick already fired)', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, cron_expression, next_run_at)
+      VALUES ('https://queued-unsched.example.com', 'Internal:All', 'queued', '0 * * * *', '2099-01-01T00:00:00Z')
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${id}/unschedule`).expect(200);
+    expect(res.body.status).toBe('stopped');
+    expect(res.body.cron_expression).toBeNull();
+    expect(res.body.next_run_at).toBeNull();
+  });
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

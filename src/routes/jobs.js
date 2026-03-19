@@ -364,6 +364,11 @@ router.post('/:id/unschedule', writeLimit, (req, res) => {
   // Remove the cron task from the in-memory scheduler.
   req.app.get('scheduler').unregister(job.id);
 
+  // If the job is queued (cron tick already fired), remove it from the queue.
+  if (job.status === 'queued') {
+    req.app.get('queue').remove(job.id);
+  }
+
   // Clear the schedule and mark the job as stopped.
   db.prepare(`
     UPDATE jobs

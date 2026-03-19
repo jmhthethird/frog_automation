@@ -36,6 +36,12 @@ class Queue extends EventEmitter {
     this._drain();
   }
 
+  /** Remove a job from both priority lanes (if it hasn't started yet). */
+  remove(jobId) {
+    this._pending = this._pending.filter(id => id !== jobId);
+    this._pendingLow = this._pendingLow.filter(id => id !== jobId);
+  }
+
   _drain() {
     if (this._running || (this._pending.length === 0 && this._pendingLow.length === 0)) return;
     const jobId = this._pending.length > 0
