@@ -683,4 +683,74 @@ test.describe('Google Drive OAuth UI', () => {
     // refresh_token is not exposed via the credentials API (PROGRAMMATIC_KEY)
     expect(driveService.credentials.refresh_token).toBeUndefined();
   });
+
+  // ── Redirect-mode tests ────────────────────────────────────────────────────
+
+  test('Redirect mode: success via sessionStorage shows connected message and cleans URL', async ({ page }) => {
+    // Simulate the OAuth callback redirect return by pre-seeding sessionStorage
+    // and adding the ?gdrive_auth=success query param before page load.
+    await page.addInitScript(() => {
+      sessionStorage.setItem('gdrive_auth_result', JSON.stringify({ type: 'drive-auth-success' }));
+    });
+
+    // Navigate as if the server redirected back with ?gdrive_auth=success
+    await page.goto('/?gdrive_auth=success');
+
+    // URL should already be cleaned (replaceState runs synchronously on init)
+    expect(page.url()).not.toContain('gdrive_auth');
+
+    // sessionStorage entry should be removed after being consumed
+    const stored = await page.evaluate(() => sessionStorage.getItem('gdrive_auth_result'));
+    expect(stored).toBeNull();
+
+    // Open the API section so the Drive card is rendered and the pending
+    // auth message is flushed via _applyDriveStatus().
+    await page.locator('#api-section > summary').click();
+    await expect(page.locator('#api-svc-google_drive')).toBeVisible({ timeout: 5_000 });
+
+    // Should display success message
+    const driveCard = page.locator('#api-svc-google_drive');
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('✓ Connected', { timeout: 5_000 });
+  });
+
+  test('Redirect mode: error via sessionStorage shows error message and cleans URL', async ({ page }) => {
+    await page.addInitScript(() => {
+      sessionStorage.setItem('gdrive_auth_result', JSON.stringify({ type: 'drive-auth-error', error: 'access_denied' }));
+    });
+
+    await page.goto('/?gdrive_auth=error');
+
+    // URL should be cleaned
+    expect(page.url()).not.toContain('gdrive_auth');
+
+    // sessionStorage entry should be removed
+    const stored = await page.evaluate(() => sessionStorage.getItem('gdrive_auth_result'));
+    expect(stored).toBeNull();
+
+    // Open the API section to trigger the Drive card render and pending message flush.
+    await page.locator('#api-section > summary').click();
+    await expect(page.locator('#api-svc-google_drive')).toBeVisible({ timeout: 5_000 });
+
+    const driveCard = page.locator('#api-svc-google_drive');
+
+    // Should display error message with the reason
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('access_denied', { timeout: 5_000 });
+  });
+
+  test('Redirect mode: URL param only (no sessionStorage) still shows success message', async ({ page }) => {
+    // Navigate with ?gdrive_auth=success but no sessionStorage entry
+    await page.goto('/?gdrive_auth=success');
+
+    // URL should be cleaned
+    expect(page.url()).not.toContain('gdrive_auth');
+
+    // Open the API section to trigger rendering and pending message flush.
+    await page.locator('#api-section > summary').click();
+    await expect(page.locator('#api-svc-google_drive')).toBeVisible({ timeout: 5_000 });
+
+    const driveCard = page.locator('#api-svc-google_drive');
+
+    // Should still display a success message when only the URL param is present
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('✓ Connected', { timeout: 5_000 });
+  });
 });

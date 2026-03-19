@@ -86,6 +86,10 @@ function callbackResponse(res, type, extra = {}) {
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026');
 
+  res.set({
+    'Content-Type':  'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
   res.send(`<!doctype html>
 <html>
 <head>
