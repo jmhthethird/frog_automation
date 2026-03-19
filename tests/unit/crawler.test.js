@@ -741,6 +741,7 @@ describe('runJob() – Google Drive upload', () => {
 
     mockUploadToDrive.mockResolvedValueOnce({
       fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 100, driveSize: 100,
+      folderResult: { folderId: 'folder-1', fileCount: 3, totalSize: 500 },
     });
 
     const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
@@ -754,6 +755,11 @@ describe('runJob() – Google Drive upload', () => {
       rootFolderId: 'root-folder-xyz',
       jobUrl:       'https://example.com',
     }));
+    // New parameters should also be passed
+    const callArgs = mockUploadToDrive.mock.calls[0][0];
+    expect(callArgs.outputDir).toBeDefined();
+    expect(callArgs.jobLabel).toBeDefined();
+    expect(callArgs.jobLabel).toMatch(/^example_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}(AM|PM)-job\d+$/);
 
     const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
     expect(job.status).toBe('completed');

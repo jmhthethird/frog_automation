@@ -179,7 +179,7 @@ async function runJob(jobId) {
     db.prepare("UPDATE jobs SET status='completed', completed_at=?, zip_path=? WHERE id=?")
       .run(completedAt, zipPath, jobId);
 
-    // Upload the ZIP to Google Drive when the integration is enabled.
+    // Upload the ZIP and folder to Google Drive when the integration is enabled.
     try {
       const gdRow = db.prepare(
         "SELECT enabled, credentials FROM api_credentials WHERE service = 'google_drive'"
@@ -187,19 +187,28 @@ async function runJob(jobId) {
       if (gdRow && gdRow.enabled === 1) {
         const creds = JSON.parse(gdRow.credentials || '{}');
         if (creds.client_id && creds.client_secret && creds.refresh_token) {
-          logStream.write('[INFO] Uploading ZIP to Google Drive…\n');
+          logStream.write('[INFO] Uploading to Google Drive (folder + ZIP)…\n');
           const result = await uploadToDrive({
             clientId:     creds.client_id,
             clientSecret: creds.client_secret,
             refreshToken: creds.refresh_token,
             filePath:     zipPath,
+            outputDir:    outputDir,
+            jobLabel:     folderName,
             jobUrl:       job.url,
             rootFolderId: creds.root_folder_id || undefined,
           });
           logStream.write(
-            `[INFO] Google Drive upload complete: fileId=${result.fileId} ` +
-            `domain="${result.domain}" size=${result.localSize} bytes\n`
+            `[INFO] Google Drive upload complete: zipFileId=${result.fileId} ` +
+            `domain="${result.domain}" zipSize=${result.localSize} bytes`
           );
+          if (result.folderResult) {
+            logStream.write(
+              ` folderId=${result.folderResult.folderId} ` +
+              `files=${result.folderResult.fileCount} folderSize=${result.folderResult.totalSize} bytes`
+            );
+          }
+          logStream.write('\n');
         } else {
           logStream.write('[WARN] Google Drive integration is enabled but not yet authenticated; skipping upload\n');
         }
