@@ -4,7 +4,7 @@ const crypto    = require('crypto');
 const express   = require('express');
 const rateLimit = require('express-rate-limit');
 const { db }    = require('../db');
-const { buildOAuth2Client } = require('../google-drive');
+const { buildOAuth2Client, buildDriveClientFromOAuth } = require('../google-drive');
 
 const router = express.Router();
 
@@ -310,7 +310,7 @@ router.get('/token', readLimit, async (req, res) => {
         error: 'Failed to obtain a valid Google access token; try reconnecting.',
       });
     }
-    res.json({ accessToken: token, apiKey: creds.api_key || '' });
+    res.json({ accessToken: token });
   } catch (err) {
     res.status(401).json({ error: `Failed to refresh Google access token: ${err.message}` });
   }
@@ -335,16 +335,50 @@ router.post('/root-folder', writeLimit, (req, res) => {
 
 // ─── DELETE /api/google-drive/auth ────────────────────────────────────────────
 // Clears the stored OAuth2 tokens and root folder selection.
-// User-entered credentials (api_key, client_id, client_secret) are preserved.
+// User-entered credentials (client_id, client_secret) are preserved.
 router.delete('/auth', writeLimit, (req, res) => {
-  const { api_key, client_id, client_secret } = getCredentials();
+  const { client_id, client_secret } = getCredentials();
   db.prepare("UPDATE api_credentials SET credentials = ? WHERE service = 'google_drive'")
     .run(JSON.stringify({
-      api_key:       api_key       || '',
       client_id:     client_id     || '',
       client_secret: client_secret || '',
     }));
   res.json({ ok: true });
+});
+
+// ─── GET /api/google-drive/folders ───────────────────────────────────────────
+// Returns a list of immediate sub-folders within the specified Drive folder.
+// Uses the OAuth2 refresh token directly — no API key required.
+// Query param: parentId  (default: 'root' = My Drive root)
+router.get('/folders', readLimit, async (req, res) => {
+  const creds = getCredentials();
+  if (!creds.client_id || !creds.client_secret || !creds.refresh_token) {
+    return res.status(401).json({
+      error: 'Google Drive is not authenticated – please connect via the API Settings panel',
+    });
+  }
+
+  const parentId = typeof req.query.parentId === 'string' ? req.query.parentId : 'root';
+
+  // Drive folder IDs are alphanumeric with underscores and hyphens (max ~44 chars).
+  // 'root' is a special alias for My Drive root.  Reject anything else to prevent
+  // query-string injection into the Drive API filter.
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(parentId)) {
+    return res.status(400).json({ error: 'Invalid parentId' });
+  }
+
+  try {
+    const drive = buildDriveClientFromOAuth(creds.client_id, creds.client_secret, creds.refresh_token);
+    const response = await drive.files.list({
+      q:        `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields:   'files(id, name)',
+      orderBy:  'name',
+      pageSize: 200,
+    });
+    res.json({ folders: response.data.files || [] });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to list folders: ${err.message}` });
+  }
 });
 
 module.exports = router;

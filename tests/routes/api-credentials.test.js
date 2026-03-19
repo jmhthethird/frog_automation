@@ -58,12 +58,11 @@ describe('GET /api/api-credentials', () => {
     expect(gsc.fields).toHaveLength(0);
   });
 
-  it('google_drive has api_key, client_id, and client_secret fields', async () => {
+  it('google_drive has client_id and client_secret fields', async () => {
     const res = await ctx.request.get('/api/api-credentials').expect(200);
     const gd = res.body.find(s => s.service === 'google_drive');
     expect(gd).toBeDefined();
     const names = gd.fields.map(f => f.name);
-    expect(names).toContain('api_key');
     expect(names).toContain('client_id');
     expect(names).toContain('client_secret');
   });
@@ -73,13 +72,6 @@ describe('GET /api/api-credentials', () => {
     const gd = res.body.find(s => s.service === 'google_drive');
     const secretField = gd.fields.find(f => f.name === 'client_secret');
     expect(secretField.sensitive).toBe(true);
-  });
-
-  it('google_drive api_key field is marked sensitive', async () => {
-    const res = await ctx.request.get('/api/api-credentials').expect(200);
-    const gd = res.body.find(s => s.service === 'google_drive');
-    const apiKeyField = gd.fields.find(f => f.name === 'api_key');
-    expect(apiKeyField.sensitive).toBe(true);
   });
 
   it('google_drive client_id field is not marked sensitive', async () => {
@@ -222,7 +214,6 @@ describe('PUT /api/api-credentials/google_drive preserves OAuth fields', () => {
       VALUES ('google_drive', 1, ?)
       ON CONFLICT(service) DO UPDATE SET enabled = excluded.enabled, credentials = excluded.credentials
     `).run(JSON.stringify({
-      api_key:          'test-api-key',
       client_id:        'test-client-id',
       client_secret:    'test-client-secret',
       refresh_token:    'stored-refresh-token',
@@ -230,11 +221,11 @@ describe('PUT /api/api-credentials/google_drive preserves OAuth fields', () => {
       root_folder_name: 'My SEO Crawls',
     }));
 
-    // User saves their editable credentials (api_key / client_id / client_secret).
+    // User saves their editable credentials (client_id / client_secret).
     await ctx.request.put('/api/api-credentials/google_drive')
       .send({
         enabled:     true,
-        credentials: { api_key: 'new-api-key', client_id: 'new-client-id', client_secret: 'new-secret' },
+        credentials: { client_id: 'new-client-id', client_secret: 'new-secret' },
       })
       .expect(200);
 
@@ -247,7 +238,6 @@ describe('PUT /api/api-credentials/google_drive preserves OAuth fields', () => {
     expect(stored.root_folder_name).toBe('My SEO Crawls');
 
     // User-editable fields should be updated.
-    expect(stored.api_key).toBe('new-api-key');
     expect(stored.client_id).toBe('new-client-id');
     expect(stored.client_secret).toBe('new-secret');
   });

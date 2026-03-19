@@ -43,6 +43,8 @@ const {
   ensureFolder,
   domainFromUrl,
   uploadToDrive,
+  uploadFile,
+  uploadFolder,
 } = require('../../src/google-drive');
 
 // ─── buildOAuth2Client ────────────────────────────────────────────────────────
@@ -168,25 +170,37 @@ describe('ensureFolder()', () => {
 // ─── uploadToDrive ────────────────────────────────────────────────────────────
 describe('uploadToDrive()', () => {
   let tmpFile;
+  let tmpDir;
 
   beforeEach(() => {
     jest.clearAllMocks();
     // Create a small temp file to upload.
     tmpFile = path.join(os.tmpdir(), `gd-test-${Date.now()}.zip`);
     fs.writeFileSync(tmpFile, 'fake zip content');
+    // Create a temp directory with files to test folder upload.
+    tmpDir = path.join(os.tmpdir(), `gd-test-dir-${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'file1.txt'), 'content1');
+    fs.writeFileSync(path.join(tmpDir, 'file2.txt'), 'content2');
   });
 
   afterEach(() => {
     try { fs.unlinkSync(tmpFile); } catch { /* ok */ }
+    try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* ok */ }
   });
 
   function setupMocks({ folderId = 'domain-folder-id', driveSize = null } = {}) {
     const localSize = fs.statSync(tmpFile).size;
     // findFolder → domain folder exists
     _mockDrive.files.list.mockResolvedValue({ data: { files: [{ id: folderId }] } });
-    // upload response
-    _mockDrive.files.create.mockResolvedValueOnce({
-      data: { id: 'file-id-abc', size: String(driveSize !== null ? driveSize : localSize) },
+    // upload response for each file
+    _mockDrive.files.create.mockImplementation(({ requestBody }) => {
+      if (requestBody.mimeType === 'application/vnd.google-apps.folder') {
+        return Promise.resolve({ data: { id: `folder-${requestBody.name}` } });
+      }
+      return Promise.resolve({
+        data: { id: 'file-id-abc', size: String(driveSize !== null ? driveSize : fs.statSync(tmpFile).size) },
+      });
     });
     return localSize;
   }
@@ -239,5 +253,62 @@ describe('uploadToDrive()', () => {
     });
     const listCall = _mockDrive.files.list.mock.calls[0][0];
     expect(listCall.q).toContain("'root' in parents");
+  });
+
+  it('uses jobLabel for the ZIP filename when provided', async () => {
+    setupMocks();
+    await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobLabel: 'google_2026-03-11_06-23PM-job25',
+      jobUrl:   'https://example.com',
+    });
+    // Find the call that created the file (not a folder)
+    const fileCalls = _mockDrive.files.create.mock.calls.filter(
+      c => c[0].requestBody.mimeType !== 'application/vnd.google-apps.folder'
+    );
+    expect(fileCalls.length).toBeGreaterThan(0);
+    expect(fileCalls[fileCalls.length - 1][0].requestBody.name).toBe('google_2026-03-11_06-23PM-job25.zip');
+  });
+
+  it('uploads both folder and ZIP when outputDir is provided', async () => {
+    // Reset mock to track exact call order
+    _mockDrive.files.list.mockResolvedValue({ data: { files: [{ id: 'domain-folder-id' }] } });
+    _mockDrive.files.create.mockImplementation(({ requestBody }) => {
+      if (requestBody.mimeType === 'application/vnd.google-apps.folder') {
+        return Promise.resolve({ data: { id: `folder-${requestBody.name}` } });
+      }
+      const size = requestBody.name.endsWith('.zip')
+        ? fs.statSync(tmpFile).size
+        : 8; // 'content1' or 'content2'
+      return Promise.resolve({ data: { id: `file-${requestBody.name}`, size: String(size) } });
+    });
+
+    const result = await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      outputDir: tmpDir,
+      jobLabel: 'test-job-label',
+      jobUrl:   'https://example.com',
+    });
+
+    // Should have folderResult with file count
+    expect(result.folderResult).toBeDefined();
+    expect(result.folderResult.fileCount).toBe(2);
+    expect(result.folderResult.totalSize).toBe(16); // 8 + 8 bytes for 'content1' + 'content2'
+
+    // Should also have uploaded the ZIP
+    expect(result.fileId).toMatch(/^file-/);
+    expect(result.localSize).toBe(fs.statSync(tmpFile).size);
+  });
+
+  it('skips folder upload when outputDir is not provided', async () => {
+    setupMocks();
+    const result = await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+    });
+    expect(result.folderResult).toBeNull();
   });
 });

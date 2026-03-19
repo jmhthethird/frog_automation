@@ -22,7 +22,6 @@ const SERVICE_FIELDS = {
   google_analytics:      [],
   google_analytics_4:    [],
   google_drive: [
-    { name: 'api_key',       label: 'Google API Key',         sensitive: true  },
     { name: 'client_id',     label: 'OAuth2 Client ID',       sensitive: false },
     { name: 'client_secret', label: 'OAuth2 Client Secret',   sensitive: true  },
   ],

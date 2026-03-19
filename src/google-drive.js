@@ -101,53 +101,27 @@ function domainFromUrl(url) {
 }
 
 /**
- * Upload a crawl ZIP to Google Drive.
+ * Upload a single file to Google Drive.
  *
- * Folder structure created/verified on Drive:
- *
- *   My Drive
- *     └── [user-selected root folder]   ← rootFolderId from the folder picker
- *           └── <domain>/               ← derived from jobUrl; created if absent
- *                 └── <filename.zip>
- *
- * After uploading, a post-upload size validation is performed: the file size
- * reported by Drive is compared against the local file size.  A mismatch
- * throws an error.
- *
- * @param {object} options
- * @param {string}  options.clientId      - OAuth2 Client ID.
- * @param {string}  options.clientSecret  - OAuth2 Client Secret.
- * @param {string}  options.refreshToken  - Stored OAuth2 refresh token.
- * @param {string}  options.filePath      - Absolute path to the local ZIP file.
- * @param {string}  options.jobUrl        - Crawled URL (used to derive the domain folder name).
- * @param {string} [options.rootFolderId] - Drive folder ID selected via the folder picker.
- *   When absent the domain folder is placed directly in My Drive root.
- * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number }>}
+ * @param {import('googleapis').drive_v3.Drive} drive - Authenticated Drive client.
+ * @param {string} filePath - Absolute path to the local file.
+ * @param {string} parentId - Drive folder ID to upload into.
+ * @param {string} [fileName] - Override file name (defaults to basename of filePath).
+ * @returns {Promise<{ fileId: string, localSize: number, driveSize: number }>}
  */
-async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, jobUrl, rootFolderId }) {
-  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
-
-  const domain = domainFromUrl(jobUrl);
-  const filename = path.basename(filePath);
-
-  // Ensure the per-domain subfolder exists inside the user-selected root folder.
-  const folderId = await ensureFolder(drive, domain, rootFolderId || null);
-
+async function uploadFile(drive, filePath, parentId, fileName) {
+  const name = fileName || path.basename(filePath);
   const localSize = fs.statSync(filePath).size;
   const fileStream = fs.createReadStream(filePath);
 
   let uploadResp;
   try {
     uploadResp = await drive.files.create({
-      requestBody: { name: filename, parents: [folderId] },
-      media: { mimeType: 'application/zip', body: fileStream },
+      requestBody: { name, parents: [parentId] },
+      media: { body: fileStream },
       fields: 'id, size',
     });
   } finally {
-    // Suppress any error event that may fire after the stream is destroyed
-    // (e.g. the autoOpen callback completing after the file was removed in
-    // tests, or a late close error). Errors that occur during the upload are
-    // already surfaced via the rejected drive.files.create promise.
     fileStream.on('error', () => {});
     fileStream.destroy();
   }
@@ -155,15 +129,95 @@ async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, j
   const fileId = uploadResp.data.id;
   const driveSize = parseInt(uploadResp.data.size, 10);
 
-  // ── Post-upload validation ────────────────────────────────────────────────
   if (driveSize !== localSize) {
     throw new Error(
-      `Google Drive upload validation failed for "${filename}": ` +
+      `Google Drive upload validation failed for "${name}": ` +
       `local size ${localSize} bytes ≠ Drive size ${driveSize} bytes`
     );
   }
 
-  return { fileId, domain, folderId, localSize, driveSize };
+  return { fileId, localSize, driveSize };
 }
 
-module.exports = { uploadToDrive, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl };
+/**
+ * Recursively upload a local directory to Google Drive.
+ *
+ * @param {import('googleapis').drive_v3.Drive} drive - Authenticated Drive client.
+ * @param {string} localDir - Absolute path to the local directory.
+ * @param {string} parentId - Drive folder ID to upload into.
+ * @param {string} [folderName] - Name for the folder on Drive (defaults to basename of localDir).
+ * @returns {Promise<{ folderId: string, fileCount: number, totalSize: number }>}
+ */
+async function uploadFolder(drive, localDir, parentId, folderName) {
+  const name = folderName || path.basename(localDir);
+  const folderId = await ensureFolder(drive, name, parentId);
+
+  let fileCount = 0;
+  let totalSize = 0;
+
+  const entries = fs.readdirSync(localDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(localDir, entry.name);
+    if (entry.isDirectory()) {
+      const sub = await uploadFolder(drive, entryPath, folderId);
+      fileCount += sub.fileCount;
+      totalSize += sub.totalSize;
+    } else if (entry.isFile()) {
+      const result = await uploadFile(drive, entryPath, folderId);
+      fileCount += 1;
+      totalSize += result.localSize;
+    }
+  }
+
+  return { folderId, fileCount, totalSize };
+}
+
+/**
+ * Upload a crawl output to Google Drive (both ZIP and folder).
+ *
+ * Folder structure created/verified on Drive:
+ *
+ *   My Drive
+ *     └── [user-selected root folder]   ← rootFolderId from the folder picker
+ *           └── <domain>/               ← derived from jobUrl; created if absent
+ *                 ├── <jobLabel>/       ← unzipped folder with all crawl files
+ *                 └── <jobLabel>.zip    ← the ZIP archive
+ *
+ * After uploading each file, a post-upload size validation is performed: the
+ * file size reported by Drive is compared against the local file size.
+ * A mismatch throws an error.
+ *
+ * @param {object} options
+ * @param {string}  options.clientId      - OAuth2 Client ID.
+ * @param {string}  options.clientSecret  - OAuth2 Client Secret.
+ * @param {string}  options.refreshToken  - Stored OAuth2 refresh token.
+ * @param {string}  options.filePath      - Absolute path to the local ZIP file.
+ * @param {string}  options.outputDir     - Absolute path to the local output directory (unzipped).
+ * @param {string}  options.jobLabel      - The job label (e.g., "google_2026-03-11_06-23PM-job25").
+ * @param {string}  options.jobUrl        - Crawled URL (used to derive the domain folder name).
+ * @param {string} [options.rootFolderId] - Drive folder ID selected via the folder picker.
+ *   When absent the domain folder is placed directly in My Drive root.
+ * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number, folderResult: { folderId: string, fileCount: number, totalSize: number } }>}
+ */
+async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, outputDir, jobLabel, jobUrl, rootFolderId }) {
+  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
+
+  const domain = domainFromUrl(jobUrl);
+
+  // Ensure the per-domain subfolder exists inside the user-selected root folder.
+  const domainFolderId = await ensureFolder(drive, domain, rootFolderId || null);
+
+  // Upload the unzipped folder first
+  let folderResult = null;
+  if (outputDir && fs.existsSync(outputDir)) {
+    folderResult = await uploadFolder(drive, outputDir, domainFolderId, jobLabel);
+  }
+
+  // Upload the ZIP file with the proper job label name
+  const zipFileName = jobLabel ? `${jobLabel}.zip` : path.basename(filePath);
+  const { fileId, localSize, driveSize } = await uploadFile(drive, filePath, domainFolderId, zipFileName);
+
+  return { fileId, domain, folderId: domainFolderId, localSize, driveSize, folderResult };
+}
+
+module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl };
