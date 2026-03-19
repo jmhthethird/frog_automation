@@ -520,13 +520,11 @@ test.describe('Google Drive OAuth UI', () => {
   test('Google Drive card shows credential fields', async ({ page }) => {
     const driveCard = page.locator('#api-svc-google_drive');
 
-    // Should show all three credential fields
-    await expect(driveCard.locator('label', { hasText: 'Google API Key' })).toBeVisible();
+    // Should show OAuth2 credential fields (no API key needed for OAuth2)
     await expect(driveCard.locator('label', { hasText: 'OAuth2 Client ID' })).toBeVisible();
     await expect(driveCard.locator('label', { hasText: 'OAuth2 Client Secret' })).toBeVisible();
 
-    // All fields should be password/text inputs
-    await expect(driveCard.locator('#api-field-google_drive-api_key')).toHaveAttribute('type', 'password');
+    // Fields should be text/password inputs
     await expect(driveCard.locator('#api-field-google_drive-client_id')).toHaveAttribute('type', 'text');
     await expect(driveCard.locator('#api-field-google_drive-client_secret')).toHaveAttribute('type', 'password');
   });
@@ -534,10 +532,9 @@ test.describe('Google Drive OAuth UI', () => {
   test('Save button stores credentials', async ({ page, baseURL, request }) => {
     const driveCard = page.locator('#api-svc-google_drive');
 
-    // Fill in fake credentials
+    // Fill in fake credentials (no API key needed for OAuth2)
     await driveCard.locator('#api-field-google_drive-client_id').fill('fake_client_id_123');
     await driveCard.locator('#api-field-google_drive-client_secret').fill('fake_client_secret_456');
-    await driveCard.locator('#api-field-google_drive-api_key').fill('fake_api_key_789');
 
     // Click Save button
     await driveCard.locator('button', { hasText: 'Save' }).click();
@@ -559,7 +556,7 @@ test.describe('Google Drive OAuth UI', () => {
   test('Connect button shows error when credentials missing', async ({ page, baseURL, request }) => {
     // Clear any credentials that may have been written by a previous test
     await request.put(`${baseURL}/api/api-credentials/google_drive`, {
-      data: { enabled: false, credentials: { api_key: '', client_id: '', client_secret: '' } },
+      data: { enabled: false, credentials: { client_id: '', client_secret: '' } },
     });
 
     const driveCard = page.locator('#api-svc-google_drive');
