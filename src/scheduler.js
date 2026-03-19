@@ -103,7 +103,7 @@ class Scheduler {
       if (job.status !== 'scheduled') return; // already queued / running
 
       db.prepare("UPDATE jobs SET status='queued' WHERE id=?").run(jobId);
-      this._queue.push(jobId);
+      this._queue.pushLow(jobId);
     });
 
     this._tasks.set(jobId, task);

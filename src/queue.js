@@ -3,8 +3,14 @@
 const { EventEmitter } = require('events');
 
 /**
- * Simple single-worker FIFO queue.
- * Jobs are processed one at a time.
+ * Single-worker job queue with two priority lanes.
+ *
+ * • **push(jobId)**    – high priority (manually queued jobs).
+ * • **pushLow(jobId)** – low priority  (cron-triggered jobs).
+ *
+ * When the worker finishes, the next job is taken from the high-priority
+ * lane first; only when it is empty is a low-priority job started.
+ * Jobs within the same lane are processed in FIFO order.
  */
 class Queue extends EventEmitter {
   constructor(worker) {
@@ -14,18 +20,27 @@ class Queue extends EventEmitter {
     }
     this._worker = worker;
     this._pending = [];
+    this._pendingLow = [];
     this._running = false;
   }
 
-  /** Add a job id to the queue. */
+  /** Add a high-priority (manual) job id to the queue. */
   push(jobId) {
     this._pending.push(jobId);
     this._drain();
   }
 
+  /** Add a low-priority (cron-triggered) job id to the queue. */
+  pushLow(jobId) {
+    this._pendingLow.push(jobId);
+    this._drain();
+  }
+
   _drain() {
-    if (this._running || this._pending.length === 0) return;
-    const jobId = this._pending.shift();
+    if (this._running || (this._pending.length === 0 && this._pendingLow.length === 0)) return;
+    const jobId = this._pending.length > 0
+      ? this._pending.shift()
+      : this._pendingLow.shift();
     this._running = true;
     Promise.resolve()
       .then(() => this._worker(jobId))

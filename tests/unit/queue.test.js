@@ -155,6 +155,103 @@ describe('Queue – error handling', () => {
   });
 });
 
+// ─── Priority (pushLow) ──────────────────────────────────────────────────────
+describe('Queue – priority (pushLow)', () => {
+  it('processes pushLow jobs after push jobs', async () => {
+    const order = [];
+    let resolve1;
+    const q = new Queue(async (id) => {
+      order.push(id);
+      if (id === 'first') {
+        await new Promise((r) => { resolve1 = r; });
+      }
+      await delay(5);
+    });
+
+    // Start job 'first' so we can queue while it's running
+    q.push('first');
+    await settle(10);
+
+    // Now enqueue a low-priority and a high-priority job while 'first' runs
+    q.pushLow('cron-A');
+    q.push('manual-B');
+
+    resolve1(); // unblock the first job
+    await settle(150);
+
+    // manual-B should come before cron-A since push has higher priority
+    expect(order).toEqual(['first', 'manual-B', 'cron-A']);
+  });
+
+  it('processes pushLow jobs in FIFO order among themselves', async () => {
+    const order = [];
+    let resolve1;
+    const q = new Queue(async (id) => {
+      order.push(id);
+      if (id === 'blocker') {
+        await new Promise((r) => { resolve1 = r; });
+      }
+    });
+
+    q.push('blocker');
+    await settle(10);
+
+    q.pushLow(1);
+    q.pushLow(2);
+    q.pushLow(3);
+
+    resolve1();
+    await settle(100);
+
+    expect(order).toEqual(['blocker', 1, 2, 3]);
+  });
+
+  it('drains low-priority queue when high-priority is empty', async () => {
+    const order = [];
+    const q = new Queue(async (id) => { order.push(id); });
+
+    q.pushLow(10);
+    q.pushLow(20);
+    await settle(100);
+
+    expect(order).toEqual([10, 20]);
+  });
+
+  it('interleaves correctly – new push jobs jump ahead of pending pushLow jobs', async () => {
+    const order = [];
+    let resolvers = {};
+    const q = new Queue(async (id) => {
+      order.push(id);
+      await new Promise((r) => { resolvers[id] = r; });
+    });
+
+    q.push('a');
+    await settle(10);
+
+    // Queue low-priority jobs
+    q.pushLow('low1');
+    q.pushLow('low2');
+
+    // Now add a high-priority job – should run before low1 and low2
+    q.push('high1');
+
+    resolvers['a'](); // unblock 'a'
+    await settle(50);
+
+    // high1 should have started
+    expect(order[1]).toBe('high1');
+
+    resolvers['high1']();
+    await settle(50);
+    resolvers['low1']();
+    await settle(50);
+    resolvers['low2']();
+    await settle(50);
+
+    expect(order).toEqual(['a', 'high1', 'low1', 'low2']);
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));

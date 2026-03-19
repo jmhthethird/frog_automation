@@ -16,8 +16,9 @@ const router = express.Router();
 
 // Allow generous limits – this is a LAN-only tool.
 // The primary goal is to prevent accidental runaway automation.
-const readLimit  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
-const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true, legacyHeaders: false });
+const _skipInTest = process.env.NODE_ENV === 'test' ? { skip: () => true } : {};
+const readLimit  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false, ..._skipInTest });
+const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true, legacyHeaders: false, ..._skipInTest });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function computeDurationSeconds(started_at, completed_at) {
@@ -53,6 +54,22 @@ router.get('/', readLimit, (req, res) => {
   }
 
   res.json({ jobs, total, page: safePage, totalPages });
+});
+
+// ─── List active schedules ────────────────────────────────────────────────────
+router.get('/schedules/active', readLimit, (req, res) => {
+  const schedules = db.prepare(`
+    SELECT jobs.*, profiles.name AS profile_name,
+           spider_configs.name AS spider_config_name
+    FROM jobs
+    LEFT JOIN profiles ON jobs.profile_id = profiles.id
+    LEFT JOIN spider_configs ON jobs.spider_config_id = spider_configs.id
+    WHERE jobs.cron_expression IS NOT NULL
+      AND jobs.status IN ('scheduled', 'queued', 'running')
+    ORDER BY jobs.next_run_at ASC
+  `).all();
+
+  res.json({ schedules });
 });
 
 // ─── Get single job ──────────────────────────────────────────────────────────
@@ -332,6 +349,27 @@ router.post('/:id/stop', writeLimit, (req, res) => {
 
   const killed = stopJob(job.id);
   if (!killed) return res.status(409).json({ error: 'Job process not found' });
+
+  const updated = db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id);
+  res.json(updated);
+});
+
+// ─── Unschedule a cron job (stop future runs) ────────────────────────────────
+router.post('/:id/unschedule', writeLimit, (req, res) => {
+  const job = db.prepare('SELECT id, status, cron_expression FROM jobs WHERE id = ?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (!job.cron_expression) return res.status(409).json({ error: 'Job has no cron schedule' });
+  if (job.status === 'running') return res.status(409).json({ error: 'Job is currently running – stop it first' });
+
+  // Remove the cron task from the in-memory scheduler.
+  req.app.get('scheduler').unregister(job.id);
+
+  // Clear the schedule and mark the job as stopped.
+  db.prepare(`
+    UPDATE jobs
+    SET status = 'stopped', cron_expression = NULL, next_run_at = NULL
+    WHERE id = ?
+  `).run(job.id);
 
   const updated = db.prepare('SELECT * FROM jobs WHERE id = ?').get(job.id);
   res.json(updated);
