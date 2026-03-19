@@ -14,6 +14,7 @@
 
 const mockGetToken       = jest.fn();
 const mockGetAccessToken = jest.fn();
+const mockFilesList      = jest.fn();
 
 jest.mock('googleapis', () => {
   const OAuth2 = jest.fn(function () {
@@ -29,7 +30,7 @@ jest.mock('googleapis', () => {
   return {
     google: {
       auth:  { OAuth2 },
-      drive: jest.fn(() => ({ files: { list: jest.fn(), create: jest.fn() } })),
+      drive: jest.fn(() => ({ files: { list: mockFilesList, create: jest.fn() } })),
     },
   };
 });
@@ -49,6 +50,7 @@ afterAll(() => ctx.cleanup());
 beforeEach(() => {
   mockGetToken.mockReset();
   mockGetAccessToken.mockReset();
+  mockFilesList.mockReset();
   // Reset credentials to a clean baseline (client_id/secret set so /auth-url
   // works for state generation; no refresh_token).
   seedCreds({ client_id: 'cid', client_secret: 'cs' });
@@ -57,7 +59,7 @@ beforeEach(() => {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function seedCreds(overrides = {}) {
-  const creds = { api_key: '', client_id: '', client_secret: '', ...overrides };
+  const creds = { client_id: '', client_secret: '', ...overrides };
   db.prepare(`
     INSERT INTO api_credentials (service, enabled, credentials)
     VALUES ('google_drive', 0, ?)
@@ -205,21 +207,13 @@ describe('GET /api/google-drive/callback', () => {
 
 // ─── GET /api/google-drive/token ─────────────────────────────────────────────
 describe('GET /api/google-drive/token', () => {
-  it('returns accessToken and apiKey when authenticated and token is fresh', async () => {
-    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt', api_key: 'mykey' });
+  it('returns accessToken when authenticated and token is fresh', async () => {
+    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
     mockGetAccessToken.mockResolvedValueOnce({ token: 'fresh_access_token' });
 
     const res = await ctx.request.get('/api/google-drive/token').expect(200);
     expect(res.body.accessToken).toBe('fresh_access_token');
-    expect(res.body.apiKey).toBe('mykey');
-  });
-
-  it('returns empty string for apiKey when not configured', async () => {
-    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
-    mockGetAccessToken.mockResolvedValueOnce({ token: 'token' });
-
-    const res = await ctx.request.get('/api/google-drive/token').expect(200);
-    expect(res.body.apiKey).toBe('');
+    expect(res.body.apiKey).toBeUndefined();
   });
 
   it('returns 401 when getAccessToken resolves with null token', async () => {
@@ -243,5 +237,58 @@ describe('GET /api/google-drive/token', () => {
     const res = await ctx.request.get('/api/google-drive/token').expect(401);
     expect(res.body.error).toBeTruthy();
     expect(mockGetAccessToken).not.toHaveBeenCalled();
+  });
+});
+
+// ─── GET /api/google-drive/folders ───────────────────────────────────────────
+describe('GET /api/google-drive/folders', () => {
+  it('returns 401 when not authenticated', async () => {
+    // beforeEach seeds without refresh_token.
+    const res = await ctx.request.get('/api/google-drive/folders').expect(401);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('returns 400 when parentId contains invalid characters', async () => {
+    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
+    const res = await ctx.request.get('/api/google-drive/folders?parentId=../etc/passwd').expect(400);
+    expect(res.body.error).toMatch(/Invalid parentId/);
+  });
+
+  it('returns folder list for root when no parentId given', async () => {
+    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
+    mockFilesList.mockResolvedValueOnce({
+      data: { files: [{ id: 'folder1', name: 'SEO Crawls' }, { id: 'folder2', name: 'Archive' }] },
+    });
+
+    const res = await ctx.request.get('/api/google-drive/folders').expect(200);
+    expect(res.body.folders).toHaveLength(2);
+    expect(res.body.folders[0].name).toBe('SEO Crawls');
+  });
+
+  it('returns folder list for a specific parentId', async () => {
+    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
+    mockFilesList.mockResolvedValueOnce({
+      data: { files: [{ id: 'child1', name: 'Child Folder' }] },
+    });
+
+    const res = await ctx.request.get('/api/google-drive/folders?parentId=folder1').expect(200);
+    expect(res.body.folders).toHaveLength(1);
+    expect(res.body.folders[0].id).toBe('child1');
+  });
+
+  it('returns empty array when folder has no subfolders', async () => {
+    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
+    mockFilesList.mockResolvedValueOnce({ data: { files: [] } });
+
+    const res = await ctx.request.get('/api/google-drive/folders?parentId=emptyfolder').expect(200);
+    expect(res.body.folders).toEqual([]);
+  });
+
+  it('returns 500 when Drive API throws', async () => {
+    seedCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
+    mockFilesList.mockRejectedValueOnce(new Error('Drive API error'));
+
+    const res = await ctx.request.get('/api/google-drive/folders').expect(500);
+    expect(res.body.error).toMatch(/Drive API error/);
   });
 });

@@ -16,7 +16,6 @@ afterAll(() => ctx.cleanup());
 
 function seedDriveCreds(overrides = {}) {
   const defaults = {
-    api_key:       '',
     client_id:     '',
     client_secret: '',
   };
@@ -132,7 +131,7 @@ describe('POST /api/google-drive/root-folder', () => {
 describe('DELETE /api/google-drive/auth', () => {
   it('clears refresh_token, root_folder_id, root_folder_name', async () => {
     seedDriveCreds({
-      api_key: 'apikey', client_id: 'cid', client_secret: 'cs',
+      client_id: 'cid', client_secret: 'cs',
       refresh_token: 'rt', root_folder_id: 'fid', root_folder_name: 'Folder',
     });
 
@@ -146,14 +145,13 @@ describe('DELETE /api/google-drive/auth', () => {
     expect(creds.root_folder_name).toBeUndefined();
   });
 
-  it('preserves api_key, client_id, and client_secret after disconnect', async () => {
-    seedDriveCreds({ api_key: 'mykey', client_id: 'mycid', client_secret: 'mycs', refresh_token: 'rt' });
+  it('preserves client_id and client_secret after disconnect', async () => {
+    seedDriveCreds({ client_id: 'mycid', client_secret: 'mycs', refresh_token: 'rt' });
 
     await ctx.request.delete('/api/google-drive/auth').expect(200);
 
     const row   = db.prepare("SELECT credentials FROM api_credentials WHERE service='google_drive'").get();
     const creds = JSON.parse(row.credentials);
-    expect(creds.api_key).toBe('mykey');
     expect(creds.client_id).toBe('mycid');
     expect(creds.client_secret).toBe('mycs');
   });

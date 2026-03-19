@@ -229,6 +229,23 @@
   .modal-overlay.hidden { display: none; }
   .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; width: 420px; max-width: calc(100vw - 32px); }
   .modal-box h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #ccc; }
+  /* Drive folder browser */
+  .drive-folder-modal-box { width: 500px; display: flex; flex-direction: column; }
+  .drive-folder-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .drive-folder-modal-header h3 { margin: 0; }
+  .drive-folder-breadcrumb { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drive-folder-list { min-height: 120px; max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
+  .drive-folder-item { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .12s; }
+  .drive-folder-item:last-child { border-bottom: none; }
+  .drive-folder-item:hover { background: #ffffff08; }
+  .drive-folder-item.selected { background: rgba(52,152,219,.15); }
+  .drive-folder-item:focus { outline: 2px solid var(--blue); outline-offset: -2px; }
+  .drive-folder-icon { margin-right: 8px; font-size: 14px; flex-shrink: 0; }
+  .drive-folder-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drive-folder-open-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--text-dim); padding: 2px 8px; font-size: 14px; cursor: pointer; flex-shrink: 0; margin-left: 8px; transition: color .12s, border-color .12s; }
+  .drive-folder-open-btn:hover { color: var(--text); border-color: var(--blue); }
+  .drive-folder-empty { color: var(--text-dim); padding: 20px 16px; text-align: center; font-size: 12px; }
+  .drive-folder-error { color: var(--red); padding: 16px; text-align: center; font-size: 13px; }
   .modal-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
   .modal-tab { padding: 6px 14px; font-size: 12px; cursor: pointer; color: var(--text-dim); border-bottom: 2px solid transparent; margin-bottom: -1px; user-select: none; background: none; border-top: none; border-left: none; border-right: none; }
   .modal-tab:hover { color: var(--text); }
@@ -512,6 +529,25 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeCronModal()">Cancel</button>
       <button class="btn btn-primary" id="cron-apply-btn" onclick="applyBuilderCron()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Drive Folder Browser Modal -->
+<div id="drive-folder-modal" class="modal-overlay hidden"
+     role="dialog" aria-modal="true" aria-labelledby="drive-folder-modal-title"
+     onclick="if(event.target===this)closeDriveFolderBrowser()">
+  <div class="modal-box drive-folder-modal-box" tabindex="-1">
+    <div class="drive-folder-modal-header">
+      <h3 id="drive-folder-modal-title">Select Root Folder</h3>
+      <button class="btn btn-secondary" style="padding:2px 10px;font-size:16px;line-height:1.4;"
+              onclick="closeDriveFolderBrowser()" aria-label="Close folder browser">×</button>
+    </div>
+    <div id="drive-folder-breadcrumb" class="drive-folder-breadcrumb"></div>
+    <div id="drive-folder-list" class="drive-folder-list"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeDriveFolderBrowser()">Cancel</button>
+      <button class="btn btn-primary" id="drive-folder-select-btn" onclick="confirmDriveFolder()" disabled>Select This Folder</button>
     </div>
   </div>
 </div>
@@ -1609,7 +1645,7 @@ const API_SERVICE_META = {
   google_drive: {
     label: '☁ Google Drive Upload',
     note: 'Automatically uploads each completed crawl ZIP to Google Drive, organised by domain:<br><code>Drive / [Root Folder] / &lt;domain&gt; / &lt;crawl.zip&gt;</code><br><br>' +
-          '<strong>Setup (one-time):</strong> In <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue);">Google Cloud Console</a> create a project, enable the <em>Google Drive API</em> and <em>Google Picker API</em>, then create an <strong>OAuth 2.0 Client ID</strong> (Web application) and an <strong>API Key</strong>. ' +
+          '<strong>Setup (one-time):</strong> In <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue);">Google Cloud Console</a> create a project, enable the <em>Google Drive API</em>, then create an <strong>OAuth 2.0 Client ID</strong> (Web application). ' +
           'Add <code>' + window.location.origin + '</code> to the authorised JavaScript origins and <code>' + window.location.origin + '/api/google-drive/callback</code> to the authorised redirect URIs.<br><br>' +
           '<strong>Tip:</strong> Click "Connect Google Drive" to authorize via popup. If popups are blocked, hold Shift while clicking to use redirect mode instead.',
   },
@@ -1671,7 +1707,7 @@ function renderApiServicesList(services) {
         <div class="drive-btn-row">
           <button id="drive-pick-btn" class="btn btn-secondary"
                   style="font-size:11px;padding:4px 12px;"
-                  onclick="openDrivePicker()" disabled>Select Root Folder</button>
+                  onclick="openDriveFolderBrowser()" disabled>Select Root Folder</button>
           <span id="drive-pick-msg" style="font-size:11px;color:var(--text-dim);"></span>
         </div>
       </div>` : '';
@@ -2003,97 +2039,180 @@ async function disconnectGoogleDrive() {
 }
 
 /**
- * Load the Google Picker API (lazy) and open a folder-selection dialog.
- * The user browses their Drive and clicks a folder; the selection is posted
- * back to the server via POST /api/google-drive/root-folder.
+ * Open the custom Drive folder browser modal.
+ * Folders are fetched from the server via GET /api/google-drive/folders,
+ * which uses OAuth2 directly — no API key required.
  */
-let _activePicker = null;
+let _driveFolderStack    = [];  // [{id, name}] — breadcrumb trail
+let _driveFolderSelected = null; // {id, name} currently highlighted
 
-async function openDrivePicker() {
-  const pickMsgEl = document.getElementById('drive-pick-msg');
-  if (pickMsgEl) { pickMsgEl.textContent = 'Loading…'; pickMsgEl.style.color = 'var(--text-dim)'; }
+async function openDriveFolderBrowser() {
+  _driveFolderStack    = [{ id: 'root', name: 'My Drive' }];
+  _driveFolderSelected = null;
+  const modal  = document.getElementById('drive-folder-modal');
+  const selBtn = document.getElementById('drive-folder-select-btn');
+  if (selBtn) selBtn.disabled = true;
+  modal.classList.remove('hidden');
+  modal.querySelector('.modal-box').focus();
+  await _loadDriveFolders('root');
+}
+
+function closeDriveFolderBrowser() {
+  document.getElementById('drive-folder-modal').classList.add('hidden');
+  _driveFolderStack    = [];
+  _driveFolderSelected = null;
+}
+
+function _renderDriveBreadcrumb() {
+  const el = document.getElementById('drive-folder-breadcrumb');
+  if (!el) return;
+  const frag = document.createDocumentFragment();
+  _driveFolderStack.forEach((item, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.textContent = ' › ';
+      frag.appendChild(sep);
+    }
+    if (i === _driveFolderStack.length - 1) {
+      const span = document.createElement('span');
+      span.textContent = item.name;
+      frag.appendChild(span);
+    } else {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.textContent = item.name;
+      a.style.color = 'var(--blue)';
+      a.style.textDecoration = 'none';
+      const idx = i;
+      a.addEventListener('click', e => { e.preventDefault(); _navigateToBreadcrumb(idx); });
+      frag.appendChild(a);
+    }
+  });
+  el.innerHTML = '';
+  el.appendChild(frag);
+}
+
+async function _navigateToBreadcrumb(idx) {
+  _driveFolderStack    = _driveFolderStack.slice(0, idx + 1);
+  _driveFolderSelected = null;
+  const selBtn = document.getElementById('drive-folder-select-btn');
+  if (selBtn) selBtn.disabled = true;
+  await _loadDriveFolders(_driveFolderStack[idx].id);
+}
+
+async function _loadDriveFolders(parentId) {
+  const listEl = document.getElementById('drive-folder-list');
+  if (!listEl) return;
+  _renderDriveBreadcrumb();
+
+  // Show loading state using DOM (no innerHTML for user content).
+  listEl.innerHTML = '';
+  const loadDiv = document.createElement('div');
+  loadDiv.className = 'drive-folder-empty';
+  loadDiv.textContent = 'Loading folders…';
+  listEl.appendChild(loadDiv);
 
   try {
-    const tokenRes = await fetch('/api/google-drive/token');
-    if (!tokenRes.ok) {
-      const d = await tokenRes.json().catch(() => ({}));
-      alert(d.error || 'Could not get Drive access token. Please connect first.');
-      if (pickMsgEl) { pickMsgEl.textContent = ''; }
+    const r = await fetch(`/api/google-drive/folders?parentId=${encodeURIComponent(parentId)}`);
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      listEl.innerHTML = '';
+      const errDiv = document.createElement('div');
+      errDiv.className = 'drive-folder-error';
+      errDiv.textContent = d.error || 'Failed to load folders';
+      listEl.appendChild(errDiv);
       return;
     }
-    const { accessToken, apiKey } = await tokenRes.json();
+    const { folders } = await r.json();
+    listEl.innerHTML = '';
+    if (folders.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'drive-folder-empty';
+      emptyDiv.textContent = 'No subfolders — click "Select This Folder" to use this location.';
+      listEl.appendChild(emptyDiv);
+    } else {
+      folders.forEach(f => {
+        const row = document.createElement('div');
+        row.className = 'drive-folder-item';
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
 
-    // Load the GAPI script lazily on first use.
-    await _loadGapiScript();
-    if (pickMsgEl) { pickMsgEl.textContent = ''; }
+        const icon = document.createElement('span');
+        icon.className = 'drive-folder-icon';
+        icon.textContent = '📁';
+        icon.setAttribute('aria-hidden', 'true');
 
-    gapi.load('picker', () => {
-      const view = new google.picker.DocsView()
-        .setIncludeFolders(true)
-        .setSelectFolderEnabled(true)
-        .setMimeTypes('application/vnd.google-apps.folder');
+        const name = document.createElement('span');
+        name.className = 'drive-folder-name';
+        name.textContent = f.name;
 
-      const builder = new google.picker.PickerBuilder()
-        .setTitle('Select root folder for Frog Automation uploads')
-        .addView(view)
-        .setOAuthToken(accessToken)
-        .setCallback(_onPickerCallback);
+        const openBtn = document.createElement('button');
+        openBtn.className = 'drive-folder-open-btn';
+        openBtn.textContent = '›';
+        openBtn.title = 'Open folder';
+        openBtn.setAttribute('aria-label', `Open ${f.name}`);
+        openBtn.addEventListener('click', e => { e.stopPropagation(); _openDriveFolder(f.id, f.name); });
 
-      if (apiKey) builder.setDeveloperKey(apiKey);
-      _activePicker = builder.build();
-      _activePicker.setVisible(true);
-    });
+        row.appendChild(icon);
+        row.appendChild(name);
+        row.appendChild(openBtn);
+        row.addEventListener('click', () => _selectDriveFolder(f.id, f.name, row));
+        row.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _selectDriveFolder(f.id, f.name, row); }
+          if (e.key === 'ArrowRight') { e.preventDefault(); _openDriveFolder(f.id, f.name); }
+        });
+        listEl.appendChild(row);
+      });
+    }
   } catch {
-    if (pickMsgEl) { pickMsgEl.textContent = ''; }
-    alert('Network error while opening the folder picker.');
+    listEl.innerHTML = '';
+    const errDiv = document.createElement('div');
+    errDiv.className = 'drive-folder-error';
+    errDiv.textContent = 'Network error while loading folders.';
+    listEl.appendChild(errDiv);
   }
 }
 
-async function _onPickerCallback(data) {
-  if (data.action === google.picker.Action.ERROR) {
-    if (_activePicker) {
-      _activePicker.setVisible(false);
-      _activePicker = null;
-    }
-    const pickMsgEl = document.getElementById('drive-pick-msg');
-    if (pickMsgEl) {
-      pickMsgEl.textContent = 'Picker error - check your API key in API Settings.';
-      pickMsgEl.style.color = 'var(--red)';
-    }
-    return;
-  }
-  if (data.action !== google.picker.Action.PICKED) return;
-  const folder = data.docs && data.docs[0];
-  if (!folder) return;
+function _selectDriveFolder(folderId, folderName, rowEl) {
+  _driveFolderSelected = { id: folderId, name: folderName };
+  const selBtn = document.getElementById('drive-folder-select-btn');
+  if (selBtn) selBtn.disabled = false;
+  document.querySelectorAll('#drive-folder-list .drive-folder-item').forEach(r => r.classList.remove('selected'));
+  if (rowEl) rowEl.classList.add('selected');
+}
 
+async function _openDriveFolder(folderId, folderName) {
+  _driveFolderStack.push({ id: folderId, name: folderName });
+  _driveFolderSelected = null;
+  const selBtn = document.getElementById('drive-folder-select-btn');
+  if (selBtn) selBtn.disabled = true;
+  await _loadDriveFolders(folderId);
+}
+
+async function confirmDriveFolder() {
+  if (!_driveFolderSelected) return;
   const pickMsgEl = document.getElementById('drive-pick-msg');
+  const selBtn    = document.getElementById('drive-folder-select-btn');
+  if (selBtn) { selBtn.disabled = true; selBtn.textContent = 'Saving…'; }
   try {
     const r = await fetch('/api/google-drive/root-folder', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ folderId: folder.id, folderName: folder.name }),
+      body:    JSON.stringify({ folderId: _driveFolderSelected.id, folderName: _driveFolderSelected.name }),
     });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      if (pickMsgEl) { pickMsgEl.textContent = d.error || 'Save failed'; }
+      if (pickMsgEl) { pickMsgEl.textContent = d.error || 'Save failed'; pickMsgEl.style.color = 'var(--red)'; }
       return;
     }
+    closeDriveFolderBrowser();
     loadDriveStatus();
-    if (pickMsgEl) { pickMsgEl.textContent = ''; }
+    if (pickMsgEl) pickMsgEl.textContent = '';
   } catch {
-    if (pickMsgEl) { pickMsgEl.textContent = 'Network error'; }
+    if (pickMsgEl) { pickMsgEl.textContent = 'Network error'; pickMsgEl.style.color = 'var(--red)'; }
+  } finally {
+    if (selBtn) { selBtn.disabled = false; selBtn.textContent = 'Select This Folder'; }
   }
-}
-
-function _loadGapiScript() {
-  return new Promise((resolve, reject) => {
-    if (window.gapi) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = 'https://apis.google.com/js/api.js';
-    s.onload  = resolve;
-    s.onerror = () => reject(new Error('Failed to load Google API script'));
-    document.head.appendChild(s);
-  });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -2245,6 +2364,26 @@ function _describeCron(min, hour, dom, month, dow) {
 }
 
 document.addEventListener('keydown', e => {
+  // Drive folder browser — Escape to close
+  const driveModal = document.getElementById('drive-folder-modal');
+  if (!driveModal.classList.contains('hidden')) {
+    if (e.key === 'Escape') { closeDriveFolderBrowser(); return; }
+    if (e.key === 'Tab') {
+      const focusable = Array.from(
+        driveModal.querySelectorAll('button:not([disabled]), a[href], [tabindex="0"]')
+      ).filter(el => el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last  = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+      }
+    }
+    return;
+  }
+
   const modal = document.getElementById('cron-modal');
   if (modal.classList.contains('hidden')) return;
 
