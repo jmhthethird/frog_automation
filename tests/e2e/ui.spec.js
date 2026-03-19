@@ -488,3 +488,181 @@ test.describe('Collapsible sections', () => {
     await expect(page.locator('#api-services-list .api-svc-card').first()).toBeVisible({ timeout: 5_000 });
   });
 });
+
+// ─── Google Drive OAuth UI ────────────────────────────────────────────────────
+test.describe('Google Drive OAuth UI', () => {
+  test.beforeEach(async ({ page }) => {
+    // Navigate and expand API Integrations section before each test
+    await page.goto('/');
+    await page.locator('#api-section > summary').click();
+    await expect(page.locator('#api-services-list')).toBeVisible({ timeout: 5_000 });
+    // Wait for Google Drive card to render
+    await expect(page.locator('#api-svc-google_drive')).toBeVisible();
+  });
+
+  test('Google Drive card shows correct initial state', async ({ page }) => {
+    const driveCard = page.locator('#api-svc-google_drive');
+    await expect(driveCard.locator('.api-svc-name')).toContainText('Google Drive');
+
+    // Should show "Not connected" initially
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('Not connected');
+
+    // Connect button should be visible
+    await expect(driveCard.locator('button', { hasText: 'Connect Google Drive' })).toBeVisible();
+
+    // Disconnect button should be hidden
+    await expect(driveCard.locator('#drive-disconnect-btn')).toBeHidden();
+
+    // Folder picker button should be disabled
+    await expect(driveCard.locator('#drive-pick-btn')).toBeDisabled();
+  });
+
+  test('Google Drive card shows credential fields', async ({ page }) => {
+    const driveCard = page.locator('#api-svc-google_drive');
+
+    // Should show all three credential fields
+    await expect(driveCard.locator('label', { hasText: 'Google API Key' })).toBeVisible();
+    await expect(driveCard.locator('label', { hasText: 'OAuth2 Client ID' })).toBeVisible();
+    await expect(driveCard.locator('label', { hasText: 'OAuth2 Client Secret' })).toBeVisible();
+
+    // All fields should be password/text inputs
+    await expect(driveCard.locator('#api-field-google_drive-api_key')).toHaveAttribute('type', 'password');
+    await expect(driveCard.locator('#api-field-google_drive-client_id')).toHaveAttribute('type', 'text');
+    await expect(driveCard.locator('#api-field-google_drive-client_secret')).toHaveAttribute('type', 'password');
+  });
+
+  test('Save button stores credentials', async ({ page, baseURL, request }) => {
+    const driveCard = page.locator('#api-svc-google_drive');
+
+    // Fill in fake credentials
+    await driveCard.locator('#api-field-google_drive-client_id').fill('fake_client_id_123');
+    await driveCard.locator('#api-field-google_drive-client_secret').fill('fake_client_secret_456');
+    await driveCard.locator('#api-field-google_drive-api_key').fill('fake_api_key_789');
+
+    // Click Save button
+    await driveCard.locator('button', { hasText: 'Save' }).click();
+
+    // Should show success message
+    await expect(driveCard.locator('#api-svc-msg-google_drive')).toContainText('Saved');
+
+    // Verify via API that credentials were stored
+    const res = await request.get(`${baseURL}/api/api-credentials`);
+    const services = await res.json();
+    const driveService = services.find(s => s.service === 'google_drive');
+
+    expect(driveService).toBeTruthy();
+    expect(driveService.credentials.client_id).toBe('fake_client_id_123');
+    // Sensitive fields should be masked in response
+    expect(driveService.credentials.client_secret).toMatch(/fake••••••••/);
+  });
+
+  test('Connect button shows error when credentials missing', async ({ page }) => {
+    const driveCard = page.locator('#api-svc-google_drive');
+
+    // Try to connect without saving credentials first
+    await driveCard.locator('button', { hasText: 'Connect Google Drive' }).click();
+
+    // Should show error message in status
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('Save an OAuth2 Client ID', { timeout: 5_000 });
+  });
+
+  test('Connect button detects popup blocker', async ({ page, context }) => {
+    const driveCard = page.locator('#api-svc-google_drive');
+
+    // First save credentials
+    await driveCard.locator('#api-field-google_drive-client_id').fill('test_client_id');
+    await driveCard.locator('#api-field-google_drive-client_secret').fill('test_secret');
+    await driveCard.locator('button', { hasText: 'Save' }).click();
+    await expect(driveCard.locator('#api-svc-msg-google_drive')).toContainText('Saved');
+
+    // Block popups by preventing window.open
+    await page.evaluate(() => {
+      window.open = () => null;
+    });
+
+    // Try to connect
+    await driveCard.locator('button', { hasText: 'Connect Google Drive' }).click();
+
+    // Should show popup blocked message
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('Popup blocked', { timeout: 5_000 });
+  });
+
+  test('Toggle enable/disable updates status', async ({ page }) => {
+    const driveCard = page.locator('#api-svc-google_drive');
+    const toggle = driveCard.locator('#api-toggle-google_drive');
+    const label = driveCard.locator('#api-toggle-label-google_drive');
+
+    // Should start disabled
+    await expect(toggle).not.toBeChecked();
+    await expect(label).toContainText('Disabled');
+
+    // Enable it
+    await toggle.check();
+    await expect(label).toContainText('Enabled');
+
+    // Disable it again
+    await toggle.uncheck();
+    await expect(label).toContainText('Disabled');
+  });
+
+  test('Shift+Click hint is shown in documentation', async ({ page }) => {
+    const driveCard = page.locator('#api-svc-google_drive');
+    const note = driveCard.locator('.api-svc-note');
+
+    // Should mention Shift+Click for redirect mode
+    await expect(note).toContainText('Shift');
+    await expect(note).toContainText('redirect mode');
+  });
+
+  test('Disconnect button clears connection status', async ({ page, baseURL, request }) => {
+    // First set up a connected state via API
+    await request.put(`${baseURL}/api/api-credentials/google_drive`, {
+      data: {
+        enabled: false,
+        credentials: {
+          client_id: 'test_client',
+          client_secret: 'test_secret',
+          api_key: 'test_key',
+          refresh_token: 'fake_refresh_token_xyz',
+          root_folder_id: 'fake_folder_123',
+          root_folder_name: 'Test Folder',
+        },
+      },
+    });
+
+    // Reload page to see connected state
+    await page.goto('/');
+    await page.locator('#api-section > summary').click();
+    await expect(page.locator('#api-svc-google_drive')).toBeVisible();
+
+    const driveCard = page.locator('#api-svc-google_drive');
+
+    // Should show connected
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('Connected', { timeout: 5_000 });
+    await expect(driveCard.locator('#drive-disconnect-btn')).toBeVisible();
+    await expect(driveCard.locator('#drive-pick-btn')).not.toBeDisabled();
+
+    // Setup dialog handler for confirmation
+    page.on('dialog', async dialog => {
+      expect(dialog.type()).toBe('confirm');
+      expect(dialog.message()).toContain('Disconnect');
+      await dialog.accept();
+    });
+
+    // Click disconnect
+    await driveCard.locator('#drive-disconnect-btn').click();
+
+    // Should show "Not connected" again
+    await expect(driveCard.locator('#drive-conn-status')).toContainText('Not connected', { timeout: 5_000 });
+    await expect(driveCard.locator('#drive-disconnect-btn')).toBeHidden();
+    await expect(driveCard.locator('#drive-pick-btn')).toBeDisabled();
+
+    // Verify via API that tokens were cleared but credentials preserved
+    const res = await request.get(`${baseURL}/api/api-credentials`);
+    const services = await res.json();
+    const driveService = services.find(s => s.service === 'google_drive');
+
+    expect(driveService.credentials.client_id).toBe('test_client');
+    expect(driveService.credentials.refresh_token).toBeUndefined();
+  });
+});

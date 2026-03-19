@@ -1501,7 +1501,8 @@ const API_SERVICE_META = {
     label: '☁ Google Drive Upload',
     note: 'Automatically uploads each completed crawl ZIP to Google Drive, organised by domain:<br><code>Drive / [Root Folder] / &lt;domain&gt; / &lt;crawl.zip&gt;</code><br><br>' +
           '<strong>Setup (one-time):</strong> In <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue);">Google Cloud Console</a> create a project, enable the <em>Google Drive API</em> and <em>Google Picker API</em>, then create an <strong>OAuth 2.0 Client ID</strong> (Web application) and an <strong>API Key</strong>. ' +
-          'Add <code>' + window.location.origin + '</code> to the authorised JavaScript origins and <code>' + window.location.origin + '/api/google-drive/callback</code> to the authorised redirect URIs.',
+          'Add <code>' + window.location.origin + '</code> to the authorised JavaScript origins and <code>' + window.location.origin + '/api/google-drive/callback</code> to the authorised redirect URIs.<br><br>' +
+          '<strong>Tip:</strong> Click "Connect Google Drive" to authorize via popup. If popups are blocked, hold Shift while clicking to use redirect mode instead.',
   },
 };
 
@@ -1549,7 +1550,7 @@ function renderApiServicesList(services) {
         </div>
         <div class="drive-btn-row">
           <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
-                  onclick="connectGoogleDrive()">Connect Google Drive</button>
+                  onclick="connectGoogleDrive(event)">Connect Google Drive</button>
           <button id="drive-disconnect-btn" class="btn btn-secondary"
                   style="font-size:11px;padding:4px 12px;display:none;"
                   onclick="disconnectGoogleDrive()">Disconnect</button>
@@ -1754,25 +1755,67 @@ function _applyDriveStatus(status) {
   }
 }
 
-/** Open a popup for the Google OAuth2 consent flow. */
-async function connectGoogleDrive() {
+/**
+ * Start Google OAuth2 consent flow.
+ * Supports both popup mode (default) and full-page redirect mode.
+ * Uses Shift+Click to force redirect mode for testing or Electron app.
+ */
+async function connectGoogleDrive(event) {
   try {
     const r = await fetch('/api/google-drive/auth-url');
     const d = await r.json();
-    if (!r.ok) { alert(d.error || 'Could not get authorization URL'); return; }
+    if (!r.ok) {
+      _showDriveMessage(d.error || 'Could not get authorization URL', 'error');
+      return;
+    }
 
-    const w = 600, h = 700;
-    const left = Math.round(window.screenX + (window.outerWidth  - w) / 2);
-    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
-    window.open(d.url, 'gd-auth', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    // Force redirect mode with Shift+Click, or use popup by default
+    const useRedirect = event?.shiftKey || false;
 
-    // Remove any stale listener from a previous (abandoned) popup before
-    // adding a fresh one. Use { once: true } so it self-removes on receipt.
-    window.removeEventListener('message', _onDriveAuthMessage);
-    window.addEventListener('message', _onDriveAuthMessage, { once: true });
+    if (useRedirect) {
+      // Full-page redirect mode – mark that we're waiting for OAuth
+      sessionStorage.setItem('gdrive_auth_pending', 'true');
+      _showDriveMessage('Redirecting to Google...', 'info');
+      setTimeout(() => { window.location.href = d.url; }, 500);
+    } else {
+      // Popup mode (default)
+      const w = 600, h = 700;
+      const left = Math.round(window.screenX + (window.outerWidth  - w) / 2);
+      const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
+      const popup = window.open(d.url, 'gd-auth', `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+
+      if (!popup) {
+        _showDriveMessage('Popup blocked. Please allow popups or try Shift+Click to use redirect mode.', 'error');
+        return;
+      }
+
+      // Set up postMessage listener for popup response
+      window.removeEventListener('message', _onDriveAuthMessage);
+      window.addEventListener('message', _onDriveAuthMessage, { once: true });
+
+      // Poll to detect if popup was closed before completion
+      _showDriveMessage('Authorize in the popup window...', 'info');
+      _pollPopupClosed(popup);
+    }
   } catch {
-    alert('Network error while starting Google Drive authorization.');
+    _showDriveMessage('Network error while starting Google Drive authorization.', 'error');
   }
+}
+
+function _pollPopupClosed(popup) {
+  const checkInterval = setInterval(() => {
+    if (popup.closed) {
+      clearInterval(checkInterval);
+      // Give postMessage a moment to arrive, then check status
+      setTimeout(() => {
+        _clearDriveMessage();
+        loadDriveStatus();
+      }, 300);
+    }
+  }, 500);
+
+  // Stop polling after 5 minutes
+  setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
 }
 
 function _onDriveAuthMessage(event) {
@@ -1781,10 +1824,33 @@ function _onDriveAuthMessage(event) {
 
   const msg = event.data || {};
   if (msg.type === 'drive-auth-success') {
-    loadDriveStatus();
+    _showDriveMessage('✓ Connected successfully!', 'success');
+    setTimeout(() => {
+      _clearDriveMessage();
+      loadDriveStatus();
+    }, 2000);
   } else if (msg.type === 'drive-auth-error') {
-    alert('Google Drive authorization failed: ' + (msg.error || 'unknown error'));
+    _showDriveMessage('Authorization failed: ' + (msg.error || 'unknown error'), 'error');
+    setTimeout(_clearDriveMessage, 5000);
   }
+}
+
+function _showDriveMessage(text, type) {
+  const connEl = document.getElementById('drive-conn-status');
+  if (!connEl) return;
+
+  const colors = {
+    success: 'var(--green)',
+    error: 'var(--red)',
+    info: 'var(--blue)',
+  };
+
+  connEl.textContent = text;
+  connEl.style.color = colors[type] || 'var(--text)';
+}
+
+function _clearDriveMessage() {
+  loadDriveStatus(); // Refresh to show actual status
 }
 
 /** Clear stored OAuth tokens and root-folder selection. */
@@ -1905,6 +1971,58 @@ loadSpiderConfigs();
 loadJobs();
 _initApiSettingsBtn();
 _initUpdateCheck();
+_checkDriveAuthRedirect();
+
+/**
+ * Check if we just returned from a Google Drive OAuth redirect.
+ * Handles both success and error cases stored in sessionStorage.
+ */
+function _checkDriveAuthRedirect() {
+  // Check URL params for redirect mode return
+  const params = new URLSearchParams(window.location.search);
+  const authResult = params.get('gdrive_auth');
+
+  if (authResult) {
+    // Clean up URL without page reload
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    // Check sessionStorage for detailed result
+    try {
+      const stored = sessionStorage.getItem('gdrive_auth_result');
+      sessionStorage.removeItem('gdrive_auth_result');
+      sessionStorage.removeItem('gdrive_auth_pending');
+
+      if (stored) {
+        const msg = JSON.parse(stored);
+        if (msg.type === 'drive-auth-success') {
+          _showDriveMessage('✓ Connected successfully!', 'success');
+          setTimeout(_clearDriveMessage, 3000);
+        } else if (msg.type === 'drive-auth-error') {
+          _showDriveMessage('Authorization failed: ' + (msg.error || 'unknown error'), 'error');
+          setTimeout(_clearDriveMessage, 7000);
+        }
+      } else if (authResult === 'success') {
+        _showDriveMessage('✓ Connected successfully!', 'success');
+        setTimeout(_clearDriveMessage, 3000);
+      }
+    } catch (e) {
+      // sessionStorage unavailable or malformed
+      if (authResult === 'success') {
+        _showDriveMessage('✓ Connected successfully!', 'success');
+        setTimeout(_clearDriveMessage, 3000);
+      }
+    }
+  } else {
+    // Check if we were waiting for auth but didn't complete (user canceled)
+    try {
+      if (sessionStorage.getItem('gdrive_auth_pending')) {
+        sessionStorage.removeItem('gdrive_auth_pending');
+        _showDriveMessage('Authorization was canceled or interrupted', 'error');
+        setTimeout(_clearDriveMessage, 5000);
+      }
+    } catch (e) { /* sessionStorage unavailable */ }
+  }
+}
 
 // ── Cron Modal ────────────────────────────────────────────────────────────────
 let _cronModalOpener = null;
