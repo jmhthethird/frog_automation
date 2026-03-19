@@ -94,6 +94,17 @@
   .rel-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #2a2a2a; color: var(--text-dim); white-space: nowrap; }
   .rel-badge.is-current { background: #1a2a1a; color: var(--green); }
   .rel-badge.is-newer { background: #1a2a3a; color: #6ab0f5; }
+  /* PR build section */
+  #pr-build { flex-basis: 100%; margin-top: 2px; }
+  #pr-build > summary { font-size: 12px; color: var(--text-dim); cursor: pointer; user-select: none; }
+  #pr-build > summary:hover { color: var(--text); }
+  #pr-build-body { margin-top: 8px; }
+  #pr-build-row { display: flex; gap: 8px; align-items: center; }
+  #pr-build-url { flex: 1; background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; padding: 6px 8px; min-width: 0; }
+  #pr-build-url:focus { border-color: var(--blue); outline: none; }
+  #pr-build-msg { font-size: 12px; color: var(--text-dim); margin-top: 6px; min-height: 16px; }
+  #pr-build-msg.is-err { color: var(--red); }
+  #pr-build-msg.is-loading { color: var(--text-dim); font-style: italic; }
   main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
   .grid > div:last-child { min-width: 0; }
@@ -260,6 +271,18 @@
   <details id="version-history" ontoggle="if(this.open)_loadVersionHistory()">
     <summary>Version History</summary>
     <div id="version-history-list"></div>
+  </details>
+  <details id="pr-build">
+    <summary>🧪 Install a PR build</summary>
+    <div id="pr-build-body">
+      <div id="pr-build-row">
+        <input type="url" id="pr-build-url" placeholder="https://github.com/jmhthethird/frog_automation/pull/42"
+               aria-label="GitHub PR URL" autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();loadPRBuild()}">
+        <button id="pr-build-load-btn" class="btn btn-secondary" style="font-size:11px;padding:5px 12px;" onclick="loadPRBuild()">Load</button>
+      </div>
+      <div id="pr-build-msg"></div>
+    </div>
   </details>
 </div>
 <main>
@@ -1043,7 +1066,21 @@ async function _getUpdateState() {
   return r.json();
 }
 
-function _renderUpdatePanel(state) {
+/**
+ * Return a human-readable label for a version string.
+ * PR preview tags like "pr-42-preview" become "🧪 PR #42 test build".
+ * Normal semver tags like "1.2.3" become "v1.2.3".
+ *
+ * @param {string} ver
+ * @returns {string} HTML-safe label string
+ */
+function _formatVersionLabel(ver) {
+  const m = (ver || '').match(/^pr-(\d+)-preview$/);
+  if (m) return `🧪 PR #${escHtml(m[1])} test build`;
+  return `v${escHtml(ver)}`;
+}
+
+function _renderUpdatePanel(state, { forceShow = false } = {}) {
   const panel    = document.getElementById('update-panel');
   const msgEl    = document.getElementById('update-msg');
   const actEl    = document.getElementById('update-actions');
@@ -1058,15 +1095,26 @@ function _renderUpdatePanel(state) {
     document.getElementById('version-badge').textContent = 'v' + state.currentVersion;
   }
 
-  // Hide the panel for non-actionable states.
+  // Hide the panel for transient non-actionable states (unless explicitly forced open).
   if (state.status === 'idle' || state.status === 'checking') {
-    panel.classList.remove('visible');
-    btn.className = '';
+    if (!forceShow) {
+      panel.classList.remove('visible');
+      btn.className = '';
+    }
     return;
   }
   if (state.status === 'error') {
-    panel.classList.remove('visible');
     btn.className = '';
+    if (forceShow) {
+      // Show the panel with the error message so the PR build section is reachable.
+      panel.classList.add('visible');
+      progWrap.style.display = 'none';
+      actEl.innerHTML = '';
+      notesEl.style.display = 'none';
+      msgEl.innerHTML = `<span style="color:var(--red)">⚠ ${escHtml(state.error || 'Update check failed')}</span>`;
+    } else {
+      panel.classList.remove('visible');
+    }
     return;
   }
 
@@ -1082,7 +1130,8 @@ function _renderUpdatePanel(state) {
     msgEl.innerHTML = `✓ v<strong>${escHtml(state.currentVersion)}</strong> is up to date`;
   } else if (state.status === 'available') {
     btn.className = 'has-update';
-    msgEl.innerHTML = `<strong>v${escHtml(state.latestVersion)}</strong> is available (you have v${escHtml(state.currentVersion)})`;
+    const verLabel = _formatVersionLabel(state.latestVersion);
+    msgEl.innerHTML = `<strong>${verLabel}</strong> is available (you have v${escHtml(state.currentVersion)})`;
     if (state.downloadUrl) {
       actEl.innerHTML = `<button class="btn btn-primary" style="font-size:11px;padding:5px 14px;" onclick="startDownload()">⬇ Download</button>`;
     } else if (state.releaseUrl) {
@@ -1094,13 +1143,15 @@ function _renderUpdatePanel(state) {
     }
   } else if (state.status === 'downloading') {
     btn.className = 'has-update';
-    msgEl.innerHTML = `Downloading v<strong>${escHtml(state.latestVersion)}</strong>… ${state.progress}%`;
+    const verLabel = _formatVersionLabel(state.latestVersion);
+    msgEl.innerHTML = `Downloading <strong>${verLabel}</strong>… ${state.progress}%`;
     progWrap.style.display = 'block';
     progBar.style.width    = state.progress + '%';
     _startPollIfNeeded();
   } else if (state.status === 'ready') {
     btn.className = 'has-update';
-    msgEl.innerHTML = `v<strong>${escHtml(state.latestVersion)}</strong> downloaded — ready to install`;
+    const verLabel = _formatVersionLabel(state.latestVersion);
+    msgEl.innerHTML = `<strong>${verLabel}</strong> downloaded — ready to install`;
     progWrap.style.display = 'block';
     progBar.style.width    = '100%';
     actEl.innerHTML = `<button class="btn btn-primary" style="font-size:11px;padding:5px 14px;" onclick="installUpdate()">⚡ Install &amp; Restart</button>`;
@@ -1132,8 +1183,10 @@ async function checkForUpdates() {
   try {
     const r = await fetch('/api/update/check', { method: 'POST' });
     const s = await r.json();
-    _renderUpdatePanel(s);
-  } catch {}
+    _renderUpdatePanel(s, { forceShow: true });
+  } catch {
+    _renderUpdatePanel({ status: 'error', error: 'Could not reach update server' }, { forceShow: true });
+  }
   btn.disabled = false;
 }
 
@@ -1235,6 +1288,62 @@ async function selectAndDownload(version) {
   } catch {
     const msgEl = document.getElementById('update-msg');
     if (msgEl) msgEl.textContent = 'Failed to start download — please try again.';
+  }
+}
+
+// ── PR Build ──────────────────────────────────────────────────────────────────
+
+async function loadPRBuild() {
+  const urlEl = document.getElementById('pr-build-url');
+  const msgEl = document.getElementById('pr-build-msg');
+  const btn   = document.getElementById('pr-build-load-btn');
+  const prUrl = urlEl ? urlEl.value.trim() : '';
+  if (!prUrl) return;
+
+  // Client-side: validate the URL looks like a GitHub PR link before hitting the API.
+  if (!/^https?:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+/i.test(prUrl)) {
+    if (msgEl) {
+      msgEl.textContent = 'Enter a full GitHub PR URL, e.g. https://github.com/owner/repo/pull/42';
+      msgEl.className = 'is-err';
+    }
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  if (msgEl) {
+    msgEl.textContent = 'Looking up PR build…';
+    msgEl.className = 'is-loading';
+  }
+
+  try {
+    const r = await fetch('/api/update/pr', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ prUrl }),
+    });
+    const state = await r.json();
+    if (state.error || state.status === 'error') {
+      if (msgEl) {
+        msgEl.textContent = state.error || 'PR build lookup failed';
+        msgEl.className = 'is-err';
+      }
+      return;
+    }
+    // Success — collapse the PR build section and show the main update panel.
+    if (msgEl) {
+      msgEl.textContent = '';
+      msgEl.className = '';
+    }
+    const sect = document.getElementById('pr-build');
+    if (sect) sect.removeAttribute('open');
+    _renderUpdatePanel(state);
+  } catch {
+    if (msgEl) {
+      msgEl.textContent = 'Failed to look up PR build — please try again.';
+      msgEl.className = 'is-err';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
