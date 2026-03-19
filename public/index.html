@@ -1753,7 +1753,28 @@ function _applyDriveStatus(status) {
       folderEl.style.color = 'var(--text-dim)';
     }
   }
+
+  // Apply any pending redirect-mode auth message now that the card is rendered.
+  if (_pendingDriveAuthMsg) {
+    const { text, type, timeout } = _pendingDriveAuthMsg;
+    _pendingDriveAuthMsg = null;
+    _showDriveMessage(text, type);
+    setTimeout(_clearDriveMessage, timeout);
+  }
 }
+
+/**
+ * Flag to prevent duplicate loadDriveStatus() calls when popup mode completes
+ * via postMessage before _pollPopupClosed detects the closed window.
+ */
+let _driveAuthCompleted = false;
+
+/**
+ * Pending auth message from redirect mode, applied the next time the Drive
+ * card is rendered (i.e. when _applyDriveStatus first finds the element).
+ * @type {{ text: string, type: string, timeout: number } | null}
+ */
+let _pendingDriveAuthMsg = null;
 
 /**
  * Start Google OAuth2 consent flow.
@@ -1761,6 +1782,7 @@ function _applyDriveStatus(status) {
  * Uses Shift+Click to force redirect mode for testing or Electron app.
  */
 async function connectGoogleDrive(event) {
+  _driveAuthCompleted = false;
   try {
     const r = await fetch('/api/google-drive/auth-url');
     const d = await r.json();
@@ -1806,6 +1828,10 @@ function _pollPopupClosed(popup) {
   const checkInterval = setInterval(() => {
     if (popup.closed) {
       clearInterval(checkInterval);
+      // Skip the status refresh when _onDriveAuthMessage already handled the
+      // result via postMessage — prevents a race where both handlers call
+      // loadDriveStatus() within milliseconds of each other.
+      if (_driveAuthCompleted) return;
       // Give postMessage a moment to arrive, then check status
       setTimeout(() => {
         _clearDriveMessage();
@@ -1824,6 +1850,7 @@ function _onDriveAuthMessage(event) {
 
   const msg = event.data || {};
   if (msg.type === 'drive-auth-success') {
+    _driveAuthCompleted = true;
     _showDriveMessage('✓ Connected successfully!', 'success');
     setTimeout(() => {
       _clearDriveMessage();
@@ -1976,6 +2003,8 @@ _checkDriveAuthRedirect();
 /**
  * Check if we just returned from a Google Drive OAuth redirect.
  * Handles both success and error cases stored in sessionStorage.
+ * Any message to display is stored in _pendingDriveAuthMsg and applied
+ * the next time the Drive card is rendered via _applyDriveStatus().
  */
 function _checkDriveAuthRedirect() {
   // Check URL params for redirect mode return
@@ -1995,21 +2024,17 @@ function _checkDriveAuthRedirect() {
       if (stored) {
         const msg = JSON.parse(stored);
         if (msg.type === 'drive-auth-success') {
-          _showDriveMessage('✓ Connected successfully!', 'success');
-          setTimeout(_clearDriveMessage, 3000);
+          _pendingDriveAuthMsg = { text: '✓ Connected successfully!', type: 'success', timeout: 3000 };
         } else if (msg.type === 'drive-auth-error') {
-          _showDriveMessage('Authorization failed: ' + (msg.error || 'unknown error'), 'error');
-          setTimeout(_clearDriveMessage, 7000);
+          _pendingDriveAuthMsg = { text: 'Authorization failed: ' + (msg.error || 'unknown error'), type: 'error', timeout: 7000 };
         }
       } else if (authResult === 'success') {
-        _showDriveMessage('✓ Connected successfully!', 'success');
-        setTimeout(_clearDriveMessage, 3000);
+        _pendingDriveAuthMsg = { text: '✓ Connected successfully!', type: 'success', timeout: 3000 };
       }
     } catch (e) {
       // sessionStorage unavailable or malformed
       if (authResult === 'success') {
-        _showDriveMessage('✓ Connected successfully!', 'success');
-        setTimeout(_clearDriveMessage, 3000);
+        _pendingDriveAuthMsg = { text: '✓ Connected successfully!', type: 'success', timeout: 3000 };
       }
     }
   } else {
@@ -2017,8 +2042,7 @@ function _checkDriveAuthRedirect() {
     try {
       if (sessionStorage.getItem('gdrive_auth_pending')) {
         sessionStorage.removeItem('gdrive_auth_pending');
-        _showDriveMessage('Authorization was canceled or interrupted', 'error');
-        setTimeout(_clearDriveMessage, 5000);
+        _pendingDriveAuthMsg = { text: 'Authorization was canceled or interrupted', type: 'error', timeout: 5000 };
       }
     } catch (e) { /* sessionStorage unavailable */ }
   }

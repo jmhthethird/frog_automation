@@ -242,11 +242,11 @@ For a more visual approach:
 If you need to reference images by URL:
 
 ```
-https://github.com/jmhthethird/frog_automation/raw/claude/refactor-google-drive-integration/docs/screenshots/before.png
-https://github.com/jmhthethird/frog_automation/raw/claude/refactor-google-drive-integration/docs/screenshots/after.png
+https://github.com/jmhthethird/frog_automation/raw/<branch>/docs/screenshots/before.png
+https://github.com/jmhthethird/frog_automation/raw/<branch>/docs/screenshots/after.png
 ```
 
-Replace `claude/refactor-google-drive-integration` with your actual branch name.
+Replace `<branch>` with your actual branch name.
 
 ---
 
