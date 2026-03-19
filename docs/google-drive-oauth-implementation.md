@@ -42,8 +42,8 @@ Frontend: Update connection status UI
 | `/api/google-drive/status` | GET | Get connection status & root folder |
 | `/api/google-drive/auth-url` | GET | Generate OAuth consent URL with CSRF state |
 | `/api/google-drive/callback` | GET | OAuth redirect target; exchanges code for tokens |
-| `/api/google-drive/token` | GET | Get fresh access token (for Picker API) |
-| `/api/google-drive/root-folder` | POST | Store selected folder from Picker |
+| `/api/google-drive/folders` | GET | List folders via Drive API (replaces Picker) |
+| `/api/google-drive/root-folder` | POST | Store selected folder from folder browser |
 | `/api/google-drive/auth` | DELETE | Disconnect (clear tokens, preserve credentials) |
 
 #### Frontend Functions (`public/index.html`)
@@ -57,7 +57,10 @@ Frontend: Update connection status UI
 | `_checkDriveAuthRedirect()` | Check for OAuth return via redirect (on page load) |
 | `loadDriveStatus()` | Fetch and apply connection status |
 | `disconnectGoogleDrive()` | Clear OAuth tokens |
-| `openDrivePicker()` | Open Google Drive folder picker |
+| `openDriveFolderBrowser()` | Open custom folder browser modal |
+| `closeDriveFolderBrowser()` | Close folder browser modal |
+| `_loadDriveFolders(parentId)` | Load folders from Drive API |
+| `confirmDriveFolder()` | Save selected folder to server |
 
 ## Dual-Mode OAuth Implementation
 
@@ -224,7 +227,7 @@ const payload = JSON.stringify({ type, ...extra })
 
 ### Credential Separation
 
-- User-editable: `api_key`, `client_id`, `client_secret`
+- User-editable: `client_id`, `client_secret`
 - Programmatic-only: `refresh_token`, `root_folder_id`, `root_folder_name`
 - Sensitive fields masked in API responses
 
@@ -315,13 +318,11 @@ The callback page provides professional feedback:
 1. Create project at https://console.cloud.google.com/
 2. Enable APIs:
    - Google Drive API
-   - Google Picker API
 3. Create OAuth 2.0 Client ID (Web application)
 4. Configure authorized origins:
    - Add: `http://localhost:3000` (or your server URL)
 5. Configure authorized redirect URIs:
    - Add: `http://localhost:3000/api/google-drive/callback`
-6. Create API Key (for Picker API)
 
 ### Application Setup
 
@@ -330,11 +331,10 @@ The callback page provides professional feedback:
 3. Enter credentials:
    - OAuth2 Client ID
    - OAuth2 Client Secret
-   - Google API Key
 4. Click "Save"
 5. Click "Connect Google Drive" (or Shift+Click for redirect mode)
 6. Authorize in Google consent screen
-7. Select root folder for uploads
+7. Select root folder for uploads using the folder browser
 
 ## Troubleshooting
 
@@ -365,20 +365,26 @@ Potential improvements for future iterations:
 1. **Persistent OAuth Session:** Store encrypted refresh_token with longer expiry
 2. **Upload Progress:** Real-time progress bar during Drive uploads
 3. **Batch Uploads:** Upload multiple completed jobs at once
-4. **Folder Selection UI:** Show Drive folder tree in-app (without Picker)
-5. **OAuth Refresh:** Auto-refresh expired tokens transparently
-6. **Multi-Account Support:** Connect multiple Google accounts
-7. **Webhook Integration:** Real-time upload notifications
+4. **OAuth Refresh:** Auto-refresh expired tokens transparently
+5. **Multi-Account Support:** Connect multiple Google accounts
+6. **Webhook Integration:** Real-time upload notifications
 
 ## References
 
 - [Google OAuth 2.0 Documentation](https://developers.google.com/identity/protocols/oauth2)
 - [Google Drive API v3 Reference](https://developers.google.com/drive/api/v3/reference)
-- [Google Picker API Reference](https://developers.google.com/picker/docs)
 - [Playwright Testing Documentation](https://playwright.dev/)
 
 ---
 
-**Last Updated:** 2026-03-18
-**Version:** 1.0.0
-**Author:** Claude Sonnet 4.5
+**Last Updated:** 2026-03-19
+**Version:** 2.0.0
+**Author:** Claude Opus 4.5
+
+### Changelog v2.0.0 (2026-03-19)
+
+- Removed Google API Key (no longer required for OAuth2 flow)
+- Removed Google Picker API dependency
+- Added custom folder browser modal with full keyboard support
+- Added `/api/google-drive/folders` endpoint for server-side folder listing
+- All modals now have close/dismiss buttons (enterprise UX requirement)
