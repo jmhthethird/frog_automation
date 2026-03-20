@@ -706,6 +706,7 @@ describe('runJob() – Google Drive upload', () => {
   // Mock the google-drive module before each test so we never hit the network.
   // jest.doMock() is the non-hoisted variant intended for use after jest.resetModules().
   let mockUploadToDrive;
+  let mockEnsureCategoryFolders;
 
   beforeEach(() => {
     jest.resetModules();
@@ -715,8 +716,10 @@ describe('runJob() – Google Drive upload', () => {
     db = dbMod.db;
 
     mockUploadToDrive = jest.fn();
+    mockEnsureCategoryFolders = jest.fn().mockResolvedValue({});
     jest.doMock('../../src/google-drive', () => ({
       uploadToDrive:             mockUploadToDrive,
+      ensureCategoryFolders:     mockEnsureCategoryFolders,
       buildOAuth2Client:         jest.fn(),
       buildDriveClientFromOAuth: jest.fn(),
       ensureFolder:              jest.fn(),
@@ -886,6 +889,36 @@ describe('runJob() – Google Drive upload', () => {
     // drive_upload_status should be null since Drive is not enabled (stale value cleared).
     expect(job.drive_upload_status).toBeNull();
     expect(job.drive_upload_error).toBeNull();
+  });
+
+  it('calls ensureCategoryFolders before uploading when google_drive is enabled', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, ?)
+      ON CONFLICT(service) DO UPDATE SET enabled=excluded.enabled, credentials=excluded.credentials
+    `).run(JSON.stringify({
+      client_id: 'cid', client_secret: 'cs', refresh_token: 'rt',
+      root_folder_id: 'root-abc',
+    }));
+
+    mockUploadToDrive.mockResolvedValueOnce({
+      fileId: 'f1', domain: 'example.com', folderId: 'fd1', localSize: 100, driveSize: 100,
+    });
+
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    expect(mockEnsureCategoryFolders).toHaveBeenCalledWith({
+      clientId: 'cid',
+      clientSecret: 'cs',
+      refreshToken: 'rt',
+      rootFolderId: 'root-abc',
+    });
+    // ensureCategoryFolders should be called before uploadToDrive
+    const ensureOrder = mockEnsureCategoryFolders.mock.invocationCallOrder[0];
+    const uploadOrder = mockUploadToDrive.mock.invocationCallOrder[0];
+    expect(ensureOrder).toBeLessThan(uploadOrder);
   });
 });
 

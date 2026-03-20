@@ -341,8 +341,13 @@ async function migrateDriveFolders({ clientId, clientSecret, refreshToken, rootF
     }
   }
 
-  // Ensure the "Crawls" folder exists.
-  const crawlsFolderId = await ensureFolder(drive, DRIVE_CATEGORIES.CRAWLS.folder, rootFolderId || null);
+  // Ensure all category folders exist (not just Crawls) so the full
+  // directory structure is always present after a migration.
+  const categoryFolderIds = {};
+  for (const cat of Object.values(DRIVE_CATEGORIES)) {
+    categoryFolderIds[cat.folder] = await ensureFolder(drive, cat.folder, rootFolderId || null);
+  }
+  const crawlsFolderId = categoryFolderIds[DRIVE_CATEGORIES.CRAWLS.folder];
 
   // Move each legacy domain folder into the Crawls folder.
   for (const folder of toMigrate) {
@@ -358,4 +363,28 @@ async function migrateDriveFolders({ clientId, clientSecret, refreshToken, rootF
   return { migrated: toMigrate.length, skipped, crawlsFolderId };
 }
 
-module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl, listSubfolders, migrateDriveFolders };
+/**
+ * Ensure all top-level category folders exist inside the root folder.
+ *
+ * This is safe to call at any time — it only creates folders that do not
+ * already exist and never deletes or moves anything.
+ *
+ * @param {object} options
+ * @param {string}  options.clientId      - OAuth2 Client ID.
+ * @param {string}  options.clientSecret  - OAuth2 Client Secret.
+ * @param {string}  options.refreshToken  - OAuth2 refresh token.
+ * @param {string} [options.rootFolderId] - Root folder ID (null → Drive root).
+ * @returns {Promise<Record<string, string>>} Map of category folder name → Drive folder ID.
+ */
+async function ensureCategoryFolders({ clientId, clientSecret, refreshToken, rootFolderId }) {
+  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
+  // Validate rootFolderId to prevent malformed GDQL queries.
+  const safeRootId = (rootFolderId && DRIVE_ID_RE.test(rootFolderId)) ? rootFolderId : null;
+  const created = {};
+  for (const cat of Object.values(DRIVE_CATEGORIES)) {
+    created[cat.folder] = await ensureFolder(drive, cat.folder, safeRootId);
+  }
+  return created;
+}
+
+module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl, listSubfolders, migrateDriveFolders, ensureCategoryFolders };
