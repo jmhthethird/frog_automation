@@ -341,7 +341,7 @@ router.post('/root-folder', writeLimit, async (req, res) => {
       refreshToken: creds.refresh_token,
       rootFolderId: folderId.trim(),
     }).catch(err => {
-      console.error(`[google-drive] Failed to auto-create category folders in "${folderId.trim()}":`, err);
+      console.error('[google-drive] Failed to auto-create category folders in "%s":', folderId.trim(), err);
     });
   }
 
