@@ -285,9 +285,117 @@
   .modal-footer { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
   .cron-help-btn { background: none; border: 1px solid var(--border); border-radius: 3px; color: var(--text-dim); font-size: 11px; padding: 2px 7px; cursor: pointer; margin-left: 6px; vertical-align: middle; transition: color .12s, border-color .12s; }
   .cron-help-btn:hover { color: var(--blue); border-color: var(--blue); }
+
+  /* ── Side Navigation ────────────────────────────────────────────────────── */
+  .app-layout { display: flex; min-height: 100vh; }
+  .side-nav {
+    width: 220px; position: fixed; top: 0; left: 0; bottom: 0;
+    background: #0d0d1f; border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; z-index: 100;
+    transition: transform .25s ease;
+  }
+  .side-nav-brand {
+    padding: 18px 16px; font-size: 16px; font-weight: 700;
+    color: var(--text); border-bottom: 1px solid var(--border);
+    letter-spacing: .02em;
+  }
+  .side-nav-items { display: flex; flex-direction: column; padding: 8px 0; flex: 1; }
+  .side-nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; margin: 2px 8px; border-radius: var(--radius);
+    background: none; border: none; border-left: 3px solid transparent;
+    color: var(--text-dim); font-size: 13px; cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+    text-align: left; width: calc(100% - 16px);
+  }
+  .side-nav-item:hover { background: var(--surface); color: var(--text); }
+  .side-nav-item.active {
+    color: var(--green); border-left-color: var(--green);
+    background: rgba(46,204,113,.08); font-weight: 600;
+  }
+  .app-content { flex: 1; margin-left: 220px; min-width: 0; }
+  .nav-panel { display: none; }
+  .nav-panel.active { display: block; }
+  .side-nav-toggle {
+    display: none; position: fixed; top: 10px; left: 10px; z-index: 200;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text); font-size: 20px;
+    padding: 6px 10px; cursor: pointer; line-height: 1;
+  }
+  .side-nav-backdrop {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99;
+  }
+  .soon-badge {
+    font-size: 9px; background: var(--surface2); color: var(--text-dim);
+    padding: 1px 5px; border-radius: 3px; margin-left: auto;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+  @media (max-width: 760px) {
+    .side-nav { transform: translateX(-100%); }
+    .side-nav.open { transform: translateX(0); }
+    .side-nav-toggle { display: block; }
+    .side-nav-backdrop.open { display: block; }
+    .app-content { margin-left: 0; }
+  }
+
+  /* ── Placeholder Cards (Reports / Automation) ───────────────────────────── */
+  .placeholder-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+  }
+  .placeholder-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px;
+  }
+  .placeholder-card h3 { font-size: 15px; color: #ccc; margin: 0 0 6px; font-weight: 600; }
+  .placeholder-card p { font-size: 12px; color: var(--text-dim); margin: 0 0 14px; line-height: 1.5; }
+  .placeholder-card .btn-soon {
+    font-size: 11px; padding: 5px 14px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text-dim); cursor: default; opacity: .6;
+  }
+
+  /* ── Settings Panel ─────────────────────────────────────────────────────── */
+  .settings-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
+  }
+  .settings-section h2 { font-size: 16px; font-weight: 600; color: #ccc; margin: 0 0 16px; }
+  .settings-section label {
+    display: block; font-size: 12px; color: var(--text-dim);
+    margin-bottom: 4px; margin-top: 12px;
+  }
+  .settings-section label:first-of-type { margin-top: 0; }
+  .settings-section input[type="text"],
+  .settings-section input[type="password"] {
+    width: 100%; box-sizing: border-box;
+    background: #0a0a1e; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); font-size: 13px; padding: 8px 10px;
+  }
+  .settings-section input:focus { border-color: var(--blue); outline: none; }
+  .settings-save-row { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
 </style>
 </head>
 <body>
+<!-- Mobile hamburger toggle (hidden on desktop) -->
+<button class="side-nav-toggle" id="side-nav-toggle" onclick="toggleSideNav()" aria-label="Toggle navigation">☰</button>
+<div class="side-nav-backdrop" id="side-nav-backdrop" onclick="closeSideNav()"></div>
+
+<div class="app-layout">
+<!-- Side Navigation -->
+<nav class="side-nav" id="side-nav">
+  <div class="side-nav-brand">🐸 SEO Automation</div>
+  <div class="side-nav-items">
+    <button class="side-nav-item active" data-panel="frogtomation" onclick="switchNavPanel('frogtomation')">🐸 Frogtomation</button>
+    <button class="side-nav-item" data-panel="reports" onclick="switchNavPanel('reports')">📊 Reports <span class="soon-badge">Soon</span></button>
+    <button class="side-nav-item" data-panel="automation" onclick="switchNavPanel('automation')">⚡ Automation <span class="soon-badge">Soon</span></button>
+    <button class="side-nav-item" data-panel="settings" onclick="switchNavPanel('settings')">⚙️ Settings</button>
+  </div>
+</nav>
+
+<div class="app-content">
+<!-- Panel: Frogtomation (active by default) -->
+<div id="panel-frogtomation" class="nav-panel active">
 <header>
   <span class="emoji">🐸</span>
   <h1>Frog Automation</h1>
@@ -478,6 +586,114 @@
     </div>
   </div>
 </main>
+</div><!-- /panel-frogtomation -->
+
+<!-- Panel: Reports -->
+<div id="panel-reports" class="nav-panel">
+  <header>
+    <span class="emoji">📊</span>
+    <h1>Reports</h1>
+  </header>
+  <main>
+    <div class="placeholder-grid">
+      <div class="placeholder-card">
+        <h3>📄 Page Title Audit</h3>
+        <p>Analyse page titles for length, duplication, and keyword optimisation across your crawled pages.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>📝 Meta Description Audit</h3>
+        <p>Review meta descriptions for length compliance, uniqueness, and missing entries across your site.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>🔢 Response Code Report</h3>
+        <p>Identify HTTP status code distribution including 3xx redirects, 4xx errors, and 5xx server issues.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>🏗️ Heading Structure Report</h3>
+        <p>Validate heading hierarchy (H1–H6) for proper nesting, missing headings, and SEO best practices.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>🔗 Canonical Tags Report</h3>
+        <p>Audit canonical tag implementation to detect missing, self-referencing, or conflicting canonicals.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>⚡ Core Web Vitals Report</h3>
+        <p>Monitor Largest Contentful Paint, First Input Delay, and Cumulative Layout Shift metrics.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Panel: Automation -->
+<div id="panel-automation" class="nav-panel">
+  <header>
+    <span class="emoji">⚡</span>
+    <h1>Process Automation</h1>
+  </header>
+  <main>
+    <div class="placeholder-grid">
+      <div class="placeholder-card">
+        <h3>🔑 Keyword Mapping</h3>
+        <p>Automatically map target keywords to landing pages using crawl data and search performance metrics.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>↪️ Redirect Mapping</h3>
+        <p>Generate redirect maps from old URLs to new destinations during site migrations and restructures.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>🔍 Content Gap Analysis</h3>
+        <p>Identify content opportunities by comparing your site coverage against competitor topics and keywords.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+      <div class="placeholder-card">
+        <h3>📋 Structured Data Audit</h3>
+        <p>Validate JSON-LD and schema markup implementation across pages for rich result eligibility.</p>
+        <button class="btn-soon" disabled>Coming Soon</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Panel: Settings -->
+<div id="panel-settings" class="nav-panel">
+  <header>
+    <span class="emoji">⚙️</span>
+    <h1>Settings</h1>
+  </header>
+  <main>
+    <div class="settings-section">
+      <h2>SEO Automation Settings</h2>
+      <label for="settings-sa-keyfile">Service Account Key File Path</label>
+      <input type="text" id="settings-sa-keyfile" placeholder="/path/to/service-account.json" autocomplete="off" spellcheck="false"/>
+      <label for="settings-drive-folder">Google Drive Root Folder ID</label>
+      <input type="text" id="settings-drive-folder" placeholder="e.g. 1aBcDeFgHiJkLmNoPqRsTuVwXyZ" autocomplete="off" spellcheck="false"/>
+      <label for="settings-copilot-token">GitHub Copilot API Token</label>
+      <input type="password" id="settings-copilot-token" placeholder="••••••••" autocomplete="off"/>
+      <div class="settings-save-row">
+        <button class="btn btn-primary" style="font-size:12px;padding:6px 16px;" onclick="saveSeaSettings()">Save SEO Settings</button>
+        <span id="sea-settings-msg" class="api-svc-msg" style="display:none;"></span>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h2>Frogtomation API Integrations</h2>
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;line-height:1.6;">
+        Manage the same API integrations available in the Frogtomation tab.
+      </p>
+      <div id="settings-api-services-list"><em style="color:var(--text-dim);">Open this panel to load integrations…</em></div>
+    </div>
+  </main>
+</div>
+
+</div><!-- /app-content -->
+</div><!-- /app-layout -->
 
 <!-- Cron Schedule Helper Modal -->
 <div id="cron-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="cron-modal-title" onclick="if(event.target===this)closeCronModal()">
@@ -2329,6 +2545,170 @@ async function confirmDriveFolder() {
   }
 }
 
+// ── Side Navigation ──────────────────────────────────────────────────────────
+
+function switchNavPanel(panelName) {
+  document.querySelectorAll('.nav-panel').forEach(function(p) { p.classList.remove('active'); });
+  var panel = document.getElementById('panel-' + panelName);
+  if (panel) panel.classList.add('active');
+  document.querySelectorAll('.side-nav-item').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-panel') === panelName);
+  });
+  closeSideNav();
+  localStorage.setItem('frog_lastNavPanel', panelName);
+  if (panelName === 'settings' && !_settingsApiLoaded) {
+    _loadSettingsApiSection();
+  }
+}
+
+function toggleSideNav() {
+  document.getElementById('side-nav').classList.toggle('open');
+  document.getElementById('side-nav-backdrop').classList.toggle('open');
+}
+
+function closeSideNav() {
+  document.getElementById('side-nav').classList.remove('open');
+  document.getElementById('side-nav-backdrop').classList.remove('open');
+}
+
+// ── Settings Panel ──────────────────────────────────────────────────────────
+
+let _settingsApiLoaded = false;
+
+async function _loadSettingsApiSection() {
+  var container = document.getElementById('settings-api-services-list');
+  if (!container) return;
+  _settingsApiLoaded = true;
+  try {
+    var creds = _apiCredentialsCache;
+    if (!creds) {
+      var r = await fetch('/api/api-credentials');
+      if (!r.ok) throw new Error('Failed to load');
+      creds = await r.json();
+      _apiCredentialsCache = creds;
+    }
+    _renderSettingsApiServices(container, creds);
+  } catch (e) {
+    container.innerHTML = '<span style="color:var(--red);">Failed to load API integrations</span>';
+  }
+}
+
+function _renderSettingsApiServices(container, services) {
+  container.innerHTML = services.map(function(svc) {
+    var meta = API_SERVICE_META[svc.service] || { label: svc.service, note: '' };
+    var fieldRows = (svc.fields || []).map(function(f) {
+      var fieldId = 'settings-api-field-' + escHtml(svc.service) + '-' + escHtml(f.name);
+      var val = escHtml(svc.credentials[f.name] || '');
+      var secureNote = f.sensitive ? ' <span style="color:var(--text-dim);">(stored securely)</span>' : '';
+      return '<label>' + escHtml(f.label) + secureNote + '</label>' +
+        '<input type="' + (f.sensitive ? 'password' : 'text') + '"' +
+        ' id="' + fieldId + '"' +
+        ' placeholder="' + escHtml(f.sensitive ? '••••••••' : '') + '"' +
+        ' value="' + val + '"' +
+        ' autocomplete="off" spellcheck="false"/>';
+    }).join('');
+
+    return '<div class="api-svc-card" id="settings-api-svc-' + escHtml(svc.service) + '">' +
+      '<div class="api-svc-header">' +
+        '<span class="api-svc-name">' + escHtml(meta.label) + '</span>' +
+        '<div class="api-svc-toggle">' +
+          '<label class="api-toggle-switch" title="' + (svc.enabled ? 'Enabled' : 'Disabled') + '">' +
+            '<input type="checkbox" id="settings-api-toggle-' + escHtml(svc.service) + '"' +
+              (svc.enabled ? ' checked' : '') +
+              ' onchange="onSettingsApiToggle(\'' + escHtml(svc.service) + '\', this.checked)"/>' +
+            '<span class="api-toggle-slider"></span>' +
+          '</label>' +
+          '<span id="settings-api-toggle-label-' + escHtml(svc.service) + '" style="color:' + (svc.enabled ? 'var(--green)' : 'var(--text-dim)') + ';">' +
+            (svc.enabled ? 'Enabled' : 'Disabled') +
+          '</span>' +
+        '</div>' +
+      '</div>' +
+      (meta.note ? '<div class="api-svc-note">' + meta.note + '</div>' : '') +
+      (fieldRows ? '<div class="api-svc-fields">' + fieldRows + '</div>' : '') +
+      '<div class="api-svc-save-row">' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"' +
+          ' onclick="saveSettingsApiCredential(\'' + escHtml(svc.service) + '\')">Save</button>' +
+        '<span id="settings-api-svc-msg-' + escHtml(svc.service) + '" class="api-svc-msg" style="display:none;"></span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function onSettingsApiToggle(service, enabled) {
+  var labelEl = document.getElementById('settings-api-toggle-label-' + service);
+  if (labelEl) {
+    labelEl.textContent = enabled ? 'Enabled' : 'Disabled';
+    labelEl.style.color = enabled ? 'var(--green)' : 'var(--text-dim)';
+  }
+}
+
+async function saveSettingsApiCredential(service) {
+  var msgEl = document.getElementById('settings-api-svc-msg-' + service);
+  var toggleEl = document.getElementById('settings-api-toggle-' + service);
+  var enabled = toggleEl ? toggleEl.checked : false;
+
+  var svcData = _apiCredentialsCache && _apiCredentialsCache.find(function(s) { return s.service === service; });
+  var credentials = {};
+  if (svcData && svcData.fields) {
+    for (var i = 0; i < svcData.fields.length; i++) {
+      var f = svcData.fields[i];
+      var input = document.getElementById('settings-api-field-' + service + '-' + f.name);
+      if (input) credentials[f.name] = input.value;
+    }
+  }
+
+  try {
+    var r = await fetch('/api/api-credentials/' + encodeURIComponent(service), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled, credentials: credentials }),
+    });
+    var d = await r.json();
+    if (!r.ok) {
+      _showApiMsg(msgEl, d.error || 'Save failed', 'err');
+      return;
+    }
+    if (_apiCredentialsCache) {
+      var idx = _apiCredentialsCache.findIndex(function(s) { return s.service === service; });
+      if (idx >= 0) _apiCredentialsCache[idx] = d;
+    }
+    if (d.fields && d.credentials) {
+      for (var j = 0; j < d.fields.length; j++) {
+        var fld = d.fields[j];
+        var inp = document.getElementById('settings-api-field-' + service + '-' + fld.name);
+        if (inp && fld.sensitive) inp.value = d.credentials[fld.name] || '';
+      }
+    }
+    _showApiMsg(msgEl, '✓ Saved', 'ok');
+    _updateApiSettingsBtn(_apiCredentialsCache);
+  } catch (e) {
+    _showApiMsg(msgEl, 'Network error', 'err');
+  }
+}
+
+function saveSeaSettings() {
+  // NOTE: localStorage is a temporary store until a backend endpoint is added.
+  // Sensitive values like the Copilot API token should migrate to server-side
+  // credential storage (like the existing API integrations) when available.
+  var keyfile = document.getElementById('settings-sa-keyfile').value;
+  var driveFolder = document.getElementById('settings-drive-folder').value;
+  var copilotToken = document.getElementById('settings-copilot-token').value;
+  localStorage.setItem('frog_sea_keyfile', keyfile);
+  localStorage.setItem('frog_sea_driveFolder', driveFolder);
+  localStorage.setItem('frog_sea_copilotToken', copilotToken);
+  var msgEl = document.getElementById('sea-settings-msg');
+  _showApiMsg(msgEl, '✓ Settings saved', 'ok');
+}
+
+function _loadSeaSettings() {
+  var kf = localStorage.getItem('frog_sea_keyfile');
+  var df = localStorage.getItem('frog_sea_driveFolder');
+  var ct = localStorage.getItem('frog_sea_copilotToken');
+  if (kf) document.getElementById('settings-sa-keyfile').value = kf;
+  if (df) document.getElementById('settings-drive-folder').value = df;
+  if (ct) document.getElementById('settings-copilot-token').value = ct;
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildExportTabsUI();
 requestAnimationFrame(equalizeExportTabHeights);
@@ -2343,6 +2723,13 @@ loadSchedules();
 _initApiSettingsBtn();
 _initUpdateCheck();
 _checkDriveAuthRedirect();
+
+// Restore last active nav panel and load saved SEO settings
+_loadSeaSettings();
+const _lastPanel = localStorage.getItem('frog_lastNavPanel');
+if (_lastPanel && document.getElementById('panel-' + _lastPanel)) {
+  switchNavPanel(_lastPanel);
+}
 
 /**
  * Check if we just returned from a Google Drive OAuth redirect.
