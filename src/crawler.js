@@ -191,6 +191,7 @@ async function runJob(jobId) {
       if (gdRow && gdRow.enabled === 1) {
         const creds = JSON.parse(gdRow.credentials || '{}');
         if (creds.client_id && creds.client_secret && creds.refresh_token) {
+          db.prepare("UPDATE jobs SET drive_upload_status='uploading' WHERE id=?").run(jobId);
           logStream.write('[INFO] Uploading to Google Drive (folder + ZIP)…\n');
           const result = await uploadToDrive({
             clientId:     creds.client_id,
@@ -202,6 +203,7 @@ async function runJob(jobId) {
             jobUrl:       job.url,
             rootFolderId: creds.root_folder_id || undefined,
           });
+          db.prepare("UPDATE jobs SET drive_upload_status='uploaded' WHERE id=?").run(jobId);
           logStream.write(
             `[INFO] Google Drive upload complete: zipFileId=${result.fileId} ` +
             `domain="${result.domain}" zipSize=${result.localSize} bytes`
@@ -219,6 +221,8 @@ async function runJob(jobId) {
       }
     } catch (driveErr) {
       // Drive upload is non-critical – log but don't fail the job.
+      db.prepare("UPDATE jobs SET drive_upload_status='upload_failed', drive_upload_error=? WHERE id=?")
+        .run(driveErr.message, jobId);
       logStream.write(`[WARN] Google Drive upload failed: ${driveErr.message}\n`);
       console.error(`[crawler] Google Drive upload failed for job ${jobId}:`, driveErr);
     }

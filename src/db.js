@@ -70,6 +70,15 @@ try {
   // Column already exists – safe to ignore.
 }
 
+// Idempotent migration: drive_upload_status + drive_upload_error for jobs (added later).
+for (const col of ['drive_upload_status TEXT', 'drive_upload_error TEXT']) {
+  try {
+    db.exec(`ALTER TABLE jobs ADD COLUMN ${col}`);
+  } catch {
+    // Column already exists – safe to ignore.
+  }
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS api_credentials (
     service     TEXT    PRIMARY KEY,
