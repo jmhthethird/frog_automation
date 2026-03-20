@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
+const { DRIVE_CATEGORIES } = require('./constants/driveCategories');
 
 /**
  * Build an OAuth2 client.
@@ -208,13 +209,13 @@ async function uploadFolder(drive, localDir, parentId, folderName) {
  * @param {string} [options.rootFolderId]  - Drive folder ID selected via the folder picker.
  *   When absent the category folder is placed directly in My Drive root.
  * @param {object} [options.driveCategory] - Category descriptor from DRIVE_CATEGORIES.
- *   Defaults to `{ folder: 'Crawls', useDomainSubfolder: true }`.
+ *   Defaults to `DRIVE_CATEGORIES.CRAWLS`.
  * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number, folderResult: { folderId: string, fileCount: number, totalSize: number } }>}
  */
 async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, outputDir, jobLabel, jobUrl, rootFolderId, driveCategory }) {
   const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
 
-  const category = driveCategory || { folder: 'Crawls', useDomainSubfolder: true };
+  const category = driveCategory || DRIVE_CATEGORIES.CRAWLS;
   const domain = domainFromUrl(jobUrl);
 
   // Ensure the category folder exists inside the user-selected root folder.
