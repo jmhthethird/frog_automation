@@ -51,12 +51,12 @@ test.describe('Page load', () => {
 
   test('shows the 🐸 emoji in the header', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('header .emoji')).toHaveText('🐸');
+    await expect(page.locator('#panel-frogtomation header .emoji')).toHaveText('🐸');
   });
 
   test('shows the app name in the header', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('header h1')).toHaveText('Frog Automation');
+    await expect(page.locator('#panel-frogtomation header h1')).toHaveText('Frog Automation');
   });
 
   test('health badge is visible and resolves from "checking…"', async ({ page }) => {
@@ -68,7 +68,37 @@ test.describe('Page load', () => {
   });
 });
 
-// ─── Submit form – static elements ────────────────────────────────────────────
+// ─── Side navigation ──────────────────────────────────────────────────────────
+test.describe('Side navigation', () => {
+  test.beforeEach(async ({ page }) => { await page.goto('/'); });
+
+  test('Frogtomation panel is active by default', async ({ page }) => {
+    await expect(page.locator('#panel-frogtomation')).toBeVisible();
+    await expect(page.locator('#panel-reports')).not.toBeVisible();
+    await expect(page.locator('#panel-settings')).not.toBeVisible();
+  });
+
+  test('switching to Reports shows only that panel', async ({ page }) => {
+    await page.getByRole('button', { name: /Reports/ }).click();
+    await expect(page.locator('#panel-reports')).toBeVisible();
+    await expect(page.locator('#panel-frogtomation')).not.toBeVisible();
+  });
+
+  test('switching back to Frogtomation restores it', async ({ page }) => {
+    await page.getByRole('button', { name: /Reports/ }).click();
+    await page.getByRole('button', { name: /Frogtomation/ }).click();
+    await expect(page.locator('#panel-frogtomation')).toBeVisible();
+    await expect(page.locator('#panel-reports')).not.toBeVisible();
+  });
+
+  test('persists last panel selection across page loads', async ({ page }) => {
+    await page.getByRole('button', { name: /Settings/ }).click();
+    await expect(page.locator('#panel-settings')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('#panel-settings')).toBeVisible();
+    await expect(page.locator('#panel-frogtomation')).not.toBeVisible();
+  });
+});
 test.describe('Submit form – static elements', () => {
   test.beforeEach(async ({ page }) => { await page.goto('/'); });
 
