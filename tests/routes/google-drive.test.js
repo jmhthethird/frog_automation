@@ -182,6 +182,15 @@ describe('GET /api/google-drive/migrate/status', () => {
   });
 });
 
+// ─── POST /api/google-drive/ensure-folders ──────────────────────────────────
+describe('POST /api/google-drive/ensure-folders', () => {
+  it('returns 401 when not authenticated', async () => {
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
+    const res = await ctx.request.post('/api/google-drive/ensure-folders').expect(401);
+    expect(res.body.error).toBeTruthy();
+  });
+});
+
 // ─── POST /api/google-drive/migrate ──────────────────────────────────────────
 describe('POST /api/google-drive/migrate', () => {
   it('returns 401 when not authenticated', async () => {

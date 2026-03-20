@@ -4,7 +4,7 @@ const crypto    = require('crypto');
 const express   = require('express');
 const rateLimit = require('express-rate-limit');
 const { db }    = require('../db');
-const { buildOAuth2Client, buildDriveClientFromOAuth, listSubfolders, migrateDriveFolders } = require('../google-drive');
+const { buildOAuth2Client, buildDriveClientFromOAuth, listSubfolders, migrateDriveFolders, ensureCategoryFolders } = require('../google-drive');
 const { DRIVE_CATEGORIES } = require('../constants/driveCategories');
 
 const router = express.Router();
@@ -319,7 +319,8 @@ router.get('/token', readLimit, async (req, res) => {
 
 // ─── POST /api/google-drive/root-folder ───────────────────────────────────────
 // Stores the root folder chosen via the Google Drive Picker.
-router.post('/root-folder', writeLimit, (req, res) => {
+// After saving, automatically creates the full category directory structure.
+router.post('/root-folder', writeLimit, async (req, res) => {
   const { folderId, folderName } = req.body || {};
 
   if (!folderId || typeof folderId !== 'string') {
@@ -330,6 +331,19 @@ router.post('/root-folder', writeLimit, (req, res) => {
     root_folder_id:   folderId.trim(),
     root_folder_name: (folderName || folderId).trim(),
   });
+
+  // Auto-create the full category directory structure in the background.
+  const creds = getCredentials();
+  if (creds.client_id && creds.client_secret && creds.refresh_token) {
+    ensureCategoryFolders({
+      clientId:     creds.client_id,
+      clientSecret: creds.client_secret,
+      refreshToken: creds.refresh_token,
+      rootFolderId: folderId.trim(),
+    }).catch(err => {
+      console.error('[google-drive] Failed to auto-create category folders:', err.message);
+    });
+  }
 
   res.json({ folderId: folderId.trim(), folderName: (folderName || folderId).trim() });
 });
@@ -379,6 +393,31 @@ router.get('/folders', readLimit, async (req, res) => {
     res.json({ folders: response.data.files || [] });
   } catch (err) {
     res.status(500).json({ error: `Failed to list folders: ${err.message}` });
+  }
+});
+
+// ─── POST /api/google-drive/ensure-folders ───────────────────────────────────
+// Creates all top-level category folders (Crawls, Reports, Automation,
+// Templates) under the root folder.  Safe to call at any time — only creates
+// folders that do not already exist.
+router.post('/ensure-folders', readLimit, async (req, res) => {
+  const creds = getCredentials();
+  if (!creds.client_id || !creds.client_secret || !creds.refresh_token) {
+    return res.status(401).json({
+      error: 'Google Drive is not authenticated – please connect via the API Settings panel',
+    });
+  }
+
+  try {
+    const result = await ensureCategoryFolders({
+      clientId:     creds.client_id,
+      clientSecret: creds.client_secret,
+      refreshToken: creds.refresh_token,
+      rootFolderId: creds.root_folder_id || undefined,
+    });
+    res.json({ folders: result });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to ensure folders: ${err.message}` });
   }
 });
 
