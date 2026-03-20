@@ -155,6 +155,10 @@ async function runJob(jobId) {
 
   if (!job) throw new Error(`Job ${jobId} not found`);
 
+  // Defence-in-depth: skip jobs that were stopped (e.g. unscheduled) while
+  // waiting in the queue.
+  if (job.status === 'stopped') return;
+
   db.prepare("UPDATE jobs SET status='running', started_at=datetime('now') WHERE id=?").run(jobId);
 
   const outputDir = job.output_dir;

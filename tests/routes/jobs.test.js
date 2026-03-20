@@ -519,6 +519,100 @@ describe('POST /api/jobs/:id/rerun', () => {
   });
 });
 
+// ─── GET /api/jobs/schedules/active ───────────────────────────────────────────
+describe('GET /api/jobs/schedules/active', () => {
+  it('returns a schedules array', async () => {
+    const res = await ctx.request.get('/api/jobs/schedules/active').expect(200);
+    expect(Array.isArray(res.body.schedules)).toBe(true);
+  });
+
+  it('includes active cron-scheduled jobs', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, cron_expression, next_run_at)
+      VALUES ('https://sched-active-test.example.com', 'Internal:All', 'scheduled', '0 6 * * *', '2099-01-01T00:00:00Z')
+    `).run();
+
+    const res = await ctx.request.get('/api/jobs/schedules/active').expect(200);
+    const sched = res.body.schedules.find(s => s.url === 'https://sched-active-test.example.com');
+    expect(sched).toBeDefined();
+    expect(sched.cron_expression).toBe('0 6 * * *');
+    expect(sched.status).toBe('scheduled');
+  });
+
+  it('excludes stopped jobs from the active list', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, cron_expression, next_run_at)
+      VALUES ('https://stopped-sched-test.example.com', 'Internal:All', 'stopped', '0 0 * * *', '2099-06-01T00:00:00Z')
+    `).run();
+
+    const res = await ctx.request.get('/api/jobs/schedules/active').expect(200);
+    const stopped = res.body.schedules.find(s => s.url === 'https://stopped-sched-test.example.com');
+    expect(stopped).toBeUndefined();
+  });
+});
+
+// ─── POST /api/jobs/:id/unschedule ────────────────────────────────────────────
+describe('POST /api/jobs/:id/unschedule', () => {
+  it('returns 404 for a non-existent job', async () => {
+    const res = await ctx.request.post('/api/jobs/99999/unschedule').expect(404);
+    expect(res.body.error).toBeTruthy();
+  });
+
+  it('returns 409 when the job has no cron schedule', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status)
+      VALUES ('https://no-cron-unsched.example.com', 'Internal:All', 'queued')
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${id}/unschedule`).expect(409);
+    expect(res.body.error).toMatch(/no cron/i);
+  });
+
+  it('stops the cron schedule and sets status to stopped', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, cron_expression, next_run_at)
+      VALUES ('https://unsched-test.example.com', 'Internal:All', 'scheduled', '0 * * * *', '2099-01-01T00:00:00Z')
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${id}/unschedule`).expect(200);
+    expect(res.body.status).toBe('stopped');
+    expect(res.body.cron_expression).toBeNull();
+    expect(res.body.next_run_at).toBeNull();
+  });
+
+  it('returns 409 when the job is currently running', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, cron_expression, next_run_at, started_at)
+      VALUES ('https://running-unsched.example.com', 'Internal:All', 'running', '0 * * * *', '2099-01-01T00:00:00Z', datetime('now'))
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${id}/unschedule`).expect(409);
+    expect(res.body.error).toMatch(/running/i);
+  });
+
+  it('stops a queued cron job (cron tick already fired)', async () => {
+    const { db } = getDb();
+    db.prepare(`
+      INSERT INTO jobs (url, export_tabs, status, cron_expression, next_run_at)
+      VALUES ('https://queued-unsched.example.com', 'Internal:All', 'queued', '0 * * * *', '2099-01-01T00:00:00Z')
+    `).run();
+    const id = db.prepare("SELECT id FROM jobs ORDER BY id DESC LIMIT 1").get().id;
+
+    const res = await ctx.request.post(`/api/jobs/${id}/unschedule`).expect(200);
+    expect(res.body.status).toBe('stopped');
+    expect(res.body.cron_expression).toBeNull();
+    expect(res.body.next_run_at).toBeNull();
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Access the db module that was loaded into the current app context. */

@@ -149,6 +149,23 @@
   .msg { font-size: 12px; padding: 6px 10px; border-radius: 4px; }
   .msg-ok  { background: #1a4a2e; color: var(--green); }
   .msg-err { background: #4a1a1a; color: var(--red); }
+  /* main tabs (Jobs / Schedules) */
+  .main-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .main-tab { padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--text-dim); border: none; background: none; border-bottom: 2px solid transparent; margin-bottom: -1px; user-select: none; transition: color .15s; }
+  .main-tab:hover { color: var(--text); }
+  .main-tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+  .main-tab-pane { display: none; }
+  .main-tab-pane.active { display: block; }
+  /* schedules tab */
+  .sched-empty { color: var(--text-dim); font-style: italic; padding: 16px 0; }
+  .sched-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 10px; }
+  .sched-card:last-child { margin-bottom: 0; }
+  .sched-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .sched-card-url { font-size: 13px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sched-card-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 12px; margin-bottom: 10px; }
+  .sched-card-meta label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; margin: 0; }
+  .sched-card-meta span { display: block; }
+  .sched-card-actions { display: flex; gap: 8px; }
   /* jobs table */
   .jobs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
   .jobs-header h2 { font-size: 16px; font-weight: 600; color: #ccc; }
@@ -409,14 +426,31 @@
       </details>
     </div>
 
-    <!-- Jobs list -->
+    <!-- Jobs / Schedules panel -->
     <div>
       <div class="card">
-        <div class="jobs-header">
-          <h2>Jobs</h2>
-          <button class="btn btn-secondary" onclick="loadJobs()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
+        <div class="main-tabs">
+          <button class="main-tab active" id="tab-jobs" onclick="switchMainTab('jobs')">Jobs</button>
+          <button class="main-tab" id="tab-schedules" onclick="switchMainTab('schedules')">Schedules<span id="sched-count-badge" class="sect-badge" style="margin-left:6px;display:none;">0</span></button>
         </div>
-        <div id="jobs-area"><em style="color:var(--text-dim);">Loading…</em></div>
+
+        <!-- Jobs pane -->
+        <div id="pane-jobs" class="main-tab-pane active">
+          <div class="jobs-header">
+            <h2>Jobs</h2>
+            <button class="btn btn-secondary" id="jobs-refresh-btn" onclick="loadJobs()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
+          </div>
+          <div id="jobs-area"><em style="color:var(--text-dim);">Loading…</em></div>
+        </div>
+
+        <!-- Schedules pane -->
+        <div id="pane-schedules" class="main-tab-pane">
+          <div class="jobs-header">
+            <h2>Active Schedules</h2>
+            <button class="btn btn-secondary" id="schedules-refresh-btn" onclick="loadSchedules()" style="font-size:12px;padding:5px 12px;">↻ Refresh</button>
+          </div>
+          <div id="schedules-area"><em style="color:var(--text-dim);">Loading…</em></div>
+        </div>
       </div>
 
       <!-- Job detail -->
@@ -823,11 +857,85 @@ async function submitJob() {
     document.getElementById('cron-expression').value = '';
     document.getElementById('cron-hint').style.display = 'none';
     loadJobs();
+    loadSchedules();
     setTimeout(() => showJobDetail(d.id), 500);
   } catch (e) {
     showMsg(msgEl, 'Network error', 'err');
   }
   btn.disabled = false;
+}
+
+// ── Main Tab Switching ────────────────────────────────────────────────────────
+function switchMainTab(tab) {
+  document.querySelectorAll('.main-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.id === `tab-${tab}`);
+  });
+  document.querySelectorAll('.main-tab-pane').forEach(pane => {
+    pane.classList.toggle('active', pane.id === `pane-${tab}`);
+  });
+  if (tab === 'schedules') loadSchedules();
+}
+
+// ── Schedules ─────────────────────────────────────────────────────────────────
+async function loadSchedules() {
+  const area = document.getElementById('schedules-area');
+  try {
+    const r = await fetch('/api/jobs/schedules/active');
+    const data = await r.json();
+    const { schedules } = data;
+
+    const badge = document.getElementById('sched-count-badge');
+    if (schedules.length > 0) {
+      badge.textContent = schedules.length;
+      badge.style.display = '';
+      badge.classList.add('active');
+    } else {
+      badge.style.display = 'none';
+      badge.classList.remove('active');
+    }
+
+    if (schedules.length === 0) {
+      area.innerHTML = '<div class="sched-empty">No active cron schedules. Create one by submitting a job with a cron expression.</div>';
+      return;
+    }
+
+    area.innerHTML = schedules.map(s => `
+      <div class="sched-card">
+        <div class="sched-card-header">
+          <span class="sched-card-url" title="${escHtml(s.url)}">${escHtml(s.url)}</span>
+          ${safeBadge(s.status)}
+        </div>
+        <div class="sched-card-meta">
+          <div><label>Job</label><span>#${s.id}</span></div>
+          <div><label>Cron</label><span style="font-family:monospace;">${escHtml(s.cron_expression)}</span></div>
+          <div><label>Next Run</label><span>${s.next_run_at ? fmtDate(s.next_run_at) : '—'}</span></div>
+          <div><label>Profile</label><span>${escHtml(s.profile_name || '—')}</span></div>
+        </div>
+        <div class="sched-card-actions">
+          <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;" onclick="showJobDetail(${s.id})">View Job</button>
+          <button class="btn btn-danger" style="font-size:11px;padding:4px 12px;" onclick="unscheduleJob(${s.id})">✕ Stop Schedule</button>
+        </div>
+      </div>
+    `).join('');
+  } catch {
+    area.innerHTML = '<span style="color:var(--red);">Failed to load schedules</span>';
+  }
+}
+
+async function unscheduleJob(id) {
+  if (!confirm(`Stop the cron schedule for job #${id}? This will prevent future runs.`)) return;
+  try {
+    const r = await fetch(`/api/jobs/${id}/unschedule`, { method: 'POST' });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      alert(`Could not stop schedule: ${body.error || r.status}`);
+      return;
+    }
+    loadSchedules();
+    loadJobs();
+  } catch {
+    alert('Network error while stopping schedule.');
+  }
 }
 
 // ── Jobs ──────────────────────────────────────────────────────────────────────
@@ -1412,6 +1520,12 @@ async function _initUpdateCheck() {
 function escHtml(s) {
   if (s == null) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+const _VALID_STATUSES = new Set(['queued','running','completed','failed','scheduled','stopped']);
+function safeBadge(status) {
+  const s = String(status || '');
+  const cls = _VALID_STATUSES.has(s) ? `badge-${s}` : '';
+  return `<span class="badge ${cls}">${escHtml(s)}</span>`;
 }
 function fmtDate(s) {
   if (!s) return '—';
@@ -2225,6 +2339,7 @@ checkHealth();
 loadProfiles();
 loadSpiderConfigs();
 loadJobs();
+loadSchedules();
 _initApiSettingsBtn();
 _initUpdateCheck();
 _checkDriveAuthRedirect();

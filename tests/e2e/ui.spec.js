@@ -206,7 +206,7 @@ test.describe('Job submission and jobs table', () => {
     await waitForJobRow(page);
 
     // Click refresh and ensure the table is still populated.
-    await page.locator('button', { hasText: '↻ Refresh' }).click();
+    await page.locator('#jobs-refresh-btn').click();
     await waitForJobRow(page);
   });
 });
