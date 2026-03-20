@@ -676,7 +676,8 @@
       <label for="settings-drive-folder">Google Drive Root Folder ID</label>
       <input type="text" id="settings-drive-folder" placeholder="e.g. 1aBcDeFgHiJkLmNoPqRsTuVwXyZ" autocomplete="off" spellcheck="false"/>
       <label for="settings-copilot-token">GitHub Copilot API Token</label>
-      <input type="password" id="settings-copilot-token" placeholder="••••••••" autocomplete="off"/>
+      <input type="password" id="settings-copilot-token" placeholder="••••••••" autocomplete="new-password"/>
+      <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Token is not persisted in the browser. Server-side credential storage will be added in a future update.</p>
       <div class="settings-save-row">
         <button class="btn btn-primary" style="font-size:12px;padding:6px 16px;" onclick="saveSeaSettings()">Save SEO Settings</button>
         <span id="sea-settings-msg" class="api-svc-msg" style="display:none;"></span>
@@ -2687,15 +2688,13 @@ async function saveSettingsApiCredential(service) {
 }
 
 function saveSeaSettings() {
-  // NOTE: localStorage is a temporary store until a backend endpoint is added.
-  // Sensitive values like the Copilot API token should migrate to server-side
-  // credential storage (like the existing API integrations) when available.
+  // Non-sensitive configuration can be stored in localStorage.
+  // The Copilot API token is NOT persisted client-side — it requires
+  // server-side encrypted credential storage (a future backend endpoint).
   var keyfile = document.getElementById('settings-sa-keyfile').value;
   var driveFolder = document.getElementById('settings-drive-folder').value;
-  var copilotToken = document.getElementById('settings-copilot-token').value;
   localStorage.setItem('frog_sea_keyfile', keyfile);
   localStorage.setItem('frog_sea_driveFolder', driveFolder);
-  localStorage.setItem('frog_sea_copilotToken', copilotToken);
   var msgEl = document.getElementById('sea-settings-msg');
   _showApiMsg(msgEl, '✓ Settings saved', 'ok');
 }
@@ -2703,10 +2702,8 @@ function saveSeaSettings() {
 function _loadSeaSettings() {
   var kf = localStorage.getItem('frog_sea_keyfile');
   var df = localStorage.getItem('frog_sea_driveFolder');
-  var ct = localStorage.getItem('frog_sea_copilotToken');
   if (kf) document.getElementById('settings-sa-keyfile').value = kf;
   if (df) document.getElementById('settings-drive-folder').value = df;
-  if (ct) document.getElementById('settings-copilot-token').value = ct;
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
