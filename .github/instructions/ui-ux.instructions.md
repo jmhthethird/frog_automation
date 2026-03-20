@@ -211,4 +211,4 @@ Before opening a PR for any frontend change, verify against the full quality bar
 - [ ] Layout is responsive — tested at ≤ 760 px
 - [ ] User-supplied content never injected as raw HTML (XSS safety)
 - [ ] API calls handle errors and re-enable UI controls in `finally`
-- [ ] Before/after screenshots attached in the PR (required by PR template)
+- [ ] Before/after screenshots committed to `docs/screenshots/PR-<NUMBER>-<description>/` and referenced in the PR (required by PR template)
