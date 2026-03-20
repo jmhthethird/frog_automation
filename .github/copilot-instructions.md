@@ -33,7 +33,7 @@ tests/              – Jest unit/route tests + Playwright e2e
 - **Error handling:** Route handlers use `try/catch` and return JSON `{ error: '…' }` with an appropriate HTTP status.
 - **Tests:** Unit/route tests use `tests/helpers/app-factory.js` to spin up an isolated Express app against a temp database. Do not call `startServer()` in tests.
 - **New dependencies:** Check for security advisories before adding any new npm package.
-- **PR checklist:** Every PR that touches the UI must include before/after screenshots (see `.github/pull_request_template.md`).
+- **PR checklist:** Every PR that touches the UI must include before/after screenshots committed to a PR-specific directory `docs/screenshots/PR-<NUMBER>-<description>/` (see `docs/screenshots/README.md` and `.github/pull_request_template.md`).
 
 ## Frontend & UI/UX Design
 
