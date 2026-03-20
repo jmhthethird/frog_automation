@@ -46,11 +46,12 @@ All core colours, surfaces, and the shared border-radius live in `:root`. **When
 ## 3. Layout System
 
 ```
-main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+main { padding: 24px 16px; }
 .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
 @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
 ```
 
+- The `main` element has **no `max-width`** — content fills the full available width so that Jobs and detail panels expand with the viewport.
 - The left column (`1fr`) holds the job-submission form and library cards.
 - The right column (`1.6fr`) holds the jobs list and detail panel.
 - **Responsive rule:** every new layout region must collapse gracefully at ≤ 760 px. Use `grid-template-columns: repeat(auto-fill, minmax(…, 1fr))` for multi-column sub-grids that should reflow on small screens.

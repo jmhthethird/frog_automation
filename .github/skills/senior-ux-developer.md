@@ -23,16 +23,17 @@ The application is organised into four top-level sections via side navigation:
 ### 2. Navigation & Wayfinding
 
 **Side navigation design decisions:**
-- Fixed 220px sidebar provides persistent navigation without scrolling.
+- 220px sidebar is collapsible at all viewport sizes via the hamburger toggle (`#side-nav-toggle`), which is always visible.
+- **Desktop** (> 760px): Toggling adds `body.nav-collapsed`, sliding the sidebar off-screen and expanding content to fill the full width. Collapsed state is persisted in `localStorage` (`frog_sideNavCollapsed`).
+- **Mobile** (≤ 760px): Sidebar starts hidden; toggle opens it as an overlay with a backdrop.
 - Active state uses the brand green (`--green`) with a left-border accent — consistent with the seo-automation Sidebar pattern.
 - "Soon" badges on Reports and Automation communicate feature maturity without hiding the sections. Users can explore and understand the roadmap.
-- Mobile (≤ 760px): Sidebar collapses off-screen with a hamburger toggle. This preserves full content width on small screens.
 - Panel state persists in `localStorage` (`frog_lastNavPanel`) so returning users land where they left off.
 
 **Future navigation considerations:**
 - As Report and Automation features mature, consider sub-navigation within those panels (e.g. tabs for different report types).
 - Consider breadcrumb-style context when drilling into specific reports or automation workflows.
-- The side nav should eventually support collapsing to an icon-only rail (56px) for power users who want maximum content width.
+- The side nav currently supports full collapse/expand. A future enhancement could add an icon-only rail mode (56px) as an intermediate state for power users.
 
 ### 3. User Workflow Mapping
 
@@ -73,7 +74,7 @@ The application is organised into four top-level sections via side navigation:
 **Keyboard navigation:**
 - All side nav items are `<button>` elements — fully keyboard-accessible.
 - Modals trap focus within the dialog (cron modal, drive folder browser).
-- Mobile hamburger toggle is keyboard-reachable.
+- Hamburger toggle is always visible and keyboard-reachable at all viewport sizes.
 - Tab order flows naturally: side nav → panel content → modals (when open).
 
 ### 5. Visual Hierarchy

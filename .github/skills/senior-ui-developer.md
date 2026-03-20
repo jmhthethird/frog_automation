@@ -35,10 +35,10 @@ The app uses a three-layer layout:
 ```
 body
   └── .app-layout (flex, min-height: 100vh)
-       ├── .side-nav (220px, fixed, left)
+       ├── .side-nav (220px, fixed, left, collapsible)
        │    ├── .side-nav-brand (logo + title)
        │    └── .side-nav-items (nav buttons)
-       └── .app-content (flex: 1, margin-left: 220px)
+       └── .app-content (flex: 1, margin-left: 220px, transitions to 0 when collapsed)
             ├── #panel-frogtomation.nav-panel (original Frog Automation UI)
             ├── #panel-reports.nav-panel
             ├── #panel-automation.nav-panel
@@ -47,11 +47,11 @@ body
 
 **Panel switching**: Toggling the `.active` class on `.nav-panel` elements. Only one panel is visible at a time. Panel state is persisted in `localStorage` under `frog_lastNavPanel`.
 
-**Responsive breakpoint** (≤ 760px):
-- Side nav slides off-screen (`transform: translateX(-100%)`)
-- Hamburger toggle button appears (`#side-nav-toggle`)
-- Backdrop overlay (`#side-nav-backdrop`) closes nav on tap
-- `.app-content` drops `margin-left` to 0
+**Collapsible side nav** (all viewport sizes):
+- Hamburger toggle button (`#side-nav-toggle`) is **always visible** — positioned just outside the side nav (left: 224px) when expanded, or at (left: 10px) when collapsed
+- **Desktop** (> 760px): Clicking the toggle adds/removes `body.nav-collapsed` which slides the side nav off-screen and sets `.app-content { margin-left: 0 }`, letting content fill the full width. Collapsed state is persisted in `localStorage` under `frog_sideNavCollapsed`.
+- **Mobile** (≤ 760px): Side nav is hidden by default. Toggle opens it as an overlay with a backdrop (`#side-nav-backdrop`). Clicking the backdrop or a nav item closes it.
+- Both transitions use `.25s ease` for smooth animation
 
 ### 3. Component Patterns
 
