@@ -34,6 +34,7 @@ app.use('/api/health', require('./src/routes/health'));
 app.use('/api/update', require('./src/routes/update'));
 app.use('/api/api-credentials', require('./src/routes/api-credentials'));
 app.use('/api/google-drive', require('./src/routes/google-drive'));
+app.use('/api/notifications', require('./src/routes/notifications'));
 
 // ─── startServer ─────────────────────────────────────────────────────────────
 /**
