@@ -243,4 +243,103 @@ async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, o
   return { fileId, domain, folderId: targetFolderId, localSize, driveSize, folderResult };
 }
 
-module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl };
+/**
+ * List all immediate subfolders inside a parent folder on Google Drive.
+ *
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @param {string|null} parentId - Parent folder ID, or null for Drive root.
+ * @returns {Promise<Array<{ id: string, name: string }>>}
+ */
+async function listSubfolders(drive, parentId) {
+  const inParent = parentId ? `'${parentId}' in parents` : "'root' in parents";
+  const q = `mimeType='application/vnd.google-apps.folder' and ${inParent} and trashed=false`;
+
+  const folders = [];
+  let pageToken;
+  do {
+    const resp = await drive.files.list({
+      q,
+      fields: 'nextPageToken, files(id, name)',
+      spaces: 'drive',
+      pageSize: 200,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    folders.push(...(resp.data.files || []));
+    pageToken = resp.data.nextPageToken;
+  } while (pageToken);
+
+  return folders;
+}
+
+/**
+ * Migrate existing Google Drive folder structure to the new category-based layout.
+ *
+ * Before this feature, crawl artefacts were placed directly under the root
+ * folder organised by domain:
+ *
+ *   [Root Folder]
+ *     └── <domain>/          ← old layout
+ *
+ * The new layout adds a category tier:
+ *
+ *   [Root Folder]
+ *     └── Crawls/
+ *           └── <domain>/    ← new layout
+ *
+ * This function:
+ * 1. Lists all subfolders in the root folder.
+ * 2. Filters out any that are already known category folders (Crawls, Reports,
+ *    Automation, Templates).
+ * 3. Ensures the "Crawls" category folder exists.
+ * 4. Moves every remaining folder into "Crawls" via the Drive API
+ *    `files.update` (addParents / removeParents).
+ *
+ * The operation is idempotent: running it again after a successful migration
+ * is a no-op because the domain folders are already inside "Crawls".
+ *
+ * @param {object} options
+ * @param {string}  options.clientId      - OAuth2 Client ID.
+ * @param {string}  options.clientSecret  - OAuth2 Client Secret.
+ * @param {string}  options.refreshToken  - OAuth2 refresh token.
+ * @param {string} [options.rootFolderId] - Root folder ID (null → Drive root).
+ * @returns {Promise<{ migrated: number, skipped: string[], crawlsFolderId: string }>}
+ */
+async function migrateDriveFolders({ clientId, clientSecret, refreshToken, rootFolderId }) {
+  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
+
+  const categoryNames = new Set(
+    Object.values(DRIVE_CATEGORIES).map(c => c.folder)
+  );
+
+  // List every immediate subfolder in the root folder.
+  const rootChildren = await listSubfolders(drive, rootFolderId || null);
+
+  // Separate category folders from legacy domain folders.
+  const skipped = [];
+  const toMigrate = [];
+  for (const child of rootChildren) {
+    if (categoryNames.has(child.name)) {
+      skipped.push(child.name);
+    } else {
+      toMigrate.push(child);
+    }
+  }
+
+  // Ensure the "Crawls" folder exists.
+  const crawlsFolderId = await ensureFolder(drive, DRIVE_CATEGORIES.CRAWLS.folder, rootFolderId || null);
+
+  // Move each legacy domain folder into the Crawls folder.
+  for (const folder of toMigrate) {
+    const previousParent = rootFolderId || 'root';
+    await drive.files.update({
+      fileId: folder.id,
+      addParents: crawlsFolderId,
+      removeParents: previousParent,
+      fields: 'id, parents',
+    });
+  }
+
+  return { migrated: toMigrate.length, skipped, crawlsFolderId };
+}
+
+module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl, listSubfolders, migrateDriveFolders };

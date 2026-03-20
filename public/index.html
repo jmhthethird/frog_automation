@@ -2121,6 +2121,14 @@ function _renderApiCardsHtml(services, idPrefix, opts) {
             '<button id="drive-pick-btn" class="btn btn-secondary" style="font-size:11px;padding:4px 12px;" onclick="openDriveFolderBrowser()" disabled>Select Root Folder</button>' +
             '<span id="drive-pick-msg" style="font-size:11px;color:var(--text-dim);"></span>' +
           '</div>' +
+        '</div>' +
+        '<div id="drive-migrate-section" class="drive-subsection" style="display:none;">' +
+          '<div class="drive-subsection-label">Folder Migration</div>' +
+          '<div id="drive-migrate-info" style="font-size:12px;color:var(--text-dim);margin-bottom:8px;"></div>' +
+          '<div class="drive-btn-row">' +
+            '<button id="drive-migrate-btn" class="btn btn-secondary" style="font-size:11px;padding:4px 12px;" onclick="migrateDriveFolders()">Migrate Folders</button>' +
+            '<span id="drive-migrate-msg" style="font-size:11px;"></span>' +
+          '</div>' +
         '</div>';
     }
 
@@ -2322,6 +2330,62 @@ function _applyDriveStatus(status) {
     _pendingDriveAuthMsg = null;
     _showDriveMessage(text, type);
     setTimeout(_clearDriveMessage, timeout);
+  }
+
+  // Check if migration is needed when connected.
+  if (status.connected) {
+    _checkDriveMigration();
+  }
+}
+
+/** Check whether legacy domain folders need to be migrated. */
+async function _checkDriveMigration() {
+  const section = document.getElementById('drive-migrate-section');
+  if (!section) return;
+  try {
+    const r = await fetch('/api/google-drive/migrate/status');
+    if (!r.ok) { section.style.display = 'none'; return; }
+    const data = await r.json();
+    if (data.needed) {
+      const infoEl = document.getElementById('drive-migrate-info');
+      if (infoEl) {
+        infoEl.textContent = data.legacyCount + ' folder' +
+          (data.legacyCount === 1 ? '' : 's') +
+          ' found outside the new category structure' +
+          ' (' + data.legacyNames.slice(0, 5).join(', ') +
+          (data.legacyCount > 5 ? ', …' : '') + ').' +
+          ' Migrate them into the "Crawls" folder?';
+      }
+      section.style.display = '';
+    } else {
+      section.style.display = 'none';
+    }
+  } catch { section.style.display = 'none'; }
+}
+
+/** Run the folder migration and update the UI. */
+async function migrateDriveFolders() {
+  const btn = document.getElementById('drive-migrate-btn');
+  const msg = document.getElementById('drive-migrate-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Migrating…'; }
+  if (msg) { msg.textContent = ''; msg.style.color = ''; }
+  try {
+    const r = await fetch('/api/google-drive/migrate', { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Migration failed');
+    if (msg) {
+      msg.textContent = '✓ Moved ' + data.migrated + ' folder' + (data.migrated === 1 ? '' : 's') + ' into Crawls';
+      msg.style.color = 'var(--green)';
+    }
+    // Re-check migration status (should now show section as hidden).
+    setTimeout(_checkDriveMigration, 1500);
+  } catch (err) {
+    if (msg) {
+      msg.textContent = '✕ ' + err.message;
+      msg.style.color = 'var(--red)';
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Migrate Folders'; }
   }
 }
 

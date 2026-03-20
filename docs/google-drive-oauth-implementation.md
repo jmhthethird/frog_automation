@@ -45,6 +45,8 @@ Frontend: Update connection status UI
 | `/api/google-drive/folders` | GET | List folders via Drive API (replaces Picker) |
 | `/api/google-drive/root-folder` | POST | Store selected folder from folder browser |
 | `/api/google-drive/auth` | DELETE | Disconnect (clear tokens, preserve credentials) |
+| `/api/google-drive/migrate/status` | GET | Check if legacy domain folders need migration |
+| `/api/google-drive/migrate` | POST | Move legacy domain folders into the Crawls category folder |
 
 #### Frontend Functions (`public/index.html`)
 
@@ -61,6 +63,8 @@ Frontend: Update connection status UI
 | `closeDriveFolderBrowser()` | Close folder browser modal |
 | `_loadDriveFolders(parentId)` | Load folders from Drive API |
 | `confirmDriveFolder()` | Save selected folder to server |
+| `_checkDriveMigration()` | Check whether legacy folders need migration |
+| `migrateDriveFolders()` | Run the folder migration and update the UI |
 
 ## Dual-Mode OAuth Implementation
 
@@ -375,6 +379,23 @@ folder.
 When adding a new feature that uploads to Google Drive, import the appropriate
 constant and pass it as `driveCategory` — no changes to the upload logic
 itself are required.
+
+### Folder Migration (Legacy → Category Structure)
+
+Existing users who ran crawls before the category-based layout was introduced
+will have domain folders placed directly under their root folder.  The
+application detects this automatically:
+
+1. When the Google Drive card loads and the integration is connected,
+   `_checkDriveMigration()` calls `GET /api/google-drive/migrate/status`.
+2. If domain folders are found at the root level (i.e. folders whose names
+   do not match any known category: Crawls, Reports, Automation, Templates),
+   a "Folder Migration" subsection appears in the Drive card.
+3. Clicking **Migrate Folders** calls `POST /api/google-drive/migrate`, which
+   moves every legacy domain folder into the `Crawls` category folder using
+   the Drive API `files.update` with `addParents` / `removeParents`.
+4. The operation is idempotent — running it again after a successful migration
+   is a no-op.
 
 ## Troubleshooting
 

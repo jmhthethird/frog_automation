@@ -4,7 +4,8 @@ const crypto    = require('crypto');
 const express   = require('express');
 const rateLimit = require('express-rate-limit');
 const { db }    = require('../db');
-const { buildOAuth2Client, buildDriveClientFromOAuth } = require('../google-drive');
+const { buildOAuth2Client, buildDriveClientFromOAuth, listSubfolders, migrateDriveFolders } = require('../google-drive');
+const { DRIVE_CATEGORIES } = require('../constants/driveCategories');
 
 const router = express.Router();
 
@@ -378,6 +379,63 @@ router.get('/folders', readLimit, async (req, res) => {
     res.json({ folders: response.data.files || [] });
   } catch (err) {
     res.status(500).json({ error: `Failed to list folders: ${err.message}` });
+  }
+});
+
+// ─── GET /api/google-drive/migrate/status ────────────────────────────────────
+// Checks whether the root folder contains legacy domain folders that should be
+// migrated into the new category-based structure.
+router.get('/migrate/status', readLimit, async (req, res) => {
+  const creds = getCredentials();
+  if (!creds.client_id || !creds.client_secret || !creds.refresh_token) {
+    return res.status(401).json({
+      error: 'Google Drive is not authenticated – please connect via the API Settings panel',
+    });
+  }
+
+  const rootFolderId = creds.root_folder_id || null;
+
+  try {
+    const drive = buildDriveClientFromOAuth(creds.client_id, creds.client_secret, creds.refresh_token);
+
+    const categoryNames = new Set(
+      Object.values(DRIVE_CATEGORIES).map(c => c.folder)
+    );
+
+    const rootChildren = await listSubfolders(drive, rootFolderId);
+    const legacy = rootChildren.filter(f => !categoryNames.has(f.name));
+
+    res.json({
+      needed:       legacy.length > 0,
+      legacyCount:  legacy.length,
+      legacyNames:  legacy.map(f => f.name),
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to check migration status: ${err.message}` });
+  }
+});
+
+// ─── POST /api/google-drive/migrate ──────────────────────────────────────────
+// Moves legacy domain folders from the root folder into the "Crawls" category
+// folder.  Idempotent: safe to call multiple times.
+router.post('/migrate', writeLimit, async (req, res) => {
+  const creds = getCredentials();
+  if (!creds.client_id || !creds.client_secret || !creds.refresh_token) {
+    return res.status(401).json({
+      error: 'Google Drive is not authenticated – please connect via the API Settings panel',
+    });
+  }
+
+  try {
+    const result = await migrateDriveFolders({
+      clientId:     creds.client_id,
+      clientSecret: creds.client_secret,
+      refreshToken: creds.refresh_token,
+      rootFolderId: creds.root_folder_id || undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: `Migration failed: ${err.message}` });
   }
 });
 

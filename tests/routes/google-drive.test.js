@@ -172,3 +172,21 @@ describe('GET /api/google-drive/token', () => {
     expect(res.body.error).toBeTruthy();
   });
 });
+
+// ─── GET /api/google-drive/migrate/status ────────────────────────────────────
+describe('GET /api/google-drive/migrate/status', () => {
+  it('returns 401 when not authenticated', async () => {
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
+    const res = await ctx.request.get('/api/google-drive/migrate/status').expect(401);
+    expect(res.body.error).toBeTruthy();
+  });
+});
+
+// ─── POST /api/google-drive/migrate ──────────────────────────────────────────
+describe('POST /api/google-drive/migrate', () => {
+  it('returns 401 when not authenticated', async () => {
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
+    const res = await ctx.request.post('/api/google-drive/migrate').expect(401);
+    expect(res.body.error).toBeTruthy();
+  });
+});
