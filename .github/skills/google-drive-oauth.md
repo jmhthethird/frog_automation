@@ -116,6 +116,7 @@ When implementing Google Drive integration:
 - [ ] Preserve programmatic fields on credential updates
 - [ ] Handle token refresh errors gracefully
 - [ ] Validate folder IDs against injection (alphanumeric + underscore/hyphen only)
+- [ ] Pass a `DRIVE_CATEGORIES.*` constant as `driveCategory` to `uploadToDrive()`
 
 ## Common Pitfalls to Avoid
 
@@ -125,6 +126,32 @@ When implementing Google Drive integration:
 4. **Single OAuth mode** - Always support popup AND redirect
 5. **Missing CSRF protection** - Always use one-time state tokens
 6. **Client-side token storage** - Store refresh_token server-side only
+7. **Uploading without a driveCategory** - Always pass a `DRIVE_CATEGORIES.*` constant so files are placed in the correct top-level folder
+
+## Drive Directory Structure
+
+All uploads must use the category-based directory structure.  Pass one of the
+constants from `src/constants/driveCategories.js` as the `driveCategory` option
+to `uploadToDrive()`.
+
+```
+[Root Folder]
+  ├── Crawls/          ← DRIVE_CATEGORIES.CRAWLS     (useDomainSubfolder: true)
+  │     └── <domain>/
+  ├── Reports/         ← DRIVE_CATEGORIES.REPORTS     (useDomainSubfolder: true)
+  │     └── <domain>/
+  ├── Automation/      ← DRIVE_CATEGORIES.AUTOMATION  (useDomainSubfolder: true)
+  │     └── <domain>/
+  └── Templates/       ← DRIVE_CATEGORIES.TEMPLATES   (useDomainSubfolder: false)
+```
+
+Each constant is a frozen object `{ folder, useDomainSubfolder }`.  When
+`useDomainSubfolder` is `true`, `uploadToDrive()` creates a per-domain
+subfolder inside the category folder.  When `false`, files are placed directly
+in the category folder.
+
+To add a new category, define a new key in `DRIVE_CATEGORIES` and pass it to
+`uploadToDrive()` — no changes to the upload logic are required.
 
 ## Testing Requirements
 

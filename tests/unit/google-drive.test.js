@@ -219,7 +219,7 @@ describe('uploadToDrive()', () => {
     expect(result.driveSize).toBe(localSize);
   });
 
-  it('uses the rootFolderId when looking up the domain subfolder', async () => {
+  it('uses the rootFolderId when looking up the category subfolder', async () => {
     setupMocks({ folderId: 'subfolder-in-root' });
     await uploadToDrive({
       clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
@@ -227,8 +227,14 @@ describe('uploadToDrive()', () => {
       jobUrl:   'https://example.com',
       rootFolderId: 'root-folder-id',
     });
-    const listCall = _mockDrive.files.list.mock.calls[0][0];
-    expect(listCall.q).toContain("'root-folder-id' in parents");
+    // First list call is for the category folder inside the root folder.
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("'root-folder-id' in parents");
+    expect(categoryCall.q).toContain("name='Crawls'");
+    // Second list call is for the domain folder inside the category folder.
+    const domainCall = _mockDrive.files.list.mock.calls[1][0];
+    expect(domainCall.q).toContain("'subfolder-in-root' in parents");
+    expect(domainCall.q).toContain("name='example.com'");
   });
 
   it('throws a validation error when Drive size does not match local size', async () => {
@@ -244,15 +250,65 @@ describe('uploadToDrive()', () => {
     })).rejects.toThrow(/validation failed/);
   });
 
-  it('uploads with rootFolderId null when not provided (places domain folder at Drive root)', async () => {
+  it('uploads with rootFolderId null when not provided (places category folder at Drive root)', async () => {
     setupMocks();
     await uploadToDrive({
       clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
       filePath: tmpFile,
       jobUrl:   'https://example.com',
     });
-    const listCall = _mockDrive.files.list.mock.calls[0][0];
-    expect(listCall.q).toContain("'root' in parents");
+    // First list call looks up the category folder in the Drive root.
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("'root' in parents");
+    expect(categoryCall.q).toContain("name='Crawls'");
+  });
+
+  it('defaults driveCategory to "Crawls" when not specified', async () => {
+    setupMocks();
+    await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+    });
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("name='Crawls'");
+  });
+
+  it('uses a custom driveCategory when provided', async () => {
+    setupMocks();
+    await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+      driveCategory: { folder: 'Reports', useDomainSubfolder: true },
+    });
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("name='Reports'");
+  });
+
+  it('skips domain subfolder when useDomainSubfolder is false', async () => {
+    // Use mockResolvedValueOnce to return distinct IDs for the category folder lookup.
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [{ id: 'templates-folder-id' }] } });
+    const localSize = fs.statSync(tmpFile).size;
+    _mockDrive.files.create.mockResolvedValueOnce({
+      data: { id: 'file-id-tmpl', size: String(localSize) },
+    });
+
+    const result = await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+      driveCategory: { folder: 'Templates', useDomainSubfolder: false },
+    });
+
+    // Only one files.list call for the category folder – no domain folder lookup.
+    expect(_mockDrive.files.list).toHaveBeenCalledTimes(1);
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("name='Templates'");
+
+    // File is uploaded directly into the category folder.
+    expect(result.folderId).toBe('templates-folder-id');
+    expect(result.fileId).toBe('file-id-tmpl');
   });
 
   it('uses jobLabel for the ZIP filename when provided', async () => {

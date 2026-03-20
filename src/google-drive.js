@@ -173,51 +173,73 @@ async function uploadFolder(drive, localDir, parentId, folderName) {
 }
 
 /**
- * Upload a crawl output to Google Drive (both ZIP and folder).
+ * Upload output to Google Drive (both ZIP and folder).
  *
  * Folder structure created/verified on Drive:
  *
  *   My Drive
  *     └── [user-selected root folder]   ← rootFolderId from the folder picker
- *           └── <domain>/               ← derived from jobUrl; created if absent
- *                 ├── <jobLabel>/       ← unzipped folder with all crawl files
- *                 └── <jobLabel>.zip    ← the ZIP archive
+ *           └── <category>/             ← e.g. "Crawls", "Reports", "Automation", "Templates"
+ *                 └── <domain>/         ← derived from jobUrl (omitted when useDomainSubfolder is false)
+ *                       ├── <jobLabel>/       ← unzipped folder with all files
+ *                       └── <jobLabel>.zip    ← the ZIP archive
+ *
+ * The `driveCategory` parameter determines the top-level subfolder under the
+ * root folder.  Pass one of the constants from `src/constants/driveCategories.js`
+ * (e.g. `DRIVE_CATEGORIES.CRAWLS`, `.REPORTS`, `.AUTOMATION`, `.TEMPLATES`).
+ *
+ * Each category constant is an object `{ folder, useDomainSubfolder }`.
+ * When `useDomainSubfolder` is true (Crawls, Reports, Automation) a
+ * per-domain folder is created inside the category folder.  When false
+ * (Templates) files are placed directly inside the category folder.
  *
  * After uploading each file, a post-upload size validation is performed: the
  * file size reported by Drive is compared against the local file size.
  * A mismatch throws an error.
  *
  * @param {object} options
- * @param {string}  options.clientId      - OAuth2 Client ID.
- * @param {string}  options.clientSecret  - OAuth2 Client Secret.
- * @param {string}  options.refreshToken  - Stored OAuth2 refresh token.
- * @param {string}  options.filePath      - Absolute path to the local ZIP file.
- * @param {string}  options.outputDir     - Absolute path to the local output directory (unzipped).
- * @param {string}  options.jobLabel      - The job label (e.g., "google_2026-03-11_06-23PM-job25").
- * @param {string}  options.jobUrl        - Crawled URL (used to derive the domain folder name).
- * @param {string} [options.rootFolderId] - Drive folder ID selected via the folder picker.
- *   When absent the domain folder is placed directly in My Drive root.
+ * @param {string}  options.clientId       - OAuth2 Client ID.
+ * @param {string}  options.clientSecret   - OAuth2 Client Secret.
+ * @param {string}  options.refreshToken   - Stored OAuth2 refresh token.
+ * @param {string}  options.filePath       - Absolute path to the local ZIP file.
+ * @param {string}  options.outputDir      - Absolute path to the local output directory (unzipped).
+ * @param {string}  options.jobLabel       - The job label (e.g., "google_2026-03-11_06-23PM-job25").
+ * @param {string}  options.jobUrl         - Crawled URL (used to derive the domain folder name).
+ * @param {string} [options.rootFolderId]  - Drive folder ID selected via the folder picker.
+ *   When absent the category folder is placed directly in My Drive root.
+ * @param {object} [options.driveCategory] - Category descriptor from DRIVE_CATEGORIES.
+ *   Defaults to `{ folder: 'Crawls', useDomainSubfolder: true }`.
  * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number, folderResult: { folderId: string, fileCount: number, totalSize: number } }>}
  */
-async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, outputDir, jobLabel, jobUrl, rootFolderId }) {
+async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, outputDir, jobLabel, jobUrl, rootFolderId, driveCategory }) {
   const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
 
+  const category = driveCategory || { folder: 'Crawls', useDomainSubfolder: true };
   const domain = domainFromUrl(jobUrl);
 
-  // Ensure the per-domain subfolder exists inside the user-selected root folder.
-  const domainFolderId = await ensureFolder(drive, domain, rootFolderId || null);
+  // Ensure the category folder exists inside the user-selected root folder.
+  const categoryFolderId = await ensureFolder(drive, category.folder, rootFolderId || null);
+
+  // When the category uses per-domain subfolders, create one; otherwise
+  // upload directly into the category folder.
+  let targetFolderId;
+  if (category.useDomainSubfolder) {
+    targetFolderId = await ensureFolder(drive, domain, categoryFolderId);
+  } else {
+    targetFolderId = categoryFolderId;
+  }
 
   // Upload the unzipped folder first
   let folderResult = null;
   if (outputDir && fs.existsSync(outputDir)) {
-    folderResult = await uploadFolder(drive, outputDir, domainFolderId, jobLabel);
+    folderResult = await uploadFolder(drive, outputDir, targetFolderId, jobLabel);
   }
 
   // Upload the ZIP file with the proper job label name
   const zipFileName = jobLabel ? `${jobLabel}.zip` : path.basename(filePath);
-  const { fileId, localSize, driveSize } = await uploadFile(drive, filePath, domainFolderId, zipFileName);
+  const { fileId, localSize, driveSize } = await uploadFile(drive, filePath, targetFolderId, zipFileName);
 
-  return { fileId, domain, folderId: domainFolderId, localSize, driveSize, folderResult };
+  return { fileId, domain, folderId: targetFolderId, localSize, driveSize, folderResult };
 }
 
 module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl };

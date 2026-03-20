@@ -336,6 +336,46 @@ The callback page provides professional feedback:
 6. Authorize in Google consent screen
 7. Select root folder for uploads using the folder browser
 
+### Google Drive Directory Structure
+
+When files are uploaded to Google Drive the application organises them under
+the user-selected root folder using the following hierarchy:
+
+```
+[Root Folder]                   ← selected via the folder browser
+  ├── Crawls/                   ← Frogtomation crawl artefacts
+  │     └── <domain>/           ← e.g. "example.com"
+  │           ├── <jobLabel>/   ← unzipped crawl files
+  │           └── <jobLabel>.zip
+  ├── Reports/                  ← output from the Reports panel
+  │     └── <domain>/
+  │           └── <report files>
+  ├── Automation/               ← output from the Automation panel
+  │     └── <domain>/
+  │           └── <automation files>
+  └── Templates/                ← shared templates (no domain subfolder)
+        └── <template files>
+```
+
+The top-level category folder is determined by the `driveCategory` option
+passed to `uploadToDrive()`.  Categories are defined in
+`src/constants/driveCategories.js` as frozen objects with two properties:
+
+| Constant | `folder` | `useDomainSubfolder` |
+|---|---|---|
+| `DRIVE_CATEGORIES.CRAWLS` | `Crawls` | `true` |
+| `DRIVE_CATEGORIES.REPORTS` | `Reports` | `true` |
+| `DRIVE_CATEGORIES.AUTOMATION` | `Automation` | `true` |
+| `DRIVE_CATEGORIES.TEMPLATES` | `Templates` | `false` |
+
+When `useDomainSubfolder` is `true`, a `<domain>` subfolder is created inside
+the category folder.  When `false`, files are placed directly in the category
+folder.
+
+When adding a new feature that uploads to Google Drive, import the appropriate
+constant and pass it as `driveCategory` — no changes to the upload logic
+itself are required.
+
 ## Troubleshooting
 
 ### "Popup blocked" Error

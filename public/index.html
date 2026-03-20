@@ -2050,7 +2050,7 @@ const API_SERVICE_META = {
   },
   google_drive: {
     label: '☁ Google Drive Upload',
-    note: 'Automatically uploads each completed crawl ZIP to Google Drive, organised by domain:<br><code>Drive / [Root Folder] / &lt;domain&gt; / &lt;crawl.zip&gt;</code><br><br>' +
+    note: 'Automatically uploads completed artefacts to Google Drive, organised by category and domain:<br><code>Drive / [Root Folder] / Crawls / &lt;domain&gt; / &lt;crawl.zip&gt;</code><br><br>' +
           '<strong>Setup (one-time):</strong> In <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue);">Google Cloud Console</a> create a project, enable the <em>Google Drive API</em>, then create an <strong>OAuth 2.0 Client ID</strong> (Web application). ' +
           'Add <code>' + window.location.origin + '</code> to the authorised JavaScript origins and <code>' + window.location.origin + '/api/google-drive/callback</code> to the authorised redirect URIs.<br><br>' +
           '<strong>Tip:</strong> Click "Connect Google Drive" to authorize via popup. If popups are blocked, hold Shift while clicking to use redirect mode instead.',
