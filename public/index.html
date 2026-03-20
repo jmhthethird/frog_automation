@@ -18,6 +18,8 @@
     --text-dim: #a0a0a0;
     --border: #2a2a4e;
     --radius: 8px;
+    --side-nav-bg: #0d0d1f;
+    --green-tint: rgba(46,204,113,.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
@@ -290,7 +292,7 @@
   .app-layout { display: flex; min-height: 100vh; }
   .side-nav {
     width: 220px; position: fixed; top: 0; left: 0; bottom: 0;
-    background: #0d0d1f; border-right: 1px solid var(--border);
+    background: var(--side-nav-bg); border-right: 1px solid var(--border);
     display: flex; flex-direction: column; z-index: 100;
     transition: transform .25s ease;
   }
@@ -306,12 +308,13 @@
     background: none; border: none; border-left: 3px solid transparent;
     color: var(--text-dim); font-size: 13px; cursor: pointer;
     transition: background .15s, color .15s, border-color .15s;
-    text-align: left; width: calc(100% - 16px);
+    text-align: left; width: calc(100% - 16px); min-height: 44px;
+    font-family: inherit;
   }
   .side-nav-item:hover { background: var(--surface); color: var(--text); }
   .side-nav-item.active {
     color: var(--green); border-left-color: var(--green);
-    background: rgba(46,204,113,.08); font-weight: 600;
+    background: var(--green-tint); font-weight: 600;
   }
   .app-content { flex: 1; margin-left: 220px; min-width: 0; }
   .nav-panel { display: none; }
@@ -319,8 +322,9 @@
   .side-nav-toggle {
     display: none; position: fixed; top: 10px; left: 10px; z-index: 200;
     background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius); color: var(--text); font-size: 20px;
-    padding: 6px 10px; cursor: pointer; line-height: 1;
+    border-radius: var(--radius); color: var(--text);
+    font-size: 20px; width: 44px; height: 44px;
+    padding: 0; cursor: pointer; line-height: 44px; text-align: center;
   }
   .side-nav-backdrop {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99;
@@ -378,7 +382,7 @@
 </head>
 <body>
 <!-- Mobile hamburger toggle (hidden on desktop) -->
-<button class="side-nav-toggle" id="side-nav-toggle" onclick="toggleSideNav()" aria-label="Toggle navigation">☰</button>
+<button class="side-nav-toggle" id="side-nav-toggle" onclick="toggleSideNav()" aria-label="Toggle navigation" aria-controls="side-nav" aria-expanded="false">☰</button>
 <div class="side-nav-backdrop" id="side-nav-backdrop" onclick="closeSideNav()"></div>
 
 <div class="app-layout">
@@ -1999,75 +2003,86 @@ async function loadApiCredentials() {
   }
 }
 
-function renderApiServicesList(services) {
-  const list = document.getElementById('api-services-list');
-  list.innerHTML = services.map(svc => {
-    const meta = API_SERVICE_META[svc.service] || { label: svc.service, note: '' };
-    const fieldRows = (svc.fields || []).map(f => {
-      const fieldId    = `api-field-${escHtml(svc.service)}-${escHtml(f.name)}`;
-      const val        = escHtml(svc.credentials[f.name] || '');
-      const secureNote = f.sensitive ? ' <span style="color:var(--text-dim);">(stored securely)</span>' : '';
-      return `
-      <label>${escHtml(f.label)}${secureNote}</label>
-      <input type="${f.sensitive ? 'password' : 'text'}"
-             id="${fieldId}"
-             placeholder="${escHtml(f.sensitive ? '••••••••' : '')}"
-             value="${val}"
-             autocomplete="off"
-             spellcheck="false"/>`;
+/**
+ * Shared API card renderer. Both the Frogtomation panel and the Settings panel
+ * use this to stay in sync. Pass idPrefix='' for Frogtomation (original IDs),
+ * and idPrefix='settings-' for the Settings duplicate.
+ * opts.includeDriveExtra — when true, appends the Drive Connection/Folder UI.
+ * opts.toggleFn / opts.saveFn — function names for onchange/onclick handlers.
+ */
+function _renderApiCardsHtml(services, idPrefix, opts) {
+  idPrefix = idPrefix || '';
+  opts = opts || {};
+  var toggleFn = opts.toggleFn || (idPrefix ? 'onSettingsApiToggle' : 'onApiToggle');
+  var saveFn   = opts.saveFn   || (idPrefix ? 'saveSettingsApiCredential' : 'saveApiCredential');
+
+  return services.map(function(svc) {
+    var meta = API_SERVICE_META[svc.service] || { label: svc.service, note: '' };
+    var fieldRows = (svc.fields || []).map(function(f) {
+      var fieldId    = idPrefix + 'api-field-' + escHtml(svc.service) + '-' + escHtml(f.name);
+      var val        = escHtml(svc.credentials[f.name] || '');
+      var secureNote = f.sensitive ? ' <span style="color:var(--text-dim);">(stored securely)</span>' : '';
+      return '<label>' + escHtml(f.label) + secureNote + '</label>' +
+        '<input type="' + (f.sensitive ? 'password' : 'text') + '"' +
+        ' id="' + fieldId + '"' +
+        ' placeholder="' + escHtml(f.sensitive ? '••••••••' : '') + '"' +
+        ' value="' + val + '"' +
+        ' autocomplete="off" spellcheck="false"/>';
     }).join('');
 
-    // Extra UI injected below the Save button for the Google Drive service.
-    const driveExtra = svc.service === 'google_drive' ? `
-      <div class="drive-subsection">
-        <div class="drive-subsection-label">Connection</div>
-        <div class="drive-status-row">
-          <span id="drive-conn-status" style="color:var(--text-dim);">○ Not connected</span>
-        </div>
-        <div class="drive-btn-row">
-          <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
-                  onclick="connectGoogleDrive(event)">Connect Google Drive</button>
-          <button id="drive-disconnect-btn" class="btn btn-secondary"
-                  style="font-size:11px;padding:4px 12px;display:none;"
-                  onclick="disconnectGoogleDrive()">Disconnect</button>
-        </div>
-      </div>
-      <div class="drive-subsection">
-        <div class="drive-subsection-label">Root Folder</div>
-        <div id="drive-folder-display" class="drive-folder-display" style="color:var(--text-dim);">No folder selected</div>
-        <div class="drive-btn-row">
-          <button id="drive-pick-btn" class="btn btn-secondary"
-                  style="font-size:11px;padding:4px 12px;"
-                  onclick="openDriveFolderBrowser()" disabled>Select Root Folder</button>
-          <span id="drive-pick-msg" style="font-size:11px;color:var(--text-dim);"></span>
-        </div>
-      </div>` : '';
+    var driveExtra = '';
+    if (opts.includeDriveExtra && svc.service === 'google_drive') {
+      driveExtra =
+        '<div class="drive-subsection">' +
+          '<div class="drive-subsection-label">Connection</div>' +
+          '<div class="drive-status-row">' +
+            '<span id="drive-conn-status" style="color:var(--text-dim);">○ Not connected</span>' +
+          '</div>' +
+          '<div class="drive-btn-row">' +
+            '<button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;" onclick="connectGoogleDrive(event)">Connect Google Drive</button>' +
+            '<button id="drive-disconnect-btn" class="btn btn-secondary" style="font-size:11px;padding:4px 12px;display:none;" onclick="disconnectGoogleDrive()">Disconnect</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="drive-subsection">' +
+          '<div class="drive-subsection-label">Root Folder</div>' +
+          '<div id="drive-folder-display" class="drive-folder-display" style="color:var(--text-dim);">No folder selected</div>' +
+          '<div class="drive-btn-row">' +
+            '<button id="drive-pick-btn" class="btn btn-secondary" style="font-size:11px;padding:4px 12px;" onclick="openDriveFolderBrowser()" disabled>Select Root Folder</button>' +
+            '<span id="drive-pick-msg" style="font-size:11px;color:var(--text-dim);"></span>' +
+          '</div>' +
+        '</div>';
+    }
 
-    return `<div class="api-svc-card" id="api-svc-${escHtml(svc.service)}">
-      <div class="api-svc-header">
-        <span class="api-svc-name">${escHtml(meta.label)}</span>
-        <div class="api-svc-toggle">
-          <label class="api-toggle-switch" title="${svc.enabled ? 'Enabled' : 'Disabled'}">
-            <input type="checkbox" id="api-toggle-${escHtml(svc.service)}"
-                   ${svc.enabled ? 'checked' : ''}
-                   onchange="onApiToggle('${escHtml(svc.service)}', this.checked)"/>
-            <span class="api-toggle-slider"></span>
-          </label>
-          <span id="api-toggle-label-${escHtml(svc.service)}" style="color:${svc.enabled ? 'var(--green)' : 'var(--text-dim)'};">
-            ${svc.enabled ? 'Enabled' : 'Disabled'}
-          </span>
-        </div>
-      </div>
-      ${meta.note ? `<div class="api-svc-note">${meta.note}</div>` : ''}
-      ${fieldRows ? `<div class="api-svc-fields">${fieldRows}</div>` : ''}
-      <div class="api-svc-save-row">
-        <button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"
-                onclick="saveApiCredential('${escHtml(svc.service)}')">Save</button>
-        <span id="api-svc-msg-${escHtml(svc.service)}" class="api-svc-msg" style="display:none;"></span>
-      </div>
-      ${driveExtra}
-    </div>`;
+    return '<div class="api-svc-card" id="' + idPrefix + 'api-svc-' + escHtml(svc.service) + '">' +
+      '<div class="api-svc-header">' +
+        '<span class="api-svc-name">' + escHtml(meta.label) + '</span>' +
+        '<div class="api-svc-toggle">' +
+          '<label class="api-toggle-switch" title="' + (svc.enabled ? 'Enabled' : 'Disabled') + '">' +
+            '<input type="checkbox" id="' + idPrefix + 'api-toggle-' + escHtml(svc.service) + '"' +
+              (svc.enabled ? ' checked' : '') +
+              ' onchange="' + toggleFn + '(\'' + escHtml(svc.service) + '\', this.checked)"/>' +
+            '<span class="api-toggle-slider"></span>' +
+          '</label>' +
+          '<span id="' + idPrefix + 'api-toggle-label-' + escHtml(svc.service) + '" style="color:' + (svc.enabled ? 'var(--green)' : 'var(--text-dim)') + ';">' +
+            (svc.enabled ? 'Enabled' : 'Disabled') +
+          '</span>' +
+        '</div>' +
+      '</div>' +
+      (meta.note ? '<div class="api-svc-note">' + meta.note + '</div>' : '') +
+      (fieldRows ? '<div class="api-svc-fields">' + fieldRows + '</div>' : '') +
+      '<div class="api-svc-save-row">' +
+        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"' +
+          ' onclick="' + saveFn + '(\'' + escHtml(svc.service) + '\')">Save</button>' +
+        '<span id="' + idPrefix + 'api-svc-msg-' + escHtml(svc.service) + '" class="api-svc-msg" style="display:none;"></span>' +
+      '</div>' +
+      driveExtra +
+    '</div>';
   }).join('');
+}
+
+function renderApiServicesList(services) {
+  const list = document.getElementById('api-services-list');
+  list.innerHTML = _renderApiCardsHtml(services, '', { includeDriveExtra: true });
 }
 
 function onApiToggle(service, enabled) {
@@ -2563,13 +2578,18 @@ function switchNavPanel(panelName) {
 }
 
 function toggleSideNav() {
-  document.getElementById('side-nav').classList.toggle('open');
+  var nav = document.getElementById('side-nav');
+  var btn = document.getElementById('side-nav-toggle');
+  nav.classList.toggle('open');
   document.getElementById('side-nav-backdrop').classList.toggle('open');
+  if (btn) btn.setAttribute('aria-expanded', nav.classList.contains('open'));
 }
 
 function closeSideNav() {
   document.getElementById('side-nav').classList.remove('open');
   document.getElementById('side-nav-backdrop').classList.remove('open');
+  var btn = document.getElementById('side-nav-toggle');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
 // ── Settings Panel ──────────────────────────────────────────────────────────
@@ -2579,7 +2599,6 @@ let _settingsApiLoaded = false;
 async function _loadSettingsApiSection() {
   var container = document.getElementById('settings-api-services-list');
   if (!container) return;
-  _settingsApiLoaded = true;
   try {
     var creds = _apiCredentialsCache;
     if (!creds) {
@@ -2589,50 +2608,15 @@ async function _loadSettingsApiSection() {
       _apiCredentialsCache = creds;
     }
     _renderSettingsApiServices(container, creds);
+    _settingsApiLoaded = true;
   } catch (e) {
+    _settingsApiLoaded = false;
     container.innerHTML = '<span style="color:var(--red);">Failed to load API integrations</span>';
   }
 }
 
 function _renderSettingsApiServices(container, services) {
-  container.innerHTML = services.map(function(svc) {
-    var meta = API_SERVICE_META[svc.service] || { label: svc.service, note: '' };
-    var fieldRows = (svc.fields || []).map(function(f) {
-      var fieldId = 'settings-api-field-' + escHtml(svc.service) + '-' + escHtml(f.name);
-      var val = escHtml(svc.credentials[f.name] || '');
-      var secureNote = f.sensitive ? ' <span style="color:var(--text-dim);">(stored securely)</span>' : '';
-      return '<label>' + escHtml(f.label) + secureNote + '</label>' +
-        '<input type="' + (f.sensitive ? 'password' : 'text') + '"' +
-        ' id="' + fieldId + '"' +
-        ' placeholder="' + escHtml(f.sensitive ? '••••••••' : '') + '"' +
-        ' value="' + val + '"' +
-        ' autocomplete="off" spellcheck="false"/>';
-    }).join('');
-
-    return '<div class="api-svc-card" id="settings-api-svc-' + escHtml(svc.service) + '">' +
-      '<div class="api-svc-header">' +
-        '<span class="api-svc-name">' + escHtml(meta.label) + '</span>' +
-        '<div class="api-svc-toggle">' +
-          '<label class="api-toggle-switch" title="' + (svc.enabled ? 'Enabled' : 'Disabled') + '">' +
-            '<input type="checkbox" id="settings-api-toggle-' + escHtml(svc.service) + '"' +
-              (svc.enabled ? ' checked' : '') +
-              ' onchange="onSettingsApiToggle(\'' + escHtml(svc.service) + '\', this.checked)"/>' +
-            '<span class="api-toggle-slider"></span>' +
-          '</label>' +
-          '<span id="settings-api-toggle-label-' + escHtml(svc.service) + '" style="color:' + (svc.enabled ? 'var(--green)' : 'var(--text-dim)') + ';">' +
-            (svc.enabled ? 'Enabled' : 'Disabled') +
-          '</span>' +
-        '</div>' +
-      '</div>' +
-      (meta.note ? '<div class="api-svc-note">' + meta.note + '</div>' : '') +
-      (fieldRows ? '<div class="api-svc-fields">' + fieldRows + '</div>' : '') +
-      '<div class="api-svc-save-row">' +
-        '<button class="btn btn-secondary" style="font-size:11px;padding:4px 12px;"' +
-          ' onclick="saveSettingsApiCredential(\'' + escHtml(svc.service) + '\')">Save</button>' +
-        '<span id="settings-api-svc-msg-' + escHtml(svc.service) + '" class="api-svc-msg" style="display:none;"></span>' +
-      '</div>' +
-    '</div>';
-  }).join('');
+  container.innerHTML = _renderApiCardsHtml(services, 'settings-');
 }
 
 function onSettingsApiToggle(service, enabled) {
@@ -2696,7 +2680,9 @@ function saveSeaSettings() {
   localStorage.setItem('frog_sea_keyfile', keyfile);
   localStorage.setItem('frog_sea_driveFolder', driveFolder);
   var msgEl = document.getElementById('sea-settings-msg');
-  _showApiMsg(msgEl, '✓ Settings saved', 'ok');
+  _showApiMsg(msgEl, '✓ Keyfile & folder saved (token not stored)', 'ok');
+  var copilotTokenInput = document.getElementById('settings-copilot-token');
+  if (copilotTokenInput) copilotTokenInput.value = '';
 }
 
 function _loadSeaSettings() {
