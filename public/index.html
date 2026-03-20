@@ -2332,9 +2332,16 @@ function _applyDriveStatus(status) {
     setTimeout(_clearDriveMessage, timeout);
   }
 
-  // Check if migration is needed when connected.
+  // Check if migration is needed when connected; hide the section otherwise.
+  const migrateSection = document.getElementById('drive-migrate-section');
   if (status.connected) {
     _checkDriveMigration();
+  } else if (migrateSection) {
+    migrateSection.style.display = 'none';
+    const migrateMsg = document.getElementById('drive-migrate-msg');
+    const migrateBtn = document.getElementById('drive-migrate-btn');
+    if (migrateMsg) { migrateMsg.textContent = ''; migrateMsg.style.color = ''; }
+    if (migrateBtn) { migrateBtn.disabled = false; migrateBtn.textContent = 'Migrate Folders'; }
   }
 }
 

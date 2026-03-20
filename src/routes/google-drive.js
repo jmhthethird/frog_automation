@@ -393,7 +393,11 @@ router.get('/migrate/status', readLimit, async (req, res) => {
     });
   }
 
-  const rootFolderId = creds.root_folder_id || null;
+  // Validate the stored root folder ID before passing it to Drive helpers.
+  const DRIVE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+  const rootFolderId = (creds.root_folder_id && DRIVE_ID_RE.test(creds.root_folder_id))
+    ? creds.root_folder_id
+    : null;
 
   try {
     const drive = buildDriveClientFromOAuth(creds.client_id, creds.client_secret, creds.refresh_token);
@@ -402,8 +406,11 @@ router.get('/migrate/status', readLimit, async (req, res) => {
       Object.values(DRIVE_CATEGORIES).map(c => c.folder)
     );
 
+    // Domain-like name heuristic — matches the same pattern used by migrateDriveFolders().
+    const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i;
+
     const rootChildren = await listSubfolders(drive, rootFolderId);
-    const legacy = rootChildren.filter(f => !categoryNames.has(f.name));
+    const legacy = rootChildren.filter(f => !categoryNames.has(f.name) && DOMAIN_RE.test(f.name));
 
     res.json({
       needed:       legacy.length > 0,

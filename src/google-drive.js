@@ -243,15 +243,22 @@ async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, o
   return { fileId, domain, folderId: targetFolderId, localSize, driveSize, folderResult };
 }
 
+/** Regex for valid Google Drive folder IDs (alphanumeric, underscores, hyphens). */
+const DRIVE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+
 /**
  * List all immediate subfolders inside a parent folder on Google Drive.
  *
  * @param {import('googleapis').drive_v3.Drive} drive
  * @param {string|null} parentId - Parent folder ID, or null for Drive root.
+ *   Must match the pattern `/^[a-zA-Z0-9_-]{1,128}$/` when provided;
+ *   invalid values are treated as null (Drive root).
  * @returns {Promise<Array<{ id: string, name: string }>>}
  */
 async function listSubfolders(drive, parentId) {
-  const inParent = parentId ? `'${parentId}' in parents` : "'root' in parents";
+  // Validate parentId — fall back to Drive root if the value is invalid.
+  const safeParentId = (parentId && DRIVE_ID_RE.test(parentId)) ? parentId : null;
+  const inParent = safeParentId ? `'${safeParentId}' in parents` : "'root' in parents";
   const q = `mimeType='application/vnd.google-apps.folder' and ${inParent} and trashed=false`;
 
   const folders = [];
@@ -314,14 +321,23 @@ async function migrateDriveFolders({ clientId, clientSecret, refreshToken, rootF
   // List every immediate subfolder in the root folder.
   const rootChildren = await listSubfolders(drive, rootFolderId || null);
 
+  // A domain-like name: one or more labels separated by dots, ending with a
+  // TLD of at least two characters.  This deliberately avoids moving unrelated
+  // user folders (e.g. "Invoices", "SEO Assets") that happen to live in the
+  // root folder — only folders whose name looks like a hostname are migrated.
+  const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i;
+
   // Separate category folders from legacy domain folders.
   const skipped = [];
   const toMigrate = [];
   for (const child of rootChildren) {
     if (categoryNames.has(child.name)) {
       skipped.push(child.name);
-    } else {
+    } else if (DOMAIN_RE.test(child.name)) {
       toMigrate.push(child);
+    } else {
+      // Non-category, non-domain folder — skip silently (e.g. user's own folders).
+      skipped.push(child.name);
     }
   }
 
