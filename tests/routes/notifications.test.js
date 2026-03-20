@@ -88,7 +88,9 @@ describe('GET /api/notifications', () => {
     }
 
     const res = await ctx.request.get('/api/notifications').expect(200);
-    // Should not exceed 50 source rows (though each row can produce multiple notifications)
-    expect(res.body.notifications.length).toBeLessThanOrEqual(100);
+    // The SQL LIMIT 50 caps source rows; each failed job produces one notification,
+    // so the total should be at most 50 from this batch (plus any from prior tests).
+    const bulkNotifs = res.body.notifications.filter(n => n.url && n.url.includes('bulk-'));
+    expect(bulkNotifs.length).toBeLessThanOrEqual(50);
   });
 });

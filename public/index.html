@@ -2795,13 +2795,15 @@ function dismissAllNotifs() {
 }
 
 function _updateNotifBadge() {
-  const unseen = _notifCache.filter(n => !_notifSeenIds.includes(n.id));
+  const seenSet = new Set(_notifSeenIds);
+  const unseen = _notifCache.filter(n => !seenSet.has(n.id));
   const count = unseen.length;
   const countEl = document.getElementById('notif-count');
   const bellEl = document.getElementById('notif-bell');
   countEl.textContent = count > 99 ? '99+' : String(count);
   countEl.classList.toggle('visible', count > 0);
   bellEl.classList.toggle('has-notifs', count > 0);
+  bellEl.setAttribute('aria-label', count > 0 ? `${count} unread notification${count !== 1 ? 's' : ''}` : 'Notifications');
 }
 
 function _renderNotifDropdown() {
@@ -2815,7 +2817,7 @@ function _renderNotifDropdown() {
     const iconClass = isFail ? 'notif-icon-fail' : 'notif-icon-drive';
     const icon = isFail ? '✕' : '⚠';
     const title = isFail ? `Job #${n.jobId} failed` : `Drive upload failed – Job #${n.jobId}`;
-    return `<div class="notif-item" onclick="showJobDetail(${n.jobId}); toggleNotifDropdown();" role="button" tabindex="0">
+    return `<div class="notif-item" onclick="showJobDetail(${n.jobId}); toggleNotifDropdown();" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showJobDetail(${n.jobId});toggleNotifDropdown();}" role="button" tabindex="0">
       <div class="notif-icon ${iconClass}">${icon}</div>
       <div class="notif-body">
         <div class="notif-title">${escHtml(title)}</div>
@@ -2853,8 +2855,10 @@ async function _pollNotifications() {
     const notifications = data.notifications || [];
 
     // Show toasts for new unseen notifications
+    const seenSet = new Set(_notifSeenIds);
+    const cachedIds = new Set(_notifCache.map(c => c.id));
     for (const n of notifications) {
-      if (!_notifSeenIds.includes(n.id) && !_notifCache.some(c => c.id === n.id)) {
+      if (!seenSet.has(n.id) && !cachedIds.has(n.id)) {
         const isFail = n.type === 'job_failed';
         const title = isFail ? `Job #${n.jobId} failed` : `Drive upload failed – Job #${n.jobId}`;
         _showToast(n.type, title, n.message);
