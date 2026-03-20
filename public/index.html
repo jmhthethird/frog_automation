@@ -2388,7 +2388,7 @@ async function _checkDriveMigration() {
 async function migrateDriveFolders() {
   const btn = document.getElementById('drive-migrate-btn');
   const msg = document.getElementById('drive-migrate-msg');
-  const prevLabel = btn ? btn.textContent : '';
+  const originalBtnLabel = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
   if (msg) { msg.textContent = ''; msg.style.color = ''; }
   try {
@@ -2412,7 +2412,7 @@ async function migrateDriveFolders() {
       msg.style.color = 'var(--red)';
     }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = prevLabel || 'Ensure Folder Structure'; }
+    if (btn) { btn.disabled = false; btn.textContent = originalBtnLabel || 'Ensure Folder Structure'; }
   }
 }
 
