@@ -2756,9 +2756,11 @@ function switchNavPanel(panelName) {
   }
 }
 
+var _mobileNav = window.matchMedia('(max-width: 760px)');
+
 function toggleSideNav() {
   var btn = document.getElementById('side-nav-toggle');
-  if (window.innerWidth <= 760) {
+  if (_mobileNav.matches) {
     // Mobile: overlay with backdrop
     var nav = document.getElementById('side-nav');
     nav.classList.toggle('open');
@@ -3027,15 +3029,17 @@ if (_lastPanel && document.getElementById('panel-' + _lastPanel)) {
 }
 
 // Restore side-nav collapsed state (desktop only)
-(function() {
+_restoreSideNavState();
+
+function _restoreSideNavState() {
   var btn = document.getElementById('side-nav-toggle');
-  if (window.innerWidth > 760 && localStorage.getItem('frog_sideNavCollapsed') === '1') {
+  if (!_mobileNav.matches && localStorage.getItem('frog_sideNavCollapsed') === '1') {
     document.body.classList.add('nav-collapsed');
     if (btn) btn.setAttribute('aria-expanded', 'false');
-  } else if (window.innerWidth > 760 && btn) {
+  } else if (!_mobileNav.matches && btn) {
     btn.setAttribute('aria-expanded', 'true');
   }
-})();
+}
 
 /**
  * Check if we just returned from a Google Drive OAuth redirect.
