@@ -378,9 +378,11 @@ async function migrateDriveFolders({ clientId, clientSecret, refreshToken, rootF
  */
 async function ensureCategoryFolders({ clientId, clientSecret, refreshToken, rootFolderId }) {
   const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
+  // Validate rootFolderId to prevent malformed GDQL queries.
+  const safeRootId = (rootFolderId && DRIVE_ID_RE.test(rootFolderId)) ? rootFolderId : null;
   const created = {};
   for (const cat of Object.values(DRIVE_CATEGORIES)) {
-    created[cat.folder] = await ensureFolder(drive, cat.folder, rootFolderId || null);
+    created[cat.folder] = await ensureFolder(drive, cat.folder, safeRootId);
   }
   return created;
 }

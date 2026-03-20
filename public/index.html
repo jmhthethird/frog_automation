@@ -2345,6 +2345,9 @@ function _applyDriveStatus(status) {
   }
 }
 
+/** Whether legacy domain folders were detected and migration is needed. */
+let _driveLegacyMigrationNeeded = false;
+
 /** Check whether legacy domain folders need to be migrated and show folder management section. */
 async function _checkDriveMigration() {
   const section = document.getElementById('drive-migrate-section');
@@ -2355,6 +2358,7 @@ async function _checkDriveMigration() {
     const r = await fetch('/api/google-drive/migrate/status');
     if (!r.ok) {
       // Even on error, show the section so the user can trigger folder creation.
+      _driveLegacyMigrationNeeded = false;
       if (infoEl) infoEl.textContent = 'Create or verify the Drive category folders (Crawls, Reports, Automation, Templates).';
       if (btn) btn.textContent = 'Ensure Folder Structure';
       section.style.display = '';
@@ -2362,6 +2366,7 @@ async function _checkDriveMigration() {
     }
     const data = await r.json();
     if (data.needed) {
+      _driveLegacyMigrationNeeded = true;
       if (infoEl) {
         infoEl.textContent = data.legacyCount + ' folder' +
           (data.legacyCount === 1 ? '' : 's') +
@@ -2372,12 +2377,14 @@ async function _checkDriveMigration() {
       }
       if (btn) btn.textContent = 'Migrate & Ensure Folders';
     } else {
+      _driveLegacyMigrationNeeded = false;
       if (infoEl) infoEl.textContent = 'Create or verify the Drive category folders (Crawls, Reports, Automation, Templates).';
       if (btn) btn.textContent = 'Ensure Folder Structure';
     }
     section.style.display = '';
   } catch {
     // Show section even on error so the user can still trigger folder creation.
+    _driveLegacyMigrationNeeded = false;
     if (infoEl) infoEl.textContent = 'Create or verify the Drive category folders (Crawls, Reports, Automation, Templates).';
     if (btn) btn.textContent = 'Ensure Folder Structure';
     section.style.display = '';
@@ -2392,7 +2399,12 @@ async function migrateDriveFolders() {
   if (btn) { btn.disabled = true; btn.textContent = 'Working…'; }
   if (msg) { msg.textContent = ''; msg.style.color = ''; }
   try {
-    const r = await fetch('/api/google-drive/migrate', { method: 'POST' });
+    // Use the migrate endpoint only when legacy folders are detected;
+    // otherwise use the non-destructive ensure-folders endpoint.
+    const endpoint = _driveLegacyMigrationNeeded
+      ? '/api/google-drive/migrate'
+      : '/api/google-drive/ensure-folders';
+    const r = await fetch(endpoint, { method: 'POST' });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Operation failed');
     if (msg) {

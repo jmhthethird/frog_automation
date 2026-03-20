@@ -71,18 +71,18 @@ describe('GET /api/google-drive/auth-url', () => {
 
 // ─── POST /api/google-drive/root-folder ──────────────────────────────────────
 describe('POST /api/google-drive/root-folder', () => {
-  it('returns 400 when folderId is missing', async () => {
+  it('returns 400 when folderId is missing or has an invalid format', async () => {
+    // folderId with characters that could cause GDQL injection
     const res = await ctx.request.post('/api/google-drive/root-folder')
+      .send({ folderId: "bad'value; DROP TABLE" })
+      .expect(400);
+    expect(res.body.error).toMatch(/invalid folderId/i);
+
+    // Missing folderId entirely
+    const res2 = await ctx.request.post('/api/google-drive/root-folder')
       .send({})
       .expect(400);
-    expect(res.body.error).toMatch(/folderId/i);
-  });
-
-  it('returns 400 when folderId is not a string', async () => {
-    const res = await ctx.request.post('/api/google-drive/root-folder')
-      .send({ folderId: 123 })
-      .expect(400);
-    expect(res.body.error).toMatch(/folderId/i);
+    expect(res2.body.error).toMatch(/folderId/i);
   });
 
   it('stores folderId and folderName and echoes them back', async () => {
@@ -99,19 +99,19 @@ describe('POST /api/google-drive/root-folder', () => {
     expect(creds.root_folder_name).toBe('My SEO Uploads');
   });
 
-  it('falls back to folderId as folderName when folderName is omitted', async () => {
+  it('falls back to folderId when folderName is omitted and trims whitespace', async () => {
+    // Fallback
     const res = await ctx.request.post('/api/google-drive/root-folder')
       .send({ folderId: 'folder-no-name' })
       .expect(200);
     expect(res.body.folderName).toBe('folder-no-name');
-  });
 
-  it('trims whitespace from folderId and folderName', async () => {
-    const res = await ctx.request.post('/api/google-drive/root-folder')
+    // Trims whitespace
+    const res2 = await ctx.request.post('/api/google-drive/root-folder')
       .send({ folderId: '  folder-trim  ', folderName: '  Trimmed Name  ' })
       .expect(200);
-    expect(res.body.folderId).toBe('folder-trim');
-    expect(res.body.folderName).toBe('Trimmed Name');
+    expect(res2.body.folderId).toBe('folder-trim');
+    expect(res2.body.folderName).toBe('Trimmed Name');
   });
 
   it('preserves other stored credentials when updating the root folder', async () => {
@@ -129,7 +129,7 @@ describe('POST /api/google-drive/root-folder', () => {
 
 // ─── DELETE /api/google-drive/auth ───────────────────────────────────────────
 describe('DELETE /api/google-drive/auth', () => {
-  it('clears refresh_token, root_folder_id, root_folder_name', async () => {
+  it('clears tokens, preserves client credentials, and reflects disconnected status', async () => {
     seedDriveCreds({
       client_id: 'cid', client_secret: 'cs',
       refresh_token: 'rt', root_folder_id: 'fid', root_folder_name: 'Folder',
@@ -140,25 +140,15 @@ describe('DELETE /api/google-drive/auth', () => {
 
     const row   = db.prepare("SELECT credentials FROM api_credentials WHERE service='google_drive'").get();
     const creds = JSON.parse(row.credentials);
+    // Clears refresh_token, root_folder_id, root_folder_name
     expect(creds.refresh_token).toBeUndefined();
     expect(creds.root_folder_id).toBeUndefined();
     expect(creds.root_folder_name).toBeUndefined();
-  });
+    // Preserves client_id and client_secret
+    expect(creds.client_id).toBe('cid');
+    expect(creds.client_secret).toBe('cs');
 
-  it('preserves client_id and client_secret after disconnect', async () => {
-    seedDriveCreds({ client_id: 'mycid', client_secret: 'mycs', refresh_token: 'rt' });
-
-    await ctx.request.delete('/api/google-drive/auth').expect(200);
-
-    const row   = db.prepare("SELECT credentials FROM api_credentials WHERE service='google_drive'").get();
-    const creds = JSON.parse(row.credentials);
-    expect(creds.client_id).toBe('mycid');
-    expect(creds.client_secret).toBe('mycs');
-  });
-
-  it('status reflects disconnected after DELETE', async () => {
-    seedDriveCreds({ client_id: 'cid', client_secret: 'cs', refresh_token: 'rt' });
-    await ctx.request.delete('/api/google-drive/auth').expect(200);
+    // Reflects disconnected status
     const status = await ctx.request.get('/api/google-drive/status').expect(200);
     expect(status.body.connected).toBe(false);
   });
@@ -182,20 +172,20 @@ describe('GET /api/google-drive/migrate/status', () => {
   });
 });
 
-// ─── POST /api/google-drive/ensure-folders ──────────────────────────────────
-describe('POST /api/google-drive/ensure-folders', () => {
-  it('returns 401 when not authenticated', async () => {
-    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
-    const res = await ctx.request.post('/api/google-drive/ensure-folders').expect(401);
-    expect(res.body.error).toBeTruthy();
-  });
-});
-
 // ─── POST /api/google-drive/migrate ──────────────────────────────────────────
 describe('POST /api/google-drive/migrate', () => {
   it('returns 401 when not authenticated', async () => {
     seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
     const res = await ctx.request.post('/api/google-drive/migrate').expect(401);
+    expect(res.body.error).toBeTruthy();
+  });
+});
+
+// ─── POST /api/google-drive/ensure-folders ──────────────────────────────────
+describe('POST /api/google-drive/ensure-folders', () => {
+  it('returns 401 when not authenticated', async () => {
+    seedDriveCreds({ client_id: 'cid', client_secret: 'cs' });
+    const res = await ctx.request.post('/api/google-drive/ensure-folders').expect(401);
     expect(res.body.error).toBeTruthy();
   });
 });

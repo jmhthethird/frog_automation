@@ -327,6 +327,12 @@ router.post('/root-folder', writeLimit, async (req, res) => {
     return res.status(400).json({ error: '"folderId" is required and must be a string' });
   }
 
+  // Drive folder IDs are alphanumeric with underscores and hyphens.
+  const DRIVE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+  if (!DRIVE_ID_RE.test(folderId.trim())) {
+    return res.status(400).json({ error: 'Invalid folderId format' });
+  }
+
   persistCredentials({
     root_folder_id:   folderId.trim(),
     root_folder_name: (folderName || folderId).trim(),
@@ -400,7 +406,7 @@ router.get('/folders', readLimit, async (req, res) => {
 // Creates all top-level category folders (Crawls, Reports, Automation,
 // Templates) under the root folder.  Safe to call at any time — only creates
 // folders that do not already exist.
-router.post('/ensure-folders', readLimit, async (req, res) => {
+router.post('/ensure-folders', writeLimit, async (req, res) => {
   const creds = getCredentials();
   if (!creds.client_id || !creds.client_secret || !creds.refresh_token) {
     return res.status(401).json({
