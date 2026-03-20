@@ -48,6 +48,7 @@ const {
   uploadFolder,
   listSubfolders,
   migrateDriveFolders,
+  ensureCategoryFolders,
 } = require('../../src/google-drive');
 
 // ─── buildOAuth2Client ────────────────────────────────────────────────────────
@@ -437,7 +438,11 @@ describe('migrateDriveFolders()', () => {
         ]},
       })
       // ensureFolder(findFolder) for "Crawls" inside root
-      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } })
+      // ensureFolder(findFolder) for remaining categories
+      .mockResolvedValueOnce({ data: { files: [{ id: 'reports-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'automation-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'templates-folder' }] } });
 
     _mockDrive.files.update.mockResolvedValue({ data: { id: 'ok', parents: ['crawls-folder'] } });
 
@@ -475,7 +480,11 @@ describe('migrateDriveFolders()', () => {
           { id: 'dom1', name: 'example.com' },
         ]},
       })
-      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+      // ensureFolder for all 4 categories
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'reports-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'automation-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'templates-folder' }] } });
 
     _mockDrive.files.update.mockResolvedValue({ data: { id: 'ok', parents: ['crawls-folder'] } });
 
@@ -499,7 +508,11 @@ describe('migrateDriveFolders()', () => {
           { id: 'dom2', name: 'blog.test.org' },
         ]},
       })
-      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+      // ensureFolder for all 4 categories
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'reports-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'automation-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'templates-folder' }] } });
 
     _mockDrive.files.update.mockResolvedValue({ data: { id: 'ok', parents: ['crawls-folder'] } });
 
@@ -522,7 +535,11 @@ describe('migrateDriveFolders()', () => {
           { id: 'cat2', name: 'Templates' },
         ]},
       })
-      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+      // ensureFolder for all 4 categories
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'reports-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'automation-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'templates-folder' }] } });
 
     const result = await migrateDriveFolders({
       clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
@@ -535,9 +552,18 @@ describe('migrateDriveFolders()', () => {
   it('uses Drive root when rootFolderId is not provided', async () => {
     _mockDrive.files.list
       .mockResolvedValueOnce({ data: { files: [] } })
-      // ensureFolder creates "Crawls"
+      // ensureFolder for Crawls – not found, will create
       .mockResolvedValueOnce({ data: { files: [] } });
-    _mockDrive.files.create.mockResolvedValueOnce({ data: { id: 'new-crawls' } });
+    _mockDrive.files.create
+      .mockResolvedValueOnce({ data: { id: 'new-crawls' } })
+      .mockResolvedValueOnce({ data: { id: 'new-reports' } })
+      .mockResolvedValueOnce({ data: { id: 'new-automation' } })
+      .mockResolvedValueOnce({ data: { id: 'new-templates' } });
+    // ensureFolder for remaining categories – not found, will create
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValueOnce({ data: { files: [] } });
 
     const result = await migrateDriveFolders({
       clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
@@ -547,5 +573,79 @@ describe('migrateDriveFolders()', () => {
     expect(_mockDrive.files.list.mock.calls[0][0].q).toContain("'root' in parents");
     expect(result.migrated).toBe(0);
     expect(result.crawlsFolderId).toBe('new-crawls');
+  });
+});
+
+// ─── ensureCategoryFolders ────────────────────────────────────────────────────
+describe('ensureCategoryFolders()', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('creates all four category folders when none exist', async () => {
+    // findFolder returns empty for each category → files.create called
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValueOnce({ data: { files: [] } });
+    _mockDrive.files.create
+      .mockResolvedValueOnce({ data: { id: 'crawls-id' } })
+      .mockResolvedValueOnce({ data: { id: 'reports-id' } })
+      .mockResolvedValueOnce({ data: { id: 'automation-id' } })
+      .mockResolvedValueOnce({ data: { id: 'templates-id' } });
+
+    const result = await ensureCategoryFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      rootFolderId: 'root-xyz',
+    });
+
+    expect(result).toEqual({
+      Crawls: 'crawls-id',
+      Reports: 'reports-id',
+      Automation: 'automation-id',
+      Templates: 'templates-id',
+    });
+    expect(_mockDrive.files.create).toHaveBeenCalledTimes(4);
+  });
+
+  it('reuses existing folders and only creates missing ones', async () => {
+    // Crawls and Templates exist, Reports and Automation do not
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [{ id: 'existing-crawls' }] } })
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValueOnce({ data: { files: [] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'existing-templates' }] } });
+    _mockDrive.files.create
+      .mockResolvedValueOnce({ data: { id: 'new-reports' } })
+      .mockResolvedValueOnce({ data: { id: 'new-automation' } });
+
+    const result = await ensureCategoryFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      rootFolderId: 'root-xyz',
+    });
+
+    expect(result).toEqual({
+      Crawls: 'existing-crawls',
+      Reports: 'new-reports',
+      Automation: 'new-automation',
+      Templates: 'existing-templates',
+    });
+    expect(_mockDrive.files.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses Drive root when rootFolderId is not provided', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [{ id: 'c1' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'r1' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'a1' }] } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 't1' }] } });
+
+    await ensureCategoryFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+    });
+
+    // All findFolder calls should query Drive root
+    for (const call of _mockDrive.files.list.mock.calls) {
+      expect(call[0].q).toContain("'root' in parents");
+    }
   });
 });
