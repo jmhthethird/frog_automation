@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
+const { DRIVE_CATEGORIES } = require('./constants/driveCategories');
 
 /**
  * Build an OAuth2 client.
@@ -173,51 +174,188 @@ async function uploadFolder(drive, localDir, parentId, folderName) {
 }
 
 /**
- * Upload a crawl output to Google Drive (both ZIP and folder).
+ * Upload output to Google Drive (both ZIP and folder).
  *
  * Folder structure created/verified on Drive:
  *
  *   My Drive
  *     └── [user-selected root folder]   ← rootFolderId from the folder picker
- *           └── <domain>/               ← derived from jobUrl; created if absent
- *                 ├── <jobLabel>/       ← unzipped folder with all crawl files
- *                 └── <jobLabel>.zip    ← the ZIP archive
+ *           └── <category>/             ← e.g. "Crawls", "Reports", "Automation", "Templates"
+ *                 └── <domain>/         ← derived from jobUrl (omitted when useDomainSubfolder is false)
+ *                       ├── <jobLabel>/       ← unzipped folder with all files
+ *                       └── <jobLabel>.zip    ← the ZIP archive
+ *
+ * The `driveCategory` parameter determines the top-level subfolder under the
+ * root folder.  Pass one of the constants from `src/constants/driveCategories.js`
+ * (e.g. `DRIVE_CATEGORIES.CRAWLS`, `.REPORTS`, `.AUTOMATION`, `.TEMPLATES`).
+ *
+ * Each category constant is an object `{ folder, useDomainSubfolder }`.
+ * When `useDomainSubfolder` is true (Crawls, Reports, Automation) a
+ * per-domain folder is created inside the category folder.  When false
+ * (Templates) files are placed directly inside the category folder.
  *
  * After uploading each file, a post-upload size validation is performed: the
  * file size reported by Drive is compared against the local file size.
  * A mismatch throws an error.
  *
  * @param {object} options
- * @param {string}  options.clientId      - OAuth2 Client ID.
- * @param {string}  options.clientSecret  - OAuth2 Client Secret.
- * @param {string}  options.refreshToken  - Stored OAuth2 refresh token.
- * @param {string}  options.filePath      - Absolute path to the local ZIP file.
- * @param {string}  options.outputDir     - Absolute path to the local output directory (unzipped).
- * @param {string}  options.jobLabel      - The job label (e.g., "google_2026-03-11_06-23PM-job25").
- * @param {string}  options.jobUrl        - Crawled URL (used to derive the domain folder name).
- * @param {string} [options.rootFolderId] - Drive folder ID selected via the folder picker.
- *   When absent the domain folder is placed directly in My Drive root.
+ * @param {string}  options.clientId       - OAuth2 Client ID.
+ * @param {string}  options.clientSecret   - OAuth2 Client Secret.
+ * @param {string}  options.refreshToken   - Stored OAuth2 refresh token.
+ * @param {string}  options.filePath       - Absolute path to the local ZIP file.
+ * @param {string}  options.outputDir      - Absolute path to the local output directory (unzipped).
+ * @param {string}  options.jobLabel       - The job label (e.g., "google_2026-03-11_06-23PM-job25").
+ * @param {string}  options.jobUrl         - Crawled URL (used to derive the domain folder name).
+ * @param {string} [options.rootFolderId]  - Drive folder ID selected via the folder picker.
+ *   When absent the category folder is placed directly in My Drive root.
+ * @param {object} [options.driveCategory] - Category descriptor from DRIVE_CATEGORIES.
+ *   Defaults to `DRIVE_CATEGORIES.CRAWLS`.
  * @returns {Promise<{ fileId: string, domain: string, folderId: string, localSize: number, driveSize: number, folderResult: { folderId: string, fileCount: number, totalSize: number } }>}
  */
-async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, outputDir, jobLabel, jobUrl, rootFolderId }) {
+async function uploadToDrive({ clientId, clientSecret, refreshToken, filePath, outputDir, jobLabel, jobUrl, rootFolderId, driveCategory }) {
   const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
 
+  const category = driveCategory || DRIVE_CATEGORIES.CRAWLS;
   const domain = domainFromUrl(jobUrl);
 
-  // Ensure the per-domain subfolder exists inside the user-selected root folder.
-  const domainFolderId = await ensureFolder(drive, domain, rootFolderId || null);
+  // Ensure the category folder exists inside the user-selected root folder.
+  const categoryFolderId = await ensureFolder(drive, category.folder, rootFolderId || null);
+
+  // When the category uses per-domain subfolders, create one; otherwise
+  // upload directly into the category folder.
+  let targetFolderId;
+  if (category.useDomainSubfolder) {
+    targetFolderId = await ensureFolder(drive, domain, categoryFolderId);
+  } else {
+    targetFolderId = categoryFolderId;
+  }
 
   // Upload the unzipped folder first
   let folderResult = null;
   if (outputDir && fs.existsSync(outputDir)) {
-    folderResult = await uploadFolder(drive, outputDir, domainFolderId, jobLabel);
+    folderResult = await uploadFolder(drive, outputDir, targetFolderId, jobLabel);
   }
 
   // Upload the ZIP file with the proper job label name
   const zipFileName = jobLabel ? `${jobLabel}.zip` : path.basename(filePath);
-  const { fileId, localSize, driveSize } = await uploadFile(drive, filePath, domainFolderId, zipFileName);
+  const { fileId, localSize, driveSize } = await uploadFile(drive, filePath, targetFolderId, zipFileName);
 
-  return { fileId, domain, folderId: domainFolderId, localSize, driveSize, folderResult };
+  return { fileId, domain, folderId: targetFolderId, localSize, driveSize, folderResult };
 }
 
-module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl };
+/** Regex for valid Google Drive folder IDs (alphanumeric, underscores, hyphens). */
+const DRIVE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+
+/**
+ * List all immediate subfolders inside a parent folder on Google Drive.
+ *
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @param {string|null} parentId - Parent folder ID, or null for Drive root.
+ *   Must match the pattern `/^[a-zA-Z0-9_-]{1,128}$/` when provided;
+ *   invalid values are treated as null (Drive root).
+ * @returns {Promise<Array<{ id: string, name: string }>>}
+ */
+async function listSubfolders(drive, parentId) {
+  // Validate parentId — fall back to Drive root if the value is invalid.
+  const safeParentId = (parentId && DRIVE_ID_RE.test(parentId)) ? parentId : null;
+  const inParent = safeParentId ? `'${safeParentId}' in parents` : "'root' in parents";
+  const q = `mimeType='application/vnd.google-apps.folder' and ${inParent} and trashed=false`;
+
+  const folders = [];
+  let pageToken;
+  do {
+    const resp = await drive.files.list({
+      q,
+      fields: 'nextPageToken, files(id, name)',
+      spaces: 'drive',
+      pageSize: 200,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    folders.push(...(resp.data.files || []));
+    pageToken = resp.data.nextPageToken;
+  } while (pageToken);
+
+  return folders;
+}
+
+/**
+ * Migrate existing Google Drive folder structure to the new category-based layout.
+ *
+ * Before this feature, crawl artefacts were placed directly under the root
+ * folder organised by domain:
+ *
+ *   [Root Folder]
+ *     └── <domain>/          ← old layout
+ *
+ * The new layout adds a category tier:
+ *
+ *   [Root Folder]
+ *     └── Crawls/
+ *           └── <domain>/    ← new layout
+ *
+ * This function:
+ * 1. Lists all subfolders in the root folder.
+ * 2. Filters out any that are already known category folders (Crawls, Reports,
+ *    Automation, Templates).
+ * 3. Ensures the "Crawls" category folder exists.
+ * 4. Moves every remaining folder into "Crawls" via the Drive API
+ *    `files.update` (addParents / removeParents).
+ *
+ * The operation is idempotent: running it again after a successful migration
+ * is a no-op because the domain folders are already inside "Crawls".
+ *
+ * @param {object} options
+ * @param {string}  options.clientId      - OAuth2 Client ID.
+ * @param {string}  options.clientSecret  - OAuth2 Client Secret.
+ * @param {string}  options.refreshToken  - OAuth2 refresh token.
+ * @param {string} [options.rootFolderId] - Root folder ID (null → Drive root).
+ * @returns {Promise<{ migrated: number, skipped: string[], crawlsFolderId: string }>}
+ */
+async function migrateDriveFolders({ clientId, clientSecret, refreshToken, rootFolderId }) {
+  const drive = buildDriveClientFromOAuth(clientId, clientSecret, refreshToken);
+
+  const categoryNames = new Set(
+    Object.values(DRIVE_CATEGORIES).map(c => c.folder)
+  );
+
+  // List every immediate subfolder in the root folder.
+  const rootChildren = await listSubfolders(drive, rootFolderId || null);
+
+  // A domain-like name: one or more labels separated by dots, ending with a
+  // TLD of at least two characters.  This deliberately avoids moving unrelated
+  // user folders (e.g. "Invoices", "SEO Assets") that happen to live in the
+  // root folder — only folders whose name looks like a hostname are migrated.
+  const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i;
+
+  // Separate category folders from legacy domain folders.
+  const skipped = [];
+  const toMigrate = [];
+  for (const child of rootChildren) {
+    if (categoryNames.has(child.name)) {
+      skipped.push(child.name);
+    } else if (DOMAIN_RE.test(child.name)) {
+      toMigrate.push(child);
+    } else {
+      // Non-category, non-domain folder — skip silently (e.g. user's own folders).
+      skipped.push(child.name);
+    }
+  }
+
+  // Ensure the "Crawls" folder exists.
+  const crawlsFolderId = await ensureFolder(drive, DRIVE_CATEGORIES.CRAWLS.folder, rootFolderId || null);
+
+  // Move each legacy domain folder into the Crawls folder.
+  for (const folder of toMigrate) {
+    const previousParent = rootFolderId || 'root';
+    await drive.files.update({
+      fileId: folder.id,
+      addParents: crawlsFolderId,
+      removeParents: previousParent,
+      fields: 'id, parents',
+    });
+  }
+
+  return { migrated: toMigrate.length, skipped, crawlsFolderId };
+}
+
+module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl, listSubfolders, migrateDriveFolders };

@@ -749,11 +749,12 @@ describe('runJob() – Google Drive upload', () => {
     await crawler.runJob(jobId);
 
     expect(mockUploadToDrive).toHaveBeenCalledWith(expect.objectContaining({
-      clientId:     'cid',
-      clientSecret: 'cs',
-      refreshToken: 'rt',
-      rootFolderId: 'root-folder-xyz',
-      jobUrl:       'https://example.com',
+      clientId:      'cid',
+      clientSecret:  'cs',
+      refreshToken:  'rt',
+      rootFolderId:  'root-folder-xyz',
+      jobUrl:        'https://example.com',
+      driveCategory: { folder: 'Crawls', useDomainSubfolder: true },
     }));
     // New parameters should also be passed
     const callArgs = mockUploadToDrive.mock.calls[0][0];

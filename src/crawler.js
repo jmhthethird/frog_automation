@@ -11,6 +11,7 @@ const { DEFAULT_EXPORT_TABS } = require('./constants/exportTabs');
 const { buildJobLabel } = require('./utils');
 const { getLocalSfDataDir } = require('./sf-paths');
 const { uploadToDrive } = require('./google-drive');
+const { DRIVE_CATEGORIES } = require('./constants/driveCategories');
 
 const SF_LAUNCHER =
   process.env.SF_LAUNCHER ||
@@ -194,14 +195,15 @@ async function runJob(jobId) {
           db.prepare("UPDATE jobs SET drive_upload_status='uploading' WHERE id=?").run(jobId);
           logStream.write('[INFO] Uploading to Google Drive (folder + ZIP)…\n');
           const result = await uploadToDrive({
-            clientId:     creds.client_id,
-            clientSecret: creds.client_secret,
-            refreshToken: creds.refresh_token,
-            filePath:     zipPath,
-            outputDir:    outputDir,
-            jobLabel:     folderName,
-            jobUrl:       job.url,
-            rootFolderId: creds.root_folder_id || undefined,
+            clientId:      creds.client_id,
+            clientSecret:  creds.client_secret,
+            refreshToken:  creds.refresh_token,
+            filePath:      zipPath,
+            outputDir:     outputDir,
+            jobLabel:      folderName,
+            jobUrl:        job.url,
+            rootFolderId:  creds.root_folder_id || undefined,
+            driveCategory: DRIVE_CATEGORIES.CRAWLS,
           });
           db.prepare("UPDATE jobs SET drive_upload_status='uploaded' WHERE id=?").run(jobId);
           logStream.write(

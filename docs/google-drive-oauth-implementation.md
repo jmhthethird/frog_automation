@@ -45,6 +45,8 @@ Frontend: Update connection status UI
 | `/api/google-drive/folders` | GET | List folders via Drive API (replaces Picker) |
 | `/api/google-drive/root-folder` | POST | Store selected folder from folder browser |
 | `/api/google-drive/auth` | DELETE | Disconnect (clear tokens, preserve credentials) |
+| `/api/google-drive/migrate/status` | GET | Check if legacy domain folders need migration |
+| `/api/google-drive/migrate` | POST | Move legacy domain folders into the Crawls category folder |
 
 #### Frontend Functions (`public/index.html`)
 
@@ -61,6 +63,8 @@ Frontend: Update connection status UI
 | `closeDriveFolderBrowser()` | Close folder browser modal |
 | `_loadDriveFolders(parentId)` | Load folders from Drive API |
 | `confirmDriveFolder()` | Save selected folder to server |
+| `_checkDriveMigration()` | Check whether legacy folders need migration |
+| `migrateDriveFolders()` | Run the folder migration and update the UI |
 
 ## Dual-Mode OAuth Implementation
 
@@ -335,6 +339,63 @@ The callback page provides professional feedback:
 5. Click "Connect Google Drive" (or Shift+Click for redirect mode)
 6. Authorize in Google consent screen
 7. Select root folder for uploads using the folder browser
+
+### Google Drive Directory Structure
+
+When files are uploaded to Google Drive the application organises them under
+the user-selected root folder using the following hierarchy:
+
+```
+[Root Folder]                   ← selected via the folder browser
+  ├── Crawls/                   ← Frogtomation crawl artefacts
+  │     └── <domain>/           ← e.g. "example.com"
+  │           ├── <jobLabel>/   ← unzipped crawl files
+  │           └── <jobLabel>.zip
+  ├── Reports/                  ← output from the Reports panel
+  │     └── <domain>/
+  │           └── <report files>
+  ├── Automation/               ← output from the Automation panel
+  │     └── <domain>/
+  │           └── <automation files>
+  └── Templates/                ← shared templates (no domain subfolder)
+        └── <template files>
+```
+
+The top-level category folder is determined by the `driveCategory` option
+passed to `uploadToDrive()`.  Categories are defined in
+`src/constants/driveCategories.js` as frozen objects with two properties:
+
+| Constant | `folder` | `useDomainSubfolder` |
+|---|---|---|
+| `DRIVE_CATEGORIES.CRAWLS` | `Crawls` | `true` |
+| `DRIVE_CATEGORIES.REPORTS` | `Reports` | `true` |
+| `DRIVE_CATEGORIES.AUTOMATION` | `Automation` | `true` |
+| `DRIVE_CATEGORIES.TEMPLATES` | `Templates` | `false` |
+
+When `useDomainSubfolder` is `true`, a `<domain>` subfolder is created inside
+the category folder.  When `false`, files are placed directly in the category
+folder.
+
+When adding a new feature that uploads to Google Drive, import the appropriate
+constant and pass it as `driveCategory` — no changes to the upload logic
+itself are required.
+
+### Folder Migration (Legacy → Category Structure)
+
+Existing users who ran crawls before the category-based layout was introduced
+will have domain folders placed directly under their root folder.  The
+application detects this automatically:
+
+1. When the Google Drive card loads and the integration is connected,
+   `_checkDriveMigration()` calls `GET /api/google-drive/migrate/status`.
+2. If domain folders are found at the root level (i.e. folders whose names
+   do not match any known category: Crawls, Reports, Automation, Templates),
+   a "Folder Migration" subsection appears in the Drive card.
+3. Clicking **Migrate Folders** calls `POST /api/google-drive/migrate`, which
+   moves every legacy domain folder into the `Crawls` category folder using
+   the Drive API `files.update` with `addParents` / `removeParents`.
+4. The operation is idempotent — running it again after a successful migration
+   is a no-op.
 
 ## Troubleshooting
 

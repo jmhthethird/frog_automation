@@ -23,6 +23,7 @@ jest.mock('googleapis', () => {
     files: {
       list:   jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
   };
 
@@ -45,6 +46,8 @@ const {
   uploadToDrive,
   uploadFile,
   uploadFolder,
+  listSubfolders,
+  migrateDriveFolders,
 } = require('../../src/google-drive');
 
 // ─── buildOAuth2Client ────────────────────────────────────────────────────────
@@ -219,7 +222,7 @@ describe('uploadToDrive()', () => {
     expect(result.driveSize).toBe(localSize);
   });
 
-  it('uses the rootFolderId when looking up the domain subfolder', async () => {
+  it('uses the rootFolderId when looking up the category subfolder', async () => {
     setupMocks({ folderId: 'subfolder-in-root' });
     await uploadToDrive({
       clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
@@ -227,8 +230,14 @@ describe('uploadToDrive()', () => {
       jobUrl:   'https://example.com',
       rootFolderId: 'root-folder-id',
     });
-    const listCall = _mockDrive.files.list.mock.calls[0][0];
-    expect(listCall.q).toContain("'root-folder-id' in parents");
+    // First list call is for the category folder inside the root folder.
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("'root-folder-id' in parents");
+    expect(categoryCall.q).toContain("name='Crawls'");
+    // Second list call is for the domain folder inside the category folder.
+    const domainCall = _mockDrive.files.list.mock.calls[1][0];
+    expect(domainCall.q).toContain("'subfolder-in-root' in parents");
+    expect(domainCall.q).toContain("name='example.com'");
   });
 
   it('throws a validation error when Drive size does not match local size', async () => {
@@ -244,15 +253,65 @@ describe('uploadToDrive()', () => {
     })).rejects.toThrow(/validation failed/);
   });
 
-  it('uploads with rootFolderId null when not provided (places domain folder at Drive root)', async () => {
+  it('uploads with rootFolderId null when not provided (places category folder at Drive root)', async () => {
     setupMocks();
     await uploadToDrive({
       clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
       filePath: tmpFile,
       jobUrl:   'https://example.com',
     });
-    const listCall = _mockDrive.files.list.mock.calls[0][0];
-    expect(listCall.q).toContain("'root' in parents");
+    // First list call looks up the category folder in the Drive root.
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("'root' in parents");
+    expect(categoryCall.q).toContain("name='Crawls'");
+  });
+
+  it('defaults driveCategory to "Crawls" when not specified', async () => {
+    setupMocks();
+    await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+    });
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("name='Crawls'");
+  });
+
+  it('uses a custom driveCategory when provided', async () => {
+    setupMocks();
+    await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+      driveCategory: { folder: 'Reports', useDomainSubfolder: true },
+    });
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("name='Reports'");
+  });
+
+  it('skips domain subfolder when useDomainSubfolder is false', async () => {
+    // Use mockResolvedValueOnce to return distinct IDs for the category folder lookup.
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [{ id: 'templates-folder-id' }] } });
+    const localSize = fs.statSync(tmpFile).size;
+    _mockDrive.files.create.mockResolvedValueOnce({
+      data: { id: 'file-id-tmpl', size: String(localSize) },
+    });
+
+    const result = await uploadToDrive({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      filePath: tmpFile,
+      jobUrl:   'https://example.com',
+      driveCategory: { folder: 'Templates', useDomainSubfolder: false },
+    });
+
+    // Only one files.list call for the category folder – no domain folder lookup.
+    expect(_mockDrive.files.list).toHaveBeenCalledTimes(1);
+    const categoryCall = _mockDrive.files.list.mock.calls[0][0];
+    expect(categoryCall.q).toContain("name='Templates'");
+
+    // File is uploaded directly into the category folder.
+    expect(result.folderId).toBe('templates-folder-id');
+    expect(result.fileId).toBe('file-id-tmpl');
   });
 
   it('uses jobLabel for the ZIP filename when provided', async () => {
@@ -310,5 +369,183 @@ describe('uploadToDrive()', () => {
       jobUrl:   'https://example.com',
     });
     expect(result.folderResult).toBeNull();
+  });
+});
+
+// ─── listSubfolders ───────────────────────────────────────────────────────────
+describe('listSubfolders()', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns all subfolders in a parent', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({
+      data: { files: [{ id: 'f1', name: 'example.com' }, { id: 'f2', name: 'test.org' }] },
+    });
+    const folders = await listSubfolders(_mockDrive, 'parent-id');
+    expect(folders).toEqual([
+      { id: 'f1', name: 'example.com' },
+      { id: 'f2', name: 'test.org' },
+    ]);
+    expect(_mockDrive.files.list.mock.calls[0][0].q).toContain("'parent-id' in parents");
+  });
+
+  it('uses root when parentId is null', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    await listSubfolders(_mockDrive, null);
+    expect(_mockDrive.files.list.mock.calls[0][0].q).toContain("'root' in parents");
+  });
+
+  it('returns empty array when no subfolders exist', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    const folders = await listSubfolders(_mockDrive, 'parent-id');
+    expect(folders).toEqual([]);
+  });
+
+  it('paginates through multiple pages', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({
+        data: { files: [{ id: 'f1', name: 'page1' }], nextPageToken: 'token2' },
+      })
+      .mockResolvedValueOnce({
+        data: { files: [{ id: 'f2', name: 'page2' }] },
+      });
+    const folders = await listSubfolders(_mockDrive, 'parent-id');
+    expect(folders).toHaveLength(2);
+    expect(_mockDrive.files.list).toHaveBeenCalledTimes(2);
+    // Second call should include pageToken
+    expect(_mockDrive.files.list.mock.calls[1][0]).toHaveProperty('pageToken', 'token2');
+  });
+
+  it('falls back to Drive root when parentId is invalid', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    await listSubfolders(_mockDrive, "bad'value");
+    expect(_mockDrive.files.list.mock.calls[0][0].q).toContain("'root' in parents");
+  });
+});
+
+// ─── migrateDriveFolders ──────────────────────────────────────────────────────
+describe('migrateDriveFolders()', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('moves legacy domain folders into the Crawls folder', async () => {
+    // Root contains two domain folders and nothing else.
+    _mockDrive.files.list
+      // listSubfolders call – root children
+      .mockResolvedValueOnce({
+        data: { files: [
+          { id: 'dom1', name: 'example.com' },
+          { id: 'dom2', name: 'test.org' },
+        ]},
+      })
+      // ensureFolder(findFolder) for "Crawls" inside root
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+
+    _mockDrive.files.update.mockResolvedValue({ data: { id: 'ok', parents: ['crawls-folder'] } });
+
+    const result = await migrateDriveFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      rootFolderId: 'root-id',
+    });
+
+    expect(result.migrated).toBe(2);
+    expect(result.skipped).toEqual([]);
+    expect(result.crawlsFolderId).toBe('crawls-folder');
+
+    // Both domain folders should have been moved.
+    expect(_mockDrive.files.update).toHaveBeenCalledTimes(2);
+    expect(_mockDrive.files.update).toHaveBeenCalledWith({
+      fileId: 'dom1',
+      addParents: 'crawls-folder',
+      removeParents: 'root-id',
+      fields: 'id, parents',
+    });
+    expect(_mockDrive.files.update).toHaveBeenCalledWith({
+      fileId: 'dom2',
+      addParents: 'crawls-folder',
+      removeParents: 'root-id',
+      fields: 'id, parents',
+    });
+  });
+
+  it('skips known category folders', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({
+        data: { files: [
+          { id: 'cat1', name: 'Crawls' },
+          { id: 'cat2', name: 'Reports' },
+          { id: 'dom1', name: 'example.com' },
+        ]},
+      })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+
+    _mockDrive.files.update.mockResolvedValue({ data: { id: 'ok', parents: ['crawls-folder'] } });
+
+    const result = await migrateDriveFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      rootFolderId: 'root-id',
+    });
+
+    expect(result.migrated).toBe(1);
+    expect(result.skipped).toEqual(['Crawls', 'Reports']);
+    expect(_mockDrive.files.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('only migrates domain-like folder names and skips unrelated user folders', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({
+        data: { files: [
+          { id: 'dom1', name: 'example.com' },
+          { id: 'usr1', name: 'Invoices' },
+          { id: 'usr2', name: 'SEO Assets' },
+          { id: 'dom2', name: 'blog.test.org' },
+        ]},
+      })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+
+    _mockDrive.files.update.mockResolvedValue({ data: { id: 'ok', parents: ['crawls-folder'] } });
+
+    const result = await migrateDriveFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+      rootFolderId: 'root-id',
+    });
+
+    // Only domain-like folders migrated; user folders skipped.
+    expect(result.migrated).toBe(2);
+    expect(result.skipped).toEqual(['Invoices', 'SEO Assets']);
+    expect(_mockDrive.files.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('is a no-op when only category folders exist', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({
+        data: { files: [
+          { id: 'cat1', name: 'Crawls' },
+          { id: 'cat2', name: 'Templates' },
+        ]},
+      })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } });
+
+    const result = await migrateDriveFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+    });
+
+    expect(result.migrated).toBe(0);
+    expect(_mockDrive.files.update).not.toHaveBeenCalled();
+  });
+
+  it('uses Drive root when rootFolderId is not provided', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [] } })
+      // ensureFolder creates "Crawls"
+      .mockResolvedValueOnce({ data: { files: [] } });
+    _mockDrive.files.create.mockResolvedValueOnce({ data: { id: 'new-crawls' } });
+
+    const result = await migrateDriveFolders({
+      clientId: 'cid', clientSecret: 'cs', refreshToken: 'rt',
+    });
+
+    // listSubfolders should query root
+    expect(_mockDrive.files.list.mock.calls[0][0].q).toContain("'root' in parents");
+    expect(result.migrated).toBe(0);
+    expect(result.crawlsFolderId).toBe('new-crawls');
   });
 });
