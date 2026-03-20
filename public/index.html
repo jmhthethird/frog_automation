@@ -20,6 +20,10 @@
     --radius: 8px;
     --side-nav-bg: #0d0d1f;
     --green-tint: rgba(46,204,113,.08);
+    --red-bg: #4a1a1a;
+    --green-bg: #1a4a2e;
+    --orange-bg: #4a3000;
+    --blue-bg: #1a3a5e;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
@@ -39,7 +43,7 @@
   #notif-bell { position: relative; background: transparent; border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; font-size: 14px; cursor: pointer; color: var(--text-dim); transition: color .15s, border-color .15s; line-height: 1; }
   #notif-bell:hover { color: var(--text); border-color: var(--text-dim); }
   #notif-bell.has-notifs { border-color: var(--red); color: var(--red); }
-  #notif-count { position: absolute; top: -6px; right: -6px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: none; align-items: center; justify-content: center; padding: 0 4px; line-height: 1; }
+  #notif-count { position: absolute; top: -6px; right: -6px; background: var(--red); color: var(--text); font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: none; align-items: center; justify-content: center; padding: 0 4px; line-height: 1; }
   #notif-count.visible { display: flex; }
   #notif-dropdown { position: absolute; top: calc(100% + 8px); right: 0; width: 360px; max-height: 400px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 1000; display: none; }
   #notif-dropdown.open { display: block; }
@@ -52,8 +56,8 @@
   .notif-item:hover { background: #ffffff06; }
   .notif-item:last-child { border-bottom: none; }
   .notif-icon { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; }
-  .notif-icon-fail { background: #4a1a1a; color: var(--red); }
-  .notif-icon-drive { background: #4a3000; color: var(--orange); }
+  .notif-icon-fail { background: var(--red-bg); color: var(--red); }
+  .notif-icon-drive { background: var(--orange-bg); color: var(--orange); }
   .notif-body { flex: 1; min-width: 0; }
   .notif-title { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .notif-msg { font-size: 11px; color: var(--text-dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -72,9 +76,9 @@
   @keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
   /* ── Drive upload badge in job table ────────────────────────────────────── */
   .drive-badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
-  .drive-badge-uploaded { background: #1a4a2e; color: var(--green); }
-  .drive-badge-uploading { background: #1a3a5e; color: var(--blue); }
-  .drive-badge-upload_failed { background: #4a1a1a; color: var(--red); }
+  .drive-badge-uploaded { background: var(--green-bg); color: var(--green); }
+  .drive-badge-uploading { background: var(--blue-bg); color: var(--blue); }
+  .drive-badge-upload_failed { background: var(--red-bg); color: var(--red); }
   /* ── Inline API / accordion sections ───────────────────────────────────── */
   .sect { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-top: 10px; overflow: hidden; }
   .sect > summary { padding: 10px 14px; font-size: 13px; font-weight: 600; color: #ccc; cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 8px; }
@@ -1232,7 +1236,7 @@ async function loadJobs(page) {
         <td>${j.id}${j.status === 'running' ? ` <button class="btn btn-danger" style="font-size:10px;padding:2px 7px;" onclick="stopJobClick(${j.id})">■ Stop</button>` : ''}</td>
         <td class="url-cell" title="${escHtml(j.url)}">${escHtml(j.url)}</td>
         <td style="color:var(--text-dim);">${escHtml(j.profile_name || '—')}</td>
-        <td><span class="badge badge-${j.status}">${j.status}</span>${j.drive_upload_status === 'upload_failed' ? ' <span class="drive-badge drive-badge-upload_failed" title="Drive upload failed">⚠ Drive</span>' : ''}${j.drive_upload_status === 'uploaded' ? ' <span class="drive-badge drive-badge-uploaded" title="Uploaded to Drive">☁</span>' : ''}${j.diff_summary ? ' <span title="Diff available" aria-label="Diff available" role="img">🔀</span>' : ''}</td>
+        <td>${safeBadge(j.status)}${j.drive_upload_status === 'upload_failed' ? ' <span class="drive-badge drive-badge-upload_failed" title="Drive upload failed">⚠ Drive</span>' : ''}${j.drive_upload_status === 'uploaded' ? ' <span class="drive-badge drive-badge-uploaded" title="Uploaded to Drive">☁</span>' : ''}${j.diff_summary ? ' <span title="Diff available" aria-label="Diff available" role="img">🔀</span>' : ''}</td>
         <td style="color:var(--text-dim);white-space:nowrap;">${j.duration_seconds !== undefined ? fmtDuration(j.duration_seconds) : '—'}</td>
         <td style="color:var(--text-dim);white-space:nowrap;">${fmtDate(j.created_at)}</td>
         <td>
@@ -1247,6 +1251,8 @@ async function loadJobs(page) {
   } catch {
     area.innerHTML = '<span style="color:var(--red);">Failed to load jobs</span>';
   }
+  // Piggyback on the jobs refresh to update notifications (avoids a separate polling loop).
+  _pollNotifications();
 }
 
 function buildPagination(currentPage, totalPages) {
@@ -1336,7 +1342,7 @@ async function showJobDetail(id) {
       if (!r.ok) return;
 
       document.getElementById('detail-grid').innerHTML = `
-        <div class="detail-item"><label>Status</label><span><span class="badge badge-${j.status}">${j.status}</span></span></div>
+        <div class="detail-item"><label>Status</label><span>${safeBadge(j.status)}</span></div>
         <div class="detail-item"><label>URL</label><span>${escHtml(j.url)}</span></div>
         <div class="detail-item"><label>Profile</label><span>${escHtml(j.profile_name || '—')}</span></div>
         <div class="detail-item"><label>Spider Config</label><span>${escHtml(j.spider_config_name || '—')}</span></div>
@@ -2779,6 +2785,7 @@ function toggleNotifDropdown() {
     }
     _saveNotifSeen();
     _updateNotifBadge();
+    _renderNotifDropdown();
   }
 }
 
@@ -2787,7 +2794,6 @@ function dismissAllNotifs() {
     if (!_notifSeenIds.includes(n.id)) _notifSeenIds.push(n.id);
   }
   _saveNotifSeen();
-  _notifCache = [];
   _updateNotifBadge();
   _renderNotifDropdown();
   _notifDropdownOpen = false;
@@ -2808,11 +2814,13 @@ function _updateNotifBadge() {
 
 function _renderNotifDropdown() {
   const list = document.getElementById('notif-list');
-  if (_notifCache.length === 0) {
+  const seenSet = new Set(_notifSeenIds);
+  const unseen = _notifCache.filter(n => !seenSet.has(n.id));
+  if (unseen.length === 0) {
     list.innerHTML = '<div class="notif-empty">No notifications</div>';
     return;
   }
-  list.innerHTML = _notifCache.map(n => {
+  list.innerHTML = unseen.map(n => {
     const isFail = n.type === 'job_failed';
     const iconClass = isFail ? 'notif-icon-fail' : 'notif-icon-drive';
     const icon = isFail ? '✕' : '⚠';
@@ -2878,10 +2886,6 @@ document.addEventListener('click', (e) => {
     document.getElementById('notif-dropdown').classList.remove('open');
   }
 });
-
-// Poll notifications every 10 seconds
-_pollNotifications();
-setInterval(_pollNotifications, 10_000);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 buildExportTabsUI();

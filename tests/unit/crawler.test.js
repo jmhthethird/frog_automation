@@ -871,6 +871,21 @@ describe('runJob() – Google Drive upload', () => {
     expect(job.drive_upload_status).toBe('upload_failed');
     expect(job.drive_upload_error).toBe('Drive quota exceeded');
   });
+
+  it('clears stale drive_upload_status and drive_upload_error when a job starts running', async () => {
+    // Pre-set stale upload failure from a prior run.
+    const jobId = insertJob(db, dataDir, { url: 'https://example.com' });
+    db.prepare("UPDATE jobs SET drive_upload_status='upload_failed', drive_upload_error='Old error' WHERE id=?").run(jobId);
+
+    fakeProcExit(cp, 0, 'crawl ok', '');
+    await crawler.runJob(jobId);
+
+    const job = db.prepare('SELECT * FROM jobs WHERE id = ?').get(jobId);
+    expect(job.status).toBe('completed');
+    // drive_upload_status should be null since Drive is not enabled (stale value cleared).
+    expect(job.drive_upload_status).toBeNull();
+    expect(job.drive_upload_error).toBeNull();
+  });
 });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

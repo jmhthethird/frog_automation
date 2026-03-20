@@ -159,7 +159,7 @@ async function runJob(jobId) {
   // waiting in the queue.
   if (job.status === 'stopped') return;
 
-  db.prepare("UPDATE jobs SET status='running', started_at=datetime('now') WHERE id=?").run(jobId);
+  db.prepare("UPDATE jobs SET status='running', started_at=datetime('now'), drive_upload_status=NULL, drive_upload_error=NULL WHERE id=?").run(jobId);
 
   const outputDir = job.output_dir;
   fs.mkdirSync(outputDir, { recursive: true });
@@ -221,9 +221,10 @@ async function runJob(jobId) {
       }
     } catch (driveErr) {
       // Drive upload is non-critical – log but don't fail the job.
+      const driveErrMsg = driveErr && driveErr.message ? driveErr.message : String(driveErr);
       db.prepare("UPDATE jobs SET drive_upload_status='upload_failed', drive_upload_error=? WHERE id=?")
-        .run(driveErr.message, jobId);
-      logStream.write(`[WARN] Google Drive upload failed: ${driveErr.message}\n`);
+        .run(driveErrMsg, jobId);
+      logStream.write(`[WARN] Google Drive upload failed: ${driveErrMsg}\n`);
       console.error(`[crawler] Google Drive upload failed for job ${jobId}:`, driveErr);
     }
 
