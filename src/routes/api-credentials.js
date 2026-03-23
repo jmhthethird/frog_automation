@@ -14,6 +14,9 @@ const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true
  * Fields marked `sensitive: true` are masked in GET responses.
  */
 const SERVICE_FIELDS = {
+  github: [
+    { name: 'pat', label: 'Personal Access Token (PAT)', sensitive: true },
+  ],
   google_search_console: [],
   pagespeed:             [],
   majestic:              [],

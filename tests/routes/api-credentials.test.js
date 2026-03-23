@@ -22,6 +22,7 @@ describe('GET /api/api-credentials', () => {
     const res = await ctx.request.get('/api/api-credentials').expect(200);
     expect(Array.isArray(res.body)).toBe(true);
     const services = res.body.map(s => s.service);
+    expect(services).toContain('github');
     expect(services).toContain('google_search_console');
     expect(services).toContain('pagespeed');
     expect(services).toContain('majestic');
@@ -78,6 +79,15 @@ describe('GET /api/api-credentials', () => {
     const res = await ctx.request.get('/api/api-credentials').expect(200);
     const gd = res.body.find(s => s.service === 'google_drive');
     expect(gd.fields.find(f => f.name === 'client_id').sensitive).toBeFalsy();
+  });
+
+  it('github has a pat field marked sensitive', async () => {
+    const res = await ctx.request.get('/api/api-credentials').expect(200);
+    const gh = res.body.find(s => s.service === 'github');
+    expect(gh).toBeDefined();
+    const patField = gh.fields.find(f => f.name === 'pat');
+    expect(patField).toBeDefined();
+    expect(patField.sensitive).toBe(true);
   });
 });
 

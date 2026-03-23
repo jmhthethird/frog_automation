@@ -97,7 +97,7 @@ function _patch(obj) { Object.assign(_state, obj); }
 
 /** @returns {UpdateState} */
 function getState() {
-  return { ..._state, currentVersion: getCurrentVersion() };
+  return { ..._state, currentVersion: getCurrentVersion(), isPrivateRepo: !!_getGithubPat() };
 }
 
 // ── listAllReleases ───────────────────────────────────────────────────────────
@@ -110,9 +110,11 @@ function getState() {
  */
 async function listAllReleases() {
   let releases;
+  const token = _getGithubPat();
   try {
     releases = await _fetchJson(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
+      token
     );
   } catch {
     return [];
@@ -178,10 +180,12 @@ function selectVersionForInstall(version, downloadUrl, releaseUrl, releaseNotes)
 async function checkForUpdate() {
   _patch({ status: 'checking', error: null });
 
+  const token = _getGithubPat();
   let release;
   try {
     release = await _fetchJson(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+      token
     );
   } catch (err) {
     _patch({ status: 'error', error: err.message });
@@ -392,24 +396,46 @@ function _restartApp() {
   }
 }
 
-// ── JSON fetch helper ─────────────────────────────────────────────────────────
+/** Cached reference to the database module (set on first successful require). */
+let _db = null;
+
+/**
+ * Read the GitHub Personal Access Token from the database, if one has been
+ * stored.  Returns null when no token is configured or when the DB is not
+ * accessible (e.g. during unit tests that don't set up a database).
+ *
+ * @returns {string|null}
+ */
+function _getGithubPat() {
+  try {
+    if (!_db) _db = require('./db').db;
+    const row = _db.prepare("SELECT credentials FROM api_credentials WHERE service = 'github'").get();
+    const creds = JSON.parse(row?.credentials || '{}');
+    return creds.pat || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Fetch a URL and parse the response as JSON.  Follows one redirect.
+ * When `token` is provided it is sent as a Bearer Authorization header,
+ * enabling access to private GitHub repositories.
  *
- * @param {string} url
+ * @param {string}      url
+ * @param {string|null} [token]
  * @returns {Promise<object>}
  */
-function _fetchJson(url) {
+function _fetchJson(url, token) {
   return new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: {
-        'User-Agent': `FrogAutomation/${getCurrentVersion()}`,
-        'Accept':     'application/vnd.github.v3+json',
-      },
-    }, (res) => {
+    const headers = {
+      'User-Agent': `FrogAutomation/${getCurrentVersion()}`,
+      'Accept':     'application/vnd.github.v3+json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    https.get(url, { headers }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        _fetchJson(res.headers.location).then(resolve, reject);
+        _fetchJson(res.headers.location, token).then(resolve, reject);
         return;
       }
       let data = '';
@@ -467,10 +493,12 @@ async function resolvePRBuild(prUrl) {
 
   _patch({ status: 'checking', error: null });
 
+  const token = _getGithubPat();
   let release;
   try {
     release = await _fetchJson(
-      `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`
+      `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`,
+      token
     );
   } catch (err) {
     const notFound = /not found/i.test(err.message);
