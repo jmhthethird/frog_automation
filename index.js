@@ -52,7 +52,7 @@ function startServer(port) {
   ).run();
   // Reset stale cron jobs back to 'scheduled' – they will be picked up by the scheduler.
   db.prepare(
-    "UPDATE jobs SET status='scheduled', started_at=NULL WHERE status IN ('running','queued') AND cron_expression IS NOT NULL"
+    "UPDATE jobs SET status='queued', started_at=NULL WHERE status IN ('running','queued') AND cron_expression IS NOT NULL"
   ).run();
   if (stale.changes > 0) {
     console.log(`[startup] Re-queued ${stale.changes} stale job(s)`);
