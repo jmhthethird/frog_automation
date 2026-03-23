@@ -454,7 +454,7 @@ function _fetchJson(url, token) {
     if (token) headers['Authorization'] = `Bearer ${token}`;
     https.get(parsed, { headers }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        _fetchJson(res.headers.location, token).then(resolve, reject);
+        reject(new Error('Unexpected redirect from GitHub API'));
         return;
       }
       let data = '';
@@ -496,7 +496,7 @@ async function resolvePRBuild(prUrl) {
     return getState();
   }
 
-  const [, owner, repo, prNumber] = match;
+  const [, owner, repo, rawPrNumber] = match;
 
   // Security: only allow installing builds from this app's own repository.
   if (owner.toLowerCase() !== GITHUB_OWNER.toLowerCase() ||
@@ -508,6 +508,13 @@ async function resolvePRBuild(prUrl) {
     return getState();
   }
 
+  // Sanitize the PR number to a plain integer — discard any other user input.
+  const prNumber = parseInt(rawPrNumber, 10);
+  if (!Number.isFinite(prNumber) || prNumber <= 0) {
+    _patch({ status: 'error', error: 'Invalid PR number' });
+    return getState();
+  }
+
   const tag = `pr-${prNumber}-preview`;
 
   _patch({ status: 'checking', error: null });
@@ -515,8 +522,9 @@ async function resolvePRBuild(prUrl) {
   const token = _getGithubPat();
   let release;
   try {
+    // Use module-level constants (not user-derived captures) to build the URL.
     release = await _fetchJson(
-      `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`,
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${tag}`,
       token
     );
   } catch (err) {
