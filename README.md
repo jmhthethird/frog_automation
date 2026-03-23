@@ -152,9 +152,9 @@ against a private repository.
 4. Click **Generate token** and copy the token value immediately (it is only
    shown once).
 
-> **Classic tokens:** if you prefer a classic PAT, the minimum required scope
-> is `repo` (or the narrower `read:packages` scope is sufficient for public
-> release assets — for a truly private repo use the `repo` scope).
+> **Classic tokens:** if you prefer a classic PAT, use the `repo` scope for
+> private repositories. For public repositories, no scope is required to read
+> releases (unauthenticated requests are sufficient).
 
 ### 2 – Add the PAT in the Frog Automation Settings
 

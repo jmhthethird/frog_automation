@@ -256,7 +256,7 @@ describe('checkForUpdate()', () => {
     jest.mock('../../src/db', () => ({
       db: {
         prepare: () => ({
-          get: () => ({ credentials: JSON.stringify({ pat: 'ghp_test_token_123' }) }),
+          get: () => ({ enabled: 1, credentials: JSON.stringify({ pat: 'ghp_test_token_123' }) }),
         }),
       },
     }));

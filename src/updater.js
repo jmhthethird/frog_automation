@@ -72,6 +72,7 @@ function getAppBundlePath() {
  * @property {string|null}  downloadPath
  * @property {number}       progress        0–100
  * @property {string|null}  error
+ * @property {boolean}      isPrivateRepo   true when a GitHub PAT is active
  *
  * @typedef {Object} ReleaseInfo
  * @property {string}      version
@@ -409,8 +410,9 @@ let _db = null;
 function _getGithubPat() {
   try {
     if (!_db) _db = require('./db').db;
-    const row = _db.prepare("SELECT credentials FROM api_credentials WHERE service = 'github'").get();
-    const creds = JSON.parse(row?.credentials || '{}');
+    const row = _db.prepare("SELECT enabled, credentials FROM api_credentials WHERE service = 'github'").get();
+    if (!row || row.enabled !== 1) return null;
+    const creds = JSON.parse(row.credentials || '{}');
     return creds.pat || null;
   } catch {
     return null;
@@ -450,7 +452,7 @@ function _fetchJson(url, token) {
       'Accept':     'application/vnd.github.v3+json',
     };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    https.get(url, { headers }, (res) => {
+    https.get(parsed, { headers }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
         _fetchJson(res.headers.location, token).then(resolve, reject);
         return;
