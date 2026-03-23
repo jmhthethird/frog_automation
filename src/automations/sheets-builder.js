@@ -2,72 +2,22 @@
 
 const { getColumn } = require('./utils/sf-columns');
 
-// ─── Manual review checklist items (from process docs pp.10–40) ───────────────
-const MANUAL_REVIEW_ITEMS = [
-  'Titles Lead with Primary Keyphrase',
-  'Title Provides Clear Semantic Label',
-  'Meta Descriptions Lead with Keyphrase',
-  'Meta Keyword Abuse',
-  'Primary Keyword in H1',
-  'Missing H2 (contextual)',
-  'H2/H3 phrased as user questions',
-  'H3/H4/H5 opportunities',
-  'TL;DR summary block for long-form',
-  'Heading size',
-  'Heading tag stuffing',
-  'Image Cloaking',
-  'Contextually Rich ALT',
-  'Irrelevant ALT',
-  'Keywords Early in URLs',
-  'Hyphen-Separated URL words',
-  'Image URLs',
-  'Navigation Elements Non-image-based',
-  'Text in Images',
-  'Text in Video',
-  'Text hidden by JavaScript',
-  'Text hidden by CSS',
-  'Tabbed Content',
-  'Missing Anchor Text',
-  'User-Agent Cloaking',
-  'Foreground/Background Contrast',
-  'Emphasis',
-  'Emphasis Abuse',
-  'Target Keywords Higher on Pages',
-  'Other Areas Lead with Intended Keywords',
-  'Rich Media Supported (No Flash)',
-  'No Isolated Keyword Blocks',
-  'No Duplicate Text Across Pages',
-  'Content Freshness',
+// ─── Template name on Google Drive ────────────────────────────────────────────
+const TEMPLATE_NAME = 'TEMPLATE _ Content Architecture Audit';
+
+// ─── Valid dropdown values from the config tab ────────────────────────────────
+// These are the only values allowed in cells that have data-validation dropdowns.
+const VALID_PASS_FAIL = [
+  'Pass', 'Needs Improvement', 'New Opportunity', 'Not Applicable', 'In Progress', 'To Discuss',
+];
+const VALID_STATUS = [
+  'Resolved', 'See Notes', 'In Progress', 'Pending', 'Ignore', 'No-Index',
+];
+const VALID_PRIORITY = [
+  '1. High', '2. Medium', '3. Low', 'Not applicable',
 ];
 
-// ─── Overview issues table (12 rows) ──────────────────────────────────────────
-const ISSUES_TABLE = [
-  { issue: 'Duplicate Title Tags',                          priority: 'High',   seoImpact: 'High',   countKey: 'duplicateTitles' },
-  { issue: 'Missing/Empty Meta Description',                priority: 'High',   seoImpact: 'High',   countKey: 'missingDesc' },
-  { issue: 'Duplicate Meta Description',                    priority: 'High',   seoImpact: 'High',   countKey: 'duplicateDesc' },
-  { issue: 'Missing H1',                                    priority: 'High',   seoImpact: 'High',   countKey: 'missingH1' },
-  { issue: 'Excessively Long or Short Title Tags',          priority: 'Medium', seoImpact: 'Medium', countKey: 'titleLengthIssues' },
-  { issue: 'Excessively Long or Short Meta Description',    priority: 'Medium', seoImpact: 'Medium', countKey: 'descLengthIssues' },
-  { issue: 'Titles Use Bad Delimiters (dashes in use)',     priority: 'Medium', seoImpact: 'Medium', countKey: 'titleBadDelimiters' },
-  { issue: 'Duplicate H1',                                  priority: 'Medium', seoImpact: 'Medium', countKey: 'duplicateH1' },
-  { issue: 'Multiple H1',                                   priority: 'Medium', seoImpact: 'Medium', countKey: 'multipleH1' },
-  { issue: 'Excessively Long or Short H1',                  priority: 'Medium', seoImpact: 'Medium', countKey: 'h1LengthIssues' },
-  { issue: 'Image ALT Text Missing',                        priority: 'Low',    seoImpact: 'Low',    countKey: 'missingImageAlt' },
-  { issue: 'Excessively Long Image ALT Text',               priority: 'Low',    seoImpact: 'Low',    countKey: 'longImageAlt' },
-];
-
-// ─── Config tab lookup values ─────────────────────────────────────────────────
-const CONFIG_DATA = [
-  ['Pass/Fail',        'Status',      'Priority'],
-  ['Pass',             'Resolved',    '1. High'],
-  ['Needs Improvement','See Notes',   '2. Medium'],
-  ['New Opportunity',  'In Progress', '3. Low'],
-  ['Not Applicable',   'Pending',     'Not applicable'],
-  ['In Progress',      'Ignore',      ''],
-  ['To Discuss',       'No-Index',    ''],
-];
-
-// ─── Content Metadata header row ──────────────────────────────────────────────
+// ─── Content Metadata header row (matches template) ───────────────────────────
 const CONTENT_HEADERS = [
   'Address', 'Status', 'Priority', 'Notes', '',
   'Title Rewrite', 'Description Rewrite', 'H1 Rewrite', '',
@@ -80,19 +30,24 @@ const CONTENT_HEADERS = [
   'H1-2', 'H1-2 Length',
 ];
 
-// ─── Image Metadata header row ────────────────────────────────────────────────
+// ─── Image Metadata header row (matches template) ────────────────────────────
 const IMAGE_HEADERS = [
   'Destination (Image URL)', 'Status', 'Priority', 'Notes', '',
   'Rewrite', 'Missing ALT', 'Alt Text Length', '',
   'Alt Text', 'Alt Text Length', 'New Alt Text', 'New Alt Text Length',
 ];
 
-// ─── Colour helpers (Google Sheets API uses 0–1 float RGB) ────────────────────
-const HEADER_GREEN  = { red: 0.718, green: 0.882, blue: 0.804 }; // #B7E1CD
-const HEADER_YELLOW = { red: 0.988, green: 0.910, blue: 0.698 }; // #FCE8B2
-
 /**
- * Create the Content Architecture Audit Google Sheet.
+ * Create the Content Architecture Audit Google Sheet by copying the template.
+ *
+ * Instead of building a sheet from scratch this function:
+ * 1. Finds the template in `Templates/TEMPLATE _ Content Architecture Audit`
+ * 2. Copies it to `Reports/<domain>/` with a timestamped name
+ * 3. Writes data into the five data-entry tabs only (Content Metadata,
+ *    Image Metadata, Raw Crawl (Content), Raw Crawl (Images), Custom JS)
+ * 4. Leaves Scorecard & Summary, Overview, and config tabs untouched so that
+ *    formulas in those tabs auto-populate from the data we write
+ * 5. Respects dropdown data-validation — only uses values from the config tab
  *
  * @param {object} opts
  * @param {string}   opts.domain
@@ -104,92 +59,63 @@ const HEADER_YELLOW = { red: 0.988, green: 0.910, blue: 0.698 }; // #FCE8B2
  * @param {object}   opts.issueCounts
  * @param {object}   opts.drive            Google Drive v3 client
  * @param {object}   opts.sheets           Google Sheets v4 client
- * @param {string}   opts.reportsFolderId  Target folder ID
+ * @param {string}   opts.reportsFolderId  Target folder ID in Reports/<domain>/
+ * @param {string}   opts.templateFileId   Drive file ID of the template spreadsheet
  * @returns {Promise<{ spreadsheetId: string, spreadsheetUrl: string }>}
  */
 async function createContentArchitectureAudit(opts) {
   const {
     domain, analysedRows, analysedImages, customJsRows,
-    rawContentRows, rawImageRows, issueCounts,
-    drive, sheets, reportsFolderId,
+    rawContentRows, rawImageRows,
+    drive, sheets, reportsFolderId, templateFileId,
   } = opts;
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const title = `Content Architecture Audit — ${domain} — ${dateStr}`;
 
-  const sheetNames = [
-    'Scorecard & Summary',
-    'Overview',
-    'Content Metadata',
-    'Image Metadata',
-    'Raw Crawl (Content)',
-    'Raw Crawl (Images)',
-    'Custom JS',
-    'config',
-  ];
-
-  // 1. Create spreadsheet with all 8 tabs
-  const createResp = await sheets.spreadsheets.create({
+  // 1. Copy the template to the Reports/<domain>/ folder
+  const copyResp = await drive.files.copy({
+    fileId: templateFileId,
     requestBody: {
-      properties: { title },
-      sheets: sheetNames.map((name, i) => ({
-        properties: { sheetId: i, title: name, index: i },
-      })),
+      name: title,
+      parents: reportsFolderId ? [reportsFolderId] : undefined,
     },
+    fields: 'id',
   });
-  const spreadsheetId = createResp.data.spreadsheetId;
+  const spreadsheetId = copyResp.data.id;
 
-  // 2. Populate each sheet with batchUpdate values
+  // 2. Read the copied spreadsheet to discover sheet IDs (tab names → sheetId)
+  const ssResp = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: 'sheets.properties',
+  });
+  const sheetMap = {};
+  for (const s of ssResp.data.sheets) {
+    sheetMap[s.properties.title] = s.properties.sheetId;
+  }
+
+  // 3. Write data into the five data-entry tabs (row 2 onward, preserving headers)
   const valueData = [];
 
-  // ── Scorecard & Summary ─────────────────────────────────────────────────
-  const scorecardValues = [
-    ['Content Architecture Audit'],
-    ['Domain:', domain],
-    ['Date:', dateStr],
-    [''],
-    ['Issue Summary'],
-    ['Titles to Rewrite:', countTitlesToRewrite(issueCounts)],
-    ['Meta Descriptions to Rewrite:', countDescsToRewrite(issueCounts)],
-    ['H1s to Rewrite:', countH1sToRewrite(issueCounts)],
-    ['Image ALT Text to Rewrite:', issueCounts.missingImageAlt + issueCounts.longImageAlt],
-    [''],
-    ['Manual Review Required', 'Status', 'Why', 'How'],
-    ...MANUAL_REVIEW_ITEMS.map(item => [item, '', '', '']),
-  ];
-  valueData.push({ range: "'Scorecard & Summary'!A1", values: scorecardValues });
-
-  // ── Overview ────────────────────────────────────────────────────────────
-  const overviewValues = [
-    ['Issues Detailed'],
-    ['Issue', 'Priority', 'SEO Impact', 'Count'],
-    ...ISSUES_TABLE.map(row => [
-      row.issue, row.priority, row.seoImpact, issueCounts[row.countKey] || 0,
-    ]),
-    [''],
-    ['Summary'],
-    ['Titles to Rewrite:', countTitlesToRewrite(issueCounts)],
-    ['Meta Descriptions to Rewrite:', countDescsToRewrite(issueCounts)],
-    ['H1s to Rewrite:', countH1sToRewrite(issueCounts)],
-    ['Image ALT Text to Rewrite:', issueCounts.missingImageAlt + issueCounts.longImageAlt],
-  ];
-  valueData.push({ range: "'Overview'!A1", values: overviewValues });
-
-  // ── Content Metadata ────────────────────────────────────────────────────
+  // ── Content Metadata ──────────────────────────────────────────────────────
   const contentDataRows = analysedRows.map(r => buildContentMetadataRow(r, customJsRows));
-  valueData.push({
-    range: "'Content Metadata'!A1",
-    values: [CONTENT_HEADERS, ...contentDataRows],
-  });
+  if (contentDataRows.length > 0) {
+    valueData.push({
+      range: "'Content Metadata'!A2",
+      values: contentDataRows,
+    });
+  }
 
-  // ── Image Metadata ──────────────────────────────────────────────────────
+  // ── Image Metadata ────────────────────────────────────────────────────────
   const imageDataRows = analysedImages.map(buildImageMetadataRow);
-  valueData.push({
-    range: "'Image Metadata'!A1",
-    values: [IMAGE_HEADERS, ...imageDataRows],
-  });
+  if (imageDataRows.length > 0) {
+    valueData.push({
+      range: "'Image Metadata'!A2",
+      values: imageDataRows,
+    });
+  }
 
-  // ── Raw Crawl (Content) ─────────────────────────────────────────────────
+  // ── Raw Crawl (Content) ───────────────────────────────────────────────────
   if (rawContentRows.length > 0) {
     const rawContentHeaders = Object.keys(rawContentRows[0]);
     const rawContentValues  = rawContentRows.map(r => rawContentHeaders.map(h => r[h] || ''));
@@ -199,7 +125,7 @@ async function createContentArchitectureAudit(opts) {
     });
   }
 
-  // ── Raw Crawl (Images) ─────────────────────────────────────────────────
+  // ── Raw Crawl (Images) ────────────────────────────────────────────────────
   if (rawImageRows.length > 0) {
     const rawImageHeaders = Object.keys(rawImageRows[0]);
     const rawImageValues  = rawImageRows.map(r => rawImageHeaders.map(h => r[h] || ''));
@@ -209,7 +135,7 @@ async function createContentArchitectureAudit(opts) {
     });
   }
 
-  // ── Custom JS ───────────────────────────────────────────────────────────
+  // ── Custom JS ─────────────────────────────────────────────────────────────
   if (customJsRows.length > 0) {
     const customHeaders = Object.keys(customJsRows[0]);
     const customValues  = customJsRows.map(r => customHeaders.map(h => r[h] || ''));
@@ -219,75 +145,15 @@ async function createContentArchitectureAudit(opts) {
     });
   }
 
-  // ── config ──────────────────────────────────────────────────────────────
-  valueData.push({ range: "'config'!A1", values: CONFIG_DATA });
-
-  // 3. Batch-write all values
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      valueInputOption: 'RAW',
-      data: valueData,
-    },
-  });
-
-  // 4. Apply formatting (freeze rows, bold headers, header colours)
-  const formatRequests = [];
-
-  // Freeze row 1 on data sheets
-  const freezeSheets = ['Content Metadata', 'Image Metadata', 'Raw Crawl (Content)', 'Raw Crawl (Images)', 'Custom JS'];
-  for (const name of freezeSheets) {
-    const idx = sheetNames.indexOf(name);
-    if (idx >= 0) {
-      formatRequests.push({
-        updateSheetProperties: {
-          properties: { sheetId: idx, gridProperties: { frozenRowCount: 1 } },
-          fields: 'gridProperties.frozenRowCount',
-        },
-      });
-    }
-  }
-
-  // Bold + colour header rows on data sheets
-  const headerSheets = [
-    { name: 'Content Metadata', color: HEADER_GREEN },
-    { name: 'Image Metadata',   color: HEADER_GREEN },
-    { name: 'Raw Crawl (Content)', color: HEADER_GREEN },
-    { name: 'Raw Crawl (Images)',  color: HEADER_GREEN },
-    { name: 'Overview',            color: HEADER_YELLOW },
-  ];
-  for (const { name, color } of headerSheets) {
-    const idx = sheetNames.indexOf(name);
-    if (idx >= 0) {
-      formatRequests.push({
-        repeatCell: {
-          range: { sheetId: idx, startRowIndex: 0, endRowIndex: 1 },
-          cell: {
-            userEnteredFormat: {
-              backgroundColor: color,
-              textFormat: { bold: true },
-            },
-          },
-          fields: 'userEnteredFormat(backgroundColor,textFormat.bold)',
-        },
-      });
-    }
-  }
-
-  if (formatRequests.length > 0) {
-    await sheets.spreadsheets.batchUpdate({
+  // 4. Batch-write all values (USER_ENTERED so numbers/dates are recognised,
+  //    but we never write formulas ourselves — only plain values)
+  if (valueData.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
-      requestBody: { requests: formatRequests },
-    });
-  }
-
-  // 5. Move spreadsheet to the correct Drive folder
-  if (reportsFolderId) {
-    await drive.files.update({
-      fileId: spreadsheetId,
-      addParents: reportsFolderId,
-      removeParents: 'root',
-      fields: 'id, parents',
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: valueData,
+      },
     });
   }
 
@@ -296,6 +162,24 @@ async function createContentArchitectureAudit(opts) {
 }
 
 // ─── Row-builder helpers ──────────────────────────────────────────────────────
+
+/**
+ * Map an analysis flag to a valid Pass/Fail dropdown value.
+ * Only returns values that exist in the config tab's Pass/Fail column.
+ */
+function passFail(isFail, hasValue) {
+  if (isFail) return 'Needs Improvement';
+  if (hasValue) return 'Pass';
+  return '';
+}
+
+/**
+ * Map a rewrite flag to a text indicator.
+ * The Rewrite columns are free-text (not dropdown-validated).
+ */
+function rewriteFlag(needsRewrite) {
+  return needsRewrite ? 'Needs Improvement' : '';
+}
 
 function buildContentMetadataRow(row, customJsRows) {
   // Look up Custom JS rewrite suggestions
@@ -316,24 +200,24 @@ function buildContentMetadataRow(row, customJsRows) {
 
   return [
     row._address,                                                     // Address
-    row._rowStatus,                                                   // Status
-    row._rowPriority,                                                 // Priority
+    row._rowStatus,                                                   // Status (uses VALID_STATUS values)
+    row._rowPriority,                                                 // Priority (uses VALID_PRIORITY values)
     '',                                                               // Notes
     '',                                                               // spacer
-    row._titleRewrite ? 'Rewrite' : '',                               // Title Rewrite
-    row._descRewrite  ? 'Rewrite' : '',                               // Description Rewrite
-    row._h1Rewrite    ? 'Rewrite' : '',                               // H1 Rewrite
+    rewriteFlag(row._titleRewrite),                                   // Title Rewrite
+    rewriteFlag(row._descRewrite),                                    // Description Rewrite
+    rewriteFlag(row._h1Rewrite),                                      // H1 Rewrite
     '',                                                               // spacer
-    row._titleLengthFail ? 'Fail' : (row._title ? 'Pass' : ''),      // Title Length
-    row._duplicateTitle  ? 'Fail' : (row._title ? 'Pass' : ''),      // Title Duplicate
-    row._missingTitle    ? 'Fail' : 'Pass',                           // Missing Title
-    row._descLengthFail  ? 'Fail' : (row._desc ? 'Pass' : ''),       // Description Length
-    row._duplicateDescription ? 'Fail' : (row._desc ? 'Pass' : ''),  // Description Duplicate
-    row._missingDescription   ? 'Fail' : 'Pass',                     // Missing Description
-    row._h1LengthFail ? 'Fail' : (row._h1 ? 'Pass' : ''),           // H1 Length
-    row._duplicateH1  ? 'Fail' : (row._h1 ? 'Pass' : ''),           // H1 Duplicate
-    row._missingH1    ? 'Fail' : 'Pass',                             // Missing H1
-    row._multipleH1   ? 'Fail' : 'Pass',                             // Multiple H1
+    passFail(row._titleLengthFail, row._title),                       // Title Length
+    passFail(row._duplicateTitle, row._title),                        // Title Duplicate
+    passFail(row._missingTitle, true),                                // Missing Title
+    passFail(row._descLengthFail, row._desc),                        // Description Length
+    passFail(row._duplicateDescription, row._desc),                   // Description Duplicate
+    passFail(row._missingDescription, true),                          // Missing Description
+    passFail(row._h1LengthFail, row._h1),                            // H1 Length
+    passFail(row._duplicateH1, row._h1),                              // H1 Duplicate
+    passFail(row._missingH1, true),                                   // Missing H1
+    passFail(row._multipleH1, true),                                  // Multiple H1
     '',                                                               // spacer
     row._title || '',                                                 // Title 1
     row._titleLen || '',                                              // Title 1 Length
@@ -357,13 +241,13 @@ function buildImageMetadataRow(row) {
 
   return [
     getColumn(row, 'IMAGE_DEST'),                             // Destination (Image URL)
-    row._rowStatus,                                            // Status
-    row._rowPriority,                                          // Priority
+    row._rowStatus,                                            // Status (uses VALID_STATUS values)
+    row._rowPriority,                                          // Priority (uses VALID_PRIORITY values)
     '',                                                        // Notes
     '',                                                        // spacer
-    row._altRewrite ? 'Rewrite' : '',                          // Rewrite
-    row._missingAlt ? 'Fail' : 'Pass',                         // Missing ALT
-    row._altLengthFail ? 'Fail' : (row._alt ? 'Pass' : ''),   // Alt Text Length
+    rewriteFlag(row._altRewrite),                              // Rewrite
+    passFail(row._missingAlt, true),                           // Missing ALT
+    passFail(row._altLengthFail, row._alt),                    // Alt Text Length
     '',                                                        // spacer
     row._alt || '',                                            // Alt Text
     row._altLen || '',                                         // Alt Text Length
@@ -372,18 +256,8 @@ function buildImageMetadataRow(row) {
   ];
 }
 
-// ─── Count helpers ────────────────────────────────────────────────────────────
-
-function countTitlesToRewrite(c) {
-  return (c.missingTitle || 0) + (c.duplicateTitles || 0) + (c.titleLengthIssues || 0) + (c.titleBadDelimiters || 0);
-}
-
-function countDescsToRewrite(c) {
-  return (c.missingDesc || 0) + (c.duplicateDesc || 0) + (c.descLengthIssues || 0);
-}
-
-function countH1sToRewrite(c) {
-  return (c.missingH1 || 0) + (c.duplicateH1 || 0) + (c.h1LengthIssues || 0) + (c.multipleH1 || 0);
-}
-
-module.exports = { createContentArchitectureAudit };
+module.exports = {
+  createContentArchitectureAudit,
+  TEMPLATE_NAME,
+  VALID_PASS_FAIL, VALID_STATUS, VALID_PRIORITY,
+};

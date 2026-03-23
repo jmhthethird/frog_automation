@@ -3,6 +3,7 @@
 const { parseCsvText, filterInternalHtmlPages } = require('../../src/automations/utils/csv-parser');
 const { getColumn } = require('../../src/automations/utils/sf-columns');
 const { analyseContentRows, analyseImageRows, THRESHOLDS } = require('../../src/automations/content-architecture-audit');
+const { TEMPLATE_NAME, VALID_PASS_FAIL, VALID_STATUS, VALID_PRIORITY } = require('../../src/automations/sheets-builder');
 
 // ─── CSV Parser tests ─────────────────────────────────────────────────────────
 
@@ -260,5 +261,94 @@ describe('analyseImageRows', () => {
     const rows = [makeImageRow({ 'Alt Text': '', 'Alt Text Length': '0' })];
     const { analysedImages } = analyseImageRows(rows);
     expect(analysedImages[0]._rowPriority).toBe('3. Low');
+  });
+});
+
+// ─── Template & Dropdown Validation tests ─────────────────────────────────────
+
+describe('sheets-builder exports', () => {
+  it('exports the correct template name', () => {
+    expect(TEMPLATE_NAME).toBe('TEMPLATE _ Content Architecture Audit');
+  });
+
+  it('VALID_PASS_FAIL includes Pass and Needs Improvement', () => {
+    expect(VALID_PASS_FAIL).toContain('Pass');
+    expect(VALID_PASS_FAIL).toContain('Needs Improvement');
+    expect(VALID_PASS_FAIL).not.toContain('Fail');
+  });
+
+  it('VALID_STATUS includes Pending', () => {
+    expect(VALID_STATUS).toContain('Pending');
+    expect(VALID_STATUS).toContain('Resolved');
+  });
+
+  it('VALID_PRIORITY includes all priority levels', () => {
+    expect(VALID_PRIORITY).toContain('1. High');
+    expect(VALID_PRIORITY).toContain('2. Medium');
+    expect(VALID_PRIORITY).toContain('3. Low');
+  });
+});
+
+describe('analysed row values respect dropdown options', () => {
+  const makeContentRow = (overrides = {}) => ({
+    'Address': 'https://example.com/',
+    'Title 1': 'A Good Title For Testing SEO',
+    'Title 1 Length': '28',
+    'Meta Description 1': 'A helpful description of the page content.',
+    'Meta Description 1 Length': '42',
+    'H1-1': 'Welcome to Example',
+    'H1-1 Length': '18',
+    'H1-2': '',
+    'H1-2 Length': '',
+    'Status Code': '200',
+    'Content Type': 'text/html',
+    'Indexability': 'Indexable',
+    ...overrides,
+  });
+
+  it('row status uses only VALID_STATUS values or empty string', () => {
+    const rows = [
+      makeContentRow({ 'Title 1': '', 'Title 1 Length': '0' }),
+      makeContentRow(),
+    ];
+    const { analysedRows } = analyseContentRows(rows);
+    for (const row of analysedRows) {
+      if (row._rowStatus) {
+        expect(VALID_STATUS).toContain(row._rowStatus);
+      }
+    }
+  });
+
+  it('row priority uses only VALID_PRIORITY values or empty string', () => {
+    const rows = [
+      makeContentRow({ 'Title 1': '', 'Title 1 Length': '0' }),
+      makeContentRow({ 'Meta Description 1': '', 'Meta Description 1 Length': '0' }),
+      makeContentRow(),
+    ];
+    const { analysedRows } = analyseContentRows(rows);
+    for (const row of analysedRows) {
+      if (row._rowPriority) {
+        expect(VALID_PRIORITY).toContain(row._rowPriority);
+      }
+    }
+  });
+
+  it('image row status uses only VALID_STATUS values or empty string', () => {
+    const makeImageRow = (overrides = {}) => ({
+      'Destination': 'https://example.com/image.jpg',
+      'Alt Text': 'A descriptive alt text',
+      'Alt Text Length': '22',
+      ...overrides,
+    });
+    const rows = [
+      makeImageRow({ 'Alt Text': '', 'Alt Text Length': '0' }),
+      makeImageRow(),
+    ];
+    const { analysedImages } = analyseImageRows(rows);
+    for (const row of analysedImages) {
+      if (row._rowStatus) {
+        expect(VALID_STATUS).toContain(row._rowStatus);
+      }
+    }
   });
 });

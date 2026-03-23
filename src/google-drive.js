@@ -498,11 +498,36 @@ async function getLatestCrawlFolder(domainFolderId, drive) {
   return folders.length > 0 ? { id: folders[0].id, name: folders[0].name } : null;
 }
 
+/**
+ * Find a file (non-folder) by exact name inside a parent folder.
+ *
+ * @param {string} parentId   Parent folder ID
+ * @param {string} name       Exact file name to search for
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @returns {Promise<string|null>}  File ID or null
+ */
+async function findFileByName(parentId, name, drive) {
+  const safeParentId = (parentId && DRIVE_ID_RE.test(parentId)) ? parentId : null;
+  const inParent = safeParentId ? `'${safeParentId}' in parents` : "'root' in parents";
+  const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const q = `name='${escapedName}' and ${inParent} and trashed=false and mimeType != 'application/vnd.google-apps.folder'`;
+
+  const resp = await drive.files.list({
+    q,
+    fields: 'files(id, name)',
+    spaces: 'drive',
+    pageSize: 1,
+  });
+
+  const files = resp.data.files || [];
+  return files.length > 0 ? files[0].id : null;
+}
+
 module.exports = {
   uploadToDrive, uploadFolder, uploadFile,
   buildOAuth2Client, buildDriveClientFromOAuth, buildSheetsClient,
   ensureFolder, findFolder, domainFromUrl, listSubfolders,
   migrateDriveFolders, ensureCategoryFolders,
-  downloadFileAsText, listFolderContents, findFolderByName,
+  downloadFileAsText, listFolderContents, findFolderByName, findFileByName,
   listDomainsWithCrawlData, getLatestCrawlFolder,
 };

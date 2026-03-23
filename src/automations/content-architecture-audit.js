@@ -4,7 +4,7 @@ const {
   buildDriveClientFromOAuth, buildSheetsClient,
   listDomainsWithCrawlData, getLatestCrawlFolder,
   listFolderContents, downloadFileAsText,
-  findFolder, ensureFolder,
+  findFolder, ensureFolder, findFileByName,
 } = require('../google-drive');
 const { DRIVE_CATEGORIES } = require('../constants/driveCategories');
 const { parseCsvText, filterInternalHtmlPages } = require('./utils/csv-parser');
@@ -197,6 +197,18 @@ async function run(domainNames, creds, progress) {
   const drive  = buildDriveClientFromOAuth(creds.client_id, creds.client_secret, creds.refresh_token);
   const sheets = buildSheetsClient(creds.client_id, creds.client_secret, creds.refresh_token);
 
+  // Locate the template spreadsheet in Templates/ folder
+  update('Locating audit template…');
+  const safeRootId = creds.root_folder_id || null;
+  const templatesFolderId = await findFolder(drive, DRIVE_CATEGORIES.TEMPLATES.folder, safeRootId);
+  if (!templatesFolderId) {
+    return [{ domain: domainNames[0] || '(unknown)', error: 'Templates/ folder not found in Google Drive. Run "Ensure Folders" first.' }];
+  }
+  const templateFileId = await findFileByName(templatesFolderId, sheetsBuilder.TEMPLATE_NAME, drive);
+  if (!templateFileId) {
+    return [{ domain: domainNames[0] || '(unknown)', error: `Template "${sheetsBuilder.TEMPLATE_NAME}" not found in Templates/ folder on Google Drive.` }];
+  }
+
   // Resolve domain name → folder ID
   update('Loading domain list…');
   const allDomains = await listDomainsWithCrawlData(creds.root_folder_id, drive);
@@ -275,7 +287,6 @@ async function run(domainNames, creds, progress) {
       update(`Creating Google Sheet for ${domain}…`);
 
       // Resolve Reports/<domain> folder
-      const safeRootId = creds.root_folder_id || null;
       const reportsCategoryId = await ensureFolder(drive, DRIVE_CATEGORIES.REPORTS.folder, safeRootId);
       const reportsDomainId   = await ensureFolder(drive, domain, reportsCategoryId);
 
@@ -290,6 +301,7 @@ async function run(domainNames, creds, progress) {
         drive,
         sheets,
         reportsFolderId: reportsDomainId,
+        templateFileId,
       });
 
       results.push({
