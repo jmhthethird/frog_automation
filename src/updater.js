@@ -249,16 +249,26 @@ function downloadUpdate(url) {
 
   _patch({ status: 'downloading', progress: 0, downloadPath: null, error: null });
 
+  // Private-repo assets require authentication on the initial request.
+  // The redirect target (e.g. objects.githubusercontent.com) uses a signed URL
+  // and must NOT receive the token — pass `isInitial` to control this.
+  const token = _getGithubPat();
+
   return new Promise((resolve, reject) => {
     const filename = parsed.pathname.split('/').pop() || 'update.dmg';
     const destPath = path.join(os.tmpdir(), `frog-update-${filename}`);
 
-    function get(u) {
+    function get(u, isInitial) {
       const proto = u.startsWith('https') ? https : http;
-      proto.get(u, { headers: { 'User-Agent': `FrogAutomation/${getCurrentVersion()}` } }, (res) => {
+      const headers = { 'User-Agent': `FrogAutomation/${getCurrentVersion()}` };
+      if (isInitial && token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        headers['Accept'] = 'application/octet-stream';
+      }
+      proto.get(u, { headers }, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) {
-          // Follow one redirect (GitHub CDN).
-          get(res.headers.location);
+          // Follow one redirect (GitHub CDN).  Do NOT forward the token.
+          get(res.headers.location, false);
           return;
         }
         if (res.statusCode !== 200) {
@@ -298,7 +308,7 @@ function downloadUpdate(url) {
         reject(err);
       });
     }
-    get(url);
+    get(url, true);
   });
 }
 
