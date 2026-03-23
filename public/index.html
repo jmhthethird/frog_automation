@@ -3007,6 +3007,10 @@ document.addEventListener('click', (e) => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+// Restore side-nav collapsed state immediately (before first render)
+// to avoid a visible layout shift from expanded → collapsed.
+_restoreSideNavState();
+
 buildExportTabsUI();
 requestAnimationFrame(equalizeExportTabHeights);
 document.getElementById('export-tabs').value = DEFAULT_TABS;
@@ -3028,14 +3032,19 @@ if (_lastPanel && document.getElementById('panel-' + _lastPanel)) {
   switchNavPanel(_lastPanel);
 }
 
-// Restore side-nav collapsed state (desktop only)
-_restoreSideNavState();
 
 function _restoreSideNavState() {
   var btn = document.getElementById('side-nav-toggle');
   if (!_mobileNav.matches && localStorage.getItem('frog_sideNavCollapsed') === '1') {
+    // Suppress transitions so the collapsed layout is applied instantly
+    var content = document.querySelector('.app-content');
+    if (content) content.style.transition = 'none';
     document.body.classList.add('nav-collapsed');
     if (btn) btn.setAttribute('aria-expanded', 'false');
+    // Re-enable transitions on the next frame
+    requestAnimationFrame(function() {
+      if (content) content.style.transition = '';
+    });
   } else if (!_mobileNav.matches && btn) {
     btn.setAttribute('aria-expanded', 'true');
   }
