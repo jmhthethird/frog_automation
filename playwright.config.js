@@ -58,6 +58,7 @@ module.exports = defineConfig({
     env: {
       PORT:     String(E2E_PORT),
       DATA_DIR: E2E_DATA_DIR,
+      NODE_ENV: 'test',
     },
   },
 });

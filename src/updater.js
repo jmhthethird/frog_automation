@@ -14,7 +14,6 @@
  */
 
 const https  = require('https');
-const http   = require('http');
 const fs     = require('fs');
 const path   = require('path');
 const os     = require('os');
@@ -249,16 +248,74 @@ function downloadUpdate(url) {
 
   _patch({ status: 'downloading', progress: 0, downloadPath: null, error: null });
 
+  // Private-repo assets require authentication on the initial request to
+  // github.com.  The redirect target (e.g. objects.githubusercontent.com) uses
+  // a signed URL and must NOT receive the token — the hostname check inside
+  // get() ensures the PAT is only attached to github.com requests.
+  const token = _getGithubPat();
+
   return new Promise((resolve, reject) => {
     const filename = parsed.pathname.split('/').pop() || 'update.dmg';
     const destPath = path.join(os.tmpdir(), `frog-update-${filename}`);
 
+    let redirected = false;
+
     function get(u) {
-      const proto = u.startsWith('https') ? https : http;
-      proto.get(u, { headers: { 'User-Agent': `FrogAutomation/${getCurrentVersion()}` } }, (res) => {
+      let reqParsed;
+      try { reqParsed = new URL(u); } catch {
+        const err = new Error('Invalid redirect URL');
+        _patch({ status: 'error', error: err.message });
+        reject(err);
+        return;
+      }
+
+      // Enforce HTTPS on every hop.
+      if (reqParsed.protocol !== 'https:') {
+        const err = new Error('Download URL must use HTTPS');
+        _patch({ status: 'error', error: err.message });
+        reject(err);
+        return;
+      }
+
+      const headers = { 'User-Agent': `FrogAutomation/${getCurrentVersion()}` };
+      // Only attach the PAT on the initial request to the GitHub host itself.
+      // CDN redirects (objects.githubusercontent.com) use signed URLs and must
+      // NOT receive the token.
+      if (token && reqParsed.hostname === 'github.com') {
+        headers['Authorization'] = `Bearer ${token}`;
+        headers['Accept'] = 'application/octet-stream';
+      }
+      https.get(reqParsed, { headers }, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) {
-          // Follow one redirect (GitHub CDN).
-          get(res.headers.location);
+          if (redirected) {
+            const err = new Error('Too many redirects');
+            _patch({ status: 'error', error: err.message });
+            reject(err);
+            return;
+          }
+          const location = res.headers.location;
+          if (!location) {
+            const err = new Error('Redirect with no Location header');
+            _patch({ status: 'error', error: err.message });
+            reject(err);
+            return;
+          }
+          // Resolve relative redirects and validate the target host.
+          let target;
+          try { target = new URL(location, u); } catch {
+            const err = new Error('Invalid redirect Location URL');
+            _patch({ status: 'error', error: err.message });
+            reject(err);
+            return;
+          }
+          if (!allowedHosts.some(h => target.hostname === h || target.hostname.endsWith('.' + h))) {
+            const err = new Error('Redirect target is not an allowed GitHub host');
+            _patch({ status: 'error', error: err.message });
+            reject(err);
+            return;
+          }
+          redirected = true;
+          get(target.href);
           return;
         }
         if (res.statusCode !== 200) {

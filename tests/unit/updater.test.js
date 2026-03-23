@@ -403,6 +403,190 @@ describe('downloadUpdate()', () => {
     ).rejects.toThrow(/ECONNRESET/);
     expect(updater.getState().status).toBe('error');
   });
+
+  it('sends Authorization header on initial request when a GitHub PAT is configured', async () => {
+    jest.resetModules();
+    jest.mock('../../src/db', () => ({
+      db: {
+        prepare: () => ({
+          get: () => ({ enabled: 1, credentials: JSON.stringify({ pat: 'ghp_download_token' }) }),
+        }),
+      },
+    }));
+    const freshUpdater = require('../../src/updater');
+
+    makeWriteStreamMock();
+    let capturedHeaders;
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; } else { capturedHeaders = opts && opts.headers; }
+      const res = new EventEmitter();
+      res.statusCode = 200;
+      res.headers = { 'content-length': '0' };
+      res.pipe = jest.fn((dest) => { process.nextTick(() => dest.emit('finish')); return dest; });
+      process.nextTick(() => {
+        cb(res);
+        process.nextTick(() => res.emit('end'));
+      });
+      return { on: jest.fn().mockReturnThis() };
+    });
+
+    await freshUpdater.downloadUpdate(
+      'https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg'
+    );
+    expect(capturedHeaders).toBeDefined();
+    expect(capturedHeaders['Authorization']).toBe('Bearer ghp_download_token');
+    expect(capturedHeaders['Accept']).toBe('application/octet-stream');
+  });
+
+  it('does NOT send Authorization header on redirect to CDN', async () => {
+    jest.resetModules();
+    jest.mock('../../src/db', () => ({
+      db: {
+        prepare: () => ({
+          get: () => ({ enabled: 1, credentials: JSON.stringify({ pat: 'ghp_download_token' }) }),
+        }),
+      },
+    }));
+    const freshUpdater = require('../../src/updater');
+
+    makeWriteStreamMock();
+    const capturedHeadersList = [];
+    let callCount = 0;
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; } else { capturedHeadersList.push(opts && opts.headers); }
+      callCount++;
+      const isRedirect = callCount === 1;
+      const res = new EventEmitter();
+      res.statusCode = isRedirect ? 302 : 200;
+      res.headers = isRedirect
+        ? { location: 'https://objects.githubusercontent.com/asset/app.dmg' }
+        : { 'content-length': '0' };
+      res.pipe = jest.fn((dest) => { process.nextTick(() => dest.emit('finish')); return dest; });
+      process.nextTick(() => {
+        cb(res);
+        process.nextTick(() => res.emit('end'));
+      });
+      return { on: jest.fn().mockReturnThis() };
+    });
+
+    await freshUpdater.downloadUpdate(
+      'https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg'
+    );
+    expect(callCount).toBe(2);
+    // First request (initial) should have Authorization
+    expect(capturedHeadersList[0]['Authorization']).toBe('Bearer ghp_download_token');
+    // Second request (redirect to CDN) should NOT have Authorization
+    expect(capturedHeadersList[1]['Authorization']).toBeUndefined();
+  });
+
+  it('does NOT send Authorization header when no PAT is configured', async () => {
+    jest.resetModules();
+    jest.unmock('../../src/db');
+    const noPatUpdater = require('../../src/updater');
+
+    makeWriteStreamMock();
+    let capturedHeaders;
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; } else { capturedHeaders = opts && opts.headers; }
+      const res = new EventEmitter();
+      res.statusCode = 200;
+      res.headers = { 'content-length': '0' };
+      res.pipe = jest.fn((dest) => { process.nextTick(() => dest.emit('finish')); return dest; });
+      process.nextTick(() => {
+        cb(res);
+        process.nextTick(() => res.emit('end'));
+      });
+      return { on: jest.fn().mockReturnThis() };
+    });
+
+    await noPatUpdater.downloadUpdate(
+      'https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg'
+    );
+    expect(capturedHeaders).toBeDefined();
+    expect(capturedHeaders['Authorization']).toBeUndefined();
+  });
+
+  it('does NOT send PAT when URL is objects.githubusercontent.com even on first request', async () => {
+    jest.resetModules();
+    jest.mock('../../src/db', () => ({
+      db: {
+        prepare: () => ({
+          get: () => ({ enabled: 1, credentials: JSON.stringify({ pat: 'ghp_download_token' }) }),
+        }),
+      },
+    }));
+    const freshUpdater = require('../../src/updater');
+
+    makeWriteStreamMock();
+    let capturedHeaders;
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; } else { capturedHeaders = opts && opts.headers; }
+      const res = new EventEmitter();
+      res.statusCode = 200;
+      res.headers = { 'content-length': '0' };
+      res.pipe = jest.fn((dest) => { process.nextTick(() => dest.emit('finish')); return dest; });
+      process.nextTick(() => {
+        cb(res);
+        process.nextTick(() => res.emit('end'));
+      });
+      return { on: jest.fn().mockReturnThis() };
+    });
+
+    await freshUpdater.downloadUpdate(
+      'https://objects.githubusercontent.com/some/asset/app.dmg'
+    );
+    expect(capturedHeaders).toBeDefined();
+    expect(capturedHeaders['Authorization']).toBeUndefined();
+  });
+
+  it('rejects redirect to a disallowed host (SSRF protection)', async () => {
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; }
+      const res = new EventEmitter();
+      res.statusCode = 302;
+      res.headers = { location: 'https://evil.example.com/malicious.dmg' };
+      process.nextTick(() => cb(res));
+      return { on: jest.fn().mockReturnThis() };
+    });
+    await expect(
+      updater.downloadUpdate('https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg')
+    ).rejects.toThrow(/not an allowed GitHub host/);
+    expect(updater.getState().status).toBe('error');
+  });
+
+  it('rejects when redirect has no Location header', async () => {
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; }
+      const res = new EventEmitter();
+      res.statusCode = 302;
+      res.headers = {};
+      process.nextTick(() => cb(res));
+      return { on: jest.fn().mockReturnThis() };
+    });
+    await expect(
+      updater.downloadUpdate('https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg')
+    ).rejects.toThrow(/no Location header/);
+    expect(updater.getState().status).toBe('error');
+  });
+
+  it('rejects on a second redirect (single-redirect limit)', async () => {
+    let callCount = 0;
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; }
+      callCount++;
+      const res = new EventEmitter();
+      // Always redirect
+      res.statusCode = 302;
+      res.headers = { location: 'https://objects.githubusercontent.com/asset/app.dmg' };
+      process.nextTick(() => cb(res));
+      return { on: jest.fn().mockReturnThis() };
+    });
+    await expect(
+      updater.downloadUpdate('https://github.com/jmhthethird/frog_automation/releases/download/v2.0.0/app.dmg')
+    ).rejects.toThrow(/Too many redirects/);
+    expect(callCount).toBe(2);
+    expect(updater.getState().status).toBe('error');
+  });
 });
 
 // ─── installUpdate ────────────────────────────────────────────────────────────
