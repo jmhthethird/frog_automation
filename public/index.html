@@ -3104,6 +3104,7 @@ document.addEventListener('click', (e) => {
 // ── Automation System ─────────────────────────────────────────────────────────
 let _automationPollTimer = null;
 let _automationCurrentId = null;
+const AUTOMATION_POLL_MS = 1500;
 
 async function openAutomationModal(automationId) {
   _automationCurrentId = automationId;
@@ -3182,7 +3183,7 @@ async function startAutomation() {
       return;
     }
     // Start polling for status
-    _automationPollTimer = setInterval(pollAutomationStatus, 1500);
+    _automationPollTimer = setInterval(pollAutomationStatus, AUTOMATION_POLL_MS);
   } catch (err) {
     document.getElementById('automation-progress-msg').textContent = 'Error: ' + err.message;
     setTimeout(() => { progress.style.display = 'none'; }, 3000);
