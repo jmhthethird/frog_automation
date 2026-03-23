@@ -50,7 +50,7 @@ function startServer(port) {
   const stale = db.prepare(
     "UPDATE jobs SET status='queued', started_at=NULL WHERE status IN ('running','queued') AND cron_expression IS NULL"
   ).run();
-  // Reset stale cron jobs back to 'scheduled' – they will be picked up by the scheduler.
+  // Reset stale cron jobs back to 'queued' – they will be picked up by the scheduler.
   db.prepare(
     "UPDATE jobs SET status='queued', started_at=NULL WHERE status IN ('running','queued') AND cron_expression IS NOT NULL"
   ).run();
