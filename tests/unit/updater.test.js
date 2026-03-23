@@ -121,6 +121,17 @@ describe('getState()', () => {
       error:          null,
     });
   });
+
+  it('includes isPrivateRepo: false when no PAT is configured', () => {
+    jest.resetModules();
+    jest.mock('../../src/db', () => ({
+      db: {
+        prepare: () => ({ get: () => ({ credentials: '{}' }) }),
+      },
+    }));
+    const state = require('../../src/updater').getState();
+    expect(state.isPrivateRepo).toBe(false);
+  });
 });
 
 // ─── checkForUpdate ───────────────────────────────────────────────────────────
@@ -237,6 +248,43 @@ describe('checkForUpdate()', () => {
     makeHttpsSpy({ body: 'not-json' });
     const state = await updater.checkForUpdate();
     expect(state.status).toBe('error');
+  });
+
+  it('sends Authorization header when a GitHub PAT is stored in the DB', async () => {
+    // Stub _getGithubPat via the db module so the updater reads the token.
+    jest.resetModules();
+    jest.mock('../../src/db', () => ({
+      db: {
+        prepare: () => ({
+          get: () => ({ enabled: 1, credentials: JSON.stringify({ pat: 'ghp_test_token_123' }) }),
+        }),
+      },
+    }));
+    const freshUpdater = require('../../src/updater');
+    const pkg = require('../../package.json');
+
+    let capturedHeaders;
+    jest.spyOn(https, 'get').mockImplementation((url, opts, cb) => {
+      if (typeof opts === 'function') { cb = opts; } else { capturedHeaders = opts && opts.headers; }
+      const res = new (require('events').EventEmitter)();
+      res.statusCode = 200;
+      res.headers    = {};
+      res.pipe       = jest.fn();
+      process.nextTick(() => {
+        cb(res);
+        process.nextTick(() => {
+          res.emit('data', Buffer.from(JSON.stringify({
+            tag_name: `v${pkg.version}`, html_url: 'https://github.com', assets: [],
+          })));
+          res.emit('end');
+        });
+      });
+      return { on: jest.fn().mockReturnThis() };
+    });
+
+    await freshUpdater.checkForUpdate();
+    expect(capturedHeaders).toBeDefined();
+    expect(capturedHeaders['Authorization']).toBe('Bearer ghp_test_token_123');
   });
 });
 

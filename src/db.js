@@ -89,6 +89,7 @@ db.exec(`
 
 // Seed a row for every known integration so GET always returns the full list.
 const API_SERVICES = [
+  'github',
   'google_search_console',
   'pagespeed',
   'majestic',

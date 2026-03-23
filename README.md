@@ -134,7 +134,44 @@ Then open `http://<mac-ip>:3000` in any browser on the same network.
 
 ---
 
-## Configuration
+## Private Repository & GitHub PAT
+
+By default the app checks for updates against the public GitHub Releases API.
+If the repository is **private**, unauthenticated API requests will return 404.
+Configure a Personal Access Token (PAT) to enable authenticated update checks
+against a private repository.
+
+### 1 – Create a GitHub PAT
+
+1. Go to **GitHub → Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens** (recommended) and click **Generate new token**.
+2. Under **Repository access** select **Only select repositories** and choose
+   the `frog_automation` repository.
+3. Under **Permissions → Repository permissions → Contents** select
+   **Read-only**.
+4. Click **Generate token** and copy the token value immediately (it is only
+   shown once).
+
+> **Classic tokens:** if you prefer a classic PAT, use the `repo` scope for
+> private repositories. For public repositories, no scope is required to read
+> releases (unauthenticated requests are sufficient).
+
+### 2 – Add the PAT in the Frog Automation Settings
+
+1. Open the Frog Automation web UI.
+2. Click **⚙️ Settings** in the side navigation.
+3. Scroll to **Frogtomation API Integrations**.
+4. Locate the **GitHub** integration card, expand it, and paste your PAT into
+   the **Personal Access Token (PAT)** field.
+5. Toggle the integration to **Enabled** and click **Save**.
+
+Once saved, the version badge in the header changes to **🔒 v…**, confirming
+that private-repository mode is active and all update checks will include your
+PAT as a Bearer token in the `Authorization` header sent to the GitHub API.
+
+---
+
+
 
 All configuration is via environment variables:
 

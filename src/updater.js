@@ -72,6 +72,7 @@ function getAppBundlePath() {
  * @property {string|null}  downloadPath
  * @property {number}       progress        0–100
  * @property {string|null}  error
+ * @property {boolean}      isPrivateRepo   true when a GitHub PAT is active
  *
  * @typedef {Object} ReleaseInfo
  * @property {string}      version
@@ -97,7 +98,7 @@ function _patch(obj) { Object.assign(_state, obj); }
 
 /** @returns {UpdateState} */
 function getState() {
-  return { ..._state, currentVersion: getCurrentVersion() };
+  return { ..._state, currentVersion: getCurrentVersion(), isPrivateRepo: !!_getGithubPat() };
 }
 
 // ── listAllReleases ───────────────────────────────────────────────────────────
@@ -110,9 +111,11 @@ function getState() {
  */
 async function listAllReleases() {
   let releases;
+  const token = _getGithubPat();
   try {
     releases = await _fetchJson(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
+      token
     );
   } catch {
     return [];
@@ -178,10 +181,12 @@ function selectVersionForInstall(version, downloadUrl, releaseUrl, releaseNotes)
 async function checkForUpdate() {
   _patch({ status: 'checking', error: null });
 
+  const token = _getGithubPat();
   let release;
   try {
     release = await _fetchJson(
-      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`,
+      token
     );
   } catch (err) {
     _patch({ status: 'error', error: err.message });
@@ -392,24 +397,64 @@ function _restartApp() {
   }
 }
 
-// ── JSON fetch helper ─────────────────────────────────────────────────────────
+/** Cached reference to the database module (set on first successful require). */
+let _db = null;
 
 /**
- * Fetch a URL and parse the response as JSON.  Follows one redirect.
+ * Read the GitHub Personal Access Token from the database, if one has been
+ * stored.  Returns null when no token is configured or when the DB is not
+ * accessible (e.g. during unit tests that don't set up a database).
  *
- * @param {string} url
+ * @returns {string|null}
+ */
+function _getGithubPat() {
+  try {
+    if (!_db) _db = require('./db').db;
+    const row = _db.prepare("SELECT enabled, credentials FROM api_credentials WHERE service = 'github'").get();
+    if (!row || row.enabled !== 1) return null;
+    const creds = JSON.parse(row.credentials || '{}');
+    return creds.pat || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Allowed hostnames for GitHub API calls and redirects. */
+const ALLOWED_API_HOSTS = [
+  'api.github.com',
+  'github.com',
+];
+
+/**
+ * Fetch a URL and parse the response as JSON.  Follows one redirect, but only
+ * to hosts in ALLOWED_API_HOSTS to prevent Server-Side Request Forgery (SSRF).
+ * When `token` is provided it is sent as a Bearer Authorization header,
+ * enabling access to private GitHub repositories.
+ *
+ * @param {string}      url
+ * @param {string|null} [token]
  * @returns {Promise<object>}
  */
-function _fetchJson(url) {
+function _fetchJson(url, token) {
   return new Promise((resolve, reject) => {
-    https.get(url, {
-      headers: {
-        'User-Agent': `FrogAutomation/${getCurrentVersion()}`,
-        'Accept':     'application/vnd.github.v3+json',
-      },
-    }, (res) => {
+    let parsed;
+    try { parsed = new URL(url); } catch {
+      reject(new Error('Invalid URL'));
+      return;
+    }
+    if (!ALLOWED_API_HOSTS.includes(parsed.hostname)) {
+      reject(new Error(`URL host '${parsed.hostname}' is not an allowed GitHub API host`));
+      return;
+    }
+
+    const headers = {
+      'User-Agent': `FrogAutomation/${getCurrentVersion()}`,
+      'Accept':     'application/vnd.github.v3+json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    https.get(parsed, { headers }, (res) => {
       if (res.statusCode === 301 || res.statusCode === 302) {
-        _fetchJson(res.headers.location).then(resolve, reject);
+        reject(new Error('Unexpected redirect from GitHub API'));
         return;
       }
       let data = '';
@@ -451,7 +496,7 @@ async function resolvePRBuild(prUrl) {
     return getState();
   }
 
-  const [, owner, repo, prNumber] = match;
+  const [, owner, repo, rawPrNumber] = match;
 
   // Security: only allow installing builds from this app's own repository.
   if (owner.toLowerCase() !== GITHUB_OWNER.toLowerCase() ||
@@ -463,14 +508,24 @@ async function resolvePRBuild(prUrl) {
     return getState();
   }
 
+  // Sanitize the PR number to a plain integer — discard any other user input.
+  const prNumber = parseInt(rawPrNumber, 10);
+  if (!Number.isFinite(prNumber) || prNumber <= 0) {
+    _patch({ status: 'error', error: 'Invalid PR number' });
+    return getState();
+  }
+
   const tag = `pr-${prNumber}-preview`;
 
   _patch({ status: 'checking', error: null });
 
+  const token = _getGithubPat();
   let release;
   try {
+    // Use module-level constants (not user-derived captures) to build the URL.
     release = await _fetchJson(
-      `https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tags/${tag}`,
+      token
     );
   } catch (err) {
     const notFound = /not found/i.test(err.message);

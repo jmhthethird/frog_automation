@@ -1510,6 +1510,19 @@ function _formatVersionLabel(ver) {
   return `v${escHtml(ver)}`;
 }
 
+/**
+ * Return the text to display in the version badge.
+ * Includes a 🔒 prefix when the app is operating in private-repository mode
+ * (i.e. a GitHub PAT is configured).
+ *
+ * @param {string}  currentVersion
+ * @param {boolean} isPrivateRepo
+ * @returns {string}
+ */
+function _versionBadgeText(currentVersion, isPrivateRepo) {
+  return (isPrivateRepo ? '🔒 ' : '') + 'v' + currentVersion;
+}
+
 function _renderUpdatePanel(state, { forceShow = false } = {}) {
   const panel    = document.getElementById('update-panel');
   const msgEl    = document.getElementById('update-msg');
@@ -1522,7 +1535,7 @@ function _renderUpdatePanel(state, { forceShow = false } = {}) {
 
   // Always reflect current version.
   if (state.currentVersion) {
-    document.getElementById('version-badge').textContent = 'v' + state.currentVersion;
+    document.getElementById('version-badge').textContent = _versionBadgeText(state.currentVersion, state.isPrivateRepo);
   }
 
   // Hide the panel for transient non-actionable states (unless explicitly forced open).
@@ -1667,7 +1680,7 @@ function _renderVersionHistory(releases) {
     return;
   }
   const currentVer = (document.getElementById('version-badge').textContent || '')
-    .replace(/^v/, '').trim();
+    .replace(/^(?:🔒 )?v/, '').trim();
   listEl.innerHTML = releases.map(r => {
     const isCurrent = r.version === currentVer;
     const cmp       = _semverCompare(r.version, currentVer);
@@ -1782,7 +1795,7 @@ async function _initUpdateCheck() {
   try {
     const s = await _getUpdateState();
     if (s.currentVersion) {
-      document.getElementById('version-badge').textContent = 'v' + s.currentVersion;
+      document.getElementById('version-badge').textContent = _versionBadgeText(s.currentVersion, s.isPrivateRepo);
     }
     // Only auto-check if in idle state (don't interrupt an in-progress download).
     if (s.status === 'idle') {
