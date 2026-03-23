@@ -202,11 +202,11 @@ async function run(domainNames, creds, progress) {
   const safeRootId = creds.root_folder_id || null;
   const templatesFolderId = await findFolder(drive, DRIVE_CATEGORIES.TEMPLATES.folder, safeRootId);
   if (!templatesFolderId) {
-    return [{ domain: domainNames[0] || '(unknown)', error: 'Templates/ folder not found in Google Drive. Run "Ensure Folders" first.' }];
+    return domainNames.map(d => ({ domain: d, error: 'Templates/ folder not found in Google Drive. Run "Ensure Folders" first.' }));
   }
   const templateFileId = await findFileByName(templatesFolderId, sheetsBuilder.TEMPLATE_NAME, drive);
   if (!templateFileId) {
-    return [{ domain: domainNames[0] || '(unknown)', error: `Template "${sheetsBuilder.TEMPLATE_NAME}" not found in Templates/ folder on Google Drive.` }];
+    return domainNames.map(d => ({ domain: d, error: `Template "${sheetsBuilder.TEMPLATE_NAME}" not found in Templates/ folder on Google Drive.` }));
   }
 
   // Resolve domain name → folder ID
