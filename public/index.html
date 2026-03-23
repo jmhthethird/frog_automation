@@ -151,7 +151,7 @@
   #pr-build-msg { font-size: 12px; color: var(--text-dim); margin-top: 6px; min-height: 16px; }
   #pr-build-msg.is-err { color: var(--red); }
   #pr-build-msg.is-loading { color: var(--text-dim); font-style: italic; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+  main { padding: 24px 16px; }
   .grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 20px; }
   .grid > div:last-child { min-width: 0; }
   @media(max-width:760px) { .grid { grid-template-columns: 1fr; } }
@@ -360,15 +360,16 @@
     color: var(--green); border-left-color: var(--green);
     background: var(--green-tint); font-weight: 600;
   }
-  .app-content { flex: 1; margin-left: 220px; min-width: 0; }
+  .app-content { flex: 1; margin-left: 220px; min-width: 0; transition: margin-left .25s ease; }
   .nav-panel { display: none; }
   .nav-panel.active { display: block; }
   .side-nav-toggle {
-    display: none; position: fixed; top: 10px; left: 10px; z-index: 200;
+    display: block; position: fixed; top: 10px; left: 224px; z-index: 200;
     background: var(--surface2); border: 1px solid var(--border);
     border-radius: var(--radius); color: var(--text);
     font-size: 20px; width: 44px; height: 44px;
     padding: 0; cursor: pointer; line-height: 44px; text-align: center;
+    transition: left .25s ease;
   }
   .side-nav-backdrop {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99;
@@ -378,10 +379,14 @@
     padding: 1px 5px; border-radius: 3px; margin-left: auto;
     text-transform: uppercase; letter-spacing: .05em;
   }
+  /* Desktop collapsed state – activated by hamburger toggle */
+  body.nav-collapsed .side-nav { transform: translateX(-100%); }
+  body.nav-collapsed .app-content { margin-left: 0; }
+  body.nav-collapsed .side-nav-toggle { left: 10px; }
   @media (max-width: 760px) {
     .side-nav { transform: translateX(-100%); }
     .side-nav.open { transform: translateX(0); }
-    .side-nav-toggle { display: block; }
+    .side-nav-toggle { left: 10px; }
     .side-nav-backdrop.open { display: block; }
     .app-content { margin-left: 0; }
   }
@@ -425,7 +430,7 @@
 </style>
 </head>
 <body>
-<!-- Mobile hamburger toggle (hidden on desktop) -->
+<!-- Navigation toggle (always visible, collapses/expands sidebar) -->
 <button class="side-nav-toggle" id="side-nav-toggle" onclick="toggleSideNav()" aria-label="Toggle navigation" aria-controls="side-nav" aria-expanded="false">☰</button>
 <div class="side-nav-backdrop" id="side-nav-backdrop" onclick="closeSideNav()"></div>
 
@@ -2751,12 +2756,23 @@ function switchNavPanel(panelName) {
   }
 }
 
+var _mobileNav = window.matchMedia('(max-width: 760px)');
+
 function toggleSideNav() {
-  var nav = document.getElementById('side-nav');
   var btn = document.getElementById('side-nav-toggle');
-  nav.classList.toggle('open');
-  document.getElementById('side-nav-backdrop').classList.toggle('open');
-  if (btn) btn.setAttribute('aria-expanded', nav.classList.contains('open'));
+  if (_mobileNav.matches) {
+    // Mobile: overlay with backdrop
+    var nav = document.getElementById('side-nav');
+    nav.classList.toggle('open');
+    document.getElementById('side-nav-backdrop').classList.toggle('open');
+    if (btn) btn.setAttribute('aria-expanded', nav.classList.contains('open'));
+  } else {
+    // Desktop: collapse / expand sidebar
+    document.body.classList.toggle('nav-collapsed');
+    var isCollapsed = document.body.classList.contains('nav-collapsed');
+    localStorage.setItem('frog_sideNavCollapsed', isCollapsed ? '1' : '');
+    if (btn) btn.setAttribute('aria-expanded', String(!isCollapsed));
+  }
 }
 
 function closeSideNav() {
@@ -2991,6 +3007,10 @@ document.addEventListener('click', (e) => {
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+// Restore side-nav collapsed state immediately (before first render)
+// to avoid a visible layout shift from expanded → collapsed.
+_restoreSideNavState();
+
 buildExportTabsUI();
 requestAnimationFrame(equalizeExportTabHeights);
 document.getElementById('export-tabs').value = DEFAULT_TABS;
@@ -3010,6 +3030,24 @@ _loadSeaSettings();
 const _lastPanel = localStorage.getItem('frog_lastNavPanel');
 if (_lastPanel && document.getElementById('panel-' + _lastPanel)) {
   switchNavPanel(_lastPanel);
+}
+
+
+function _restoreSideNavState() {
+  var btn = document.getElementById('side-nav-toggle');
+  if (!_mobileNav.matches && localStorage.getItem('frog_sideNavCollapsed') === '1') {
+    // Suppress transitions so the collapsed layout is applied instantly
+    var content = document.querySelector('.app-content');
+    if (content) content.style.transition = 'none';
+    document.body.classList.add('nav-collapsed');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    // Re-enable transitions on the next frame
+    requestAnimationFrame(function() {
+      if (content) content.style.transition = '';
+    });
+  } else if (!_mobileNav.matches && btn) {
+    btn.setAttribute('aria-expanded', 'true');
+  }
 }
 
 /**
