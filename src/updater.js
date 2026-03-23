@@ -417,8 +417,15 @@ function _getGithubPat() {
   }
 }
 
+/** Allowed hostnames for GitHub API calls and redirects. */
+const ALLOWED_API_HOSTS = [
+  'api.github.com',
+  'github.com',
+];
+
 /**
- * Fetch a URL and parse the response as JSON.  Follows one redirect.
+ * Fetch a URL and parse the response as JSON.  Follows one redirect, but only
+ * to hosts in ALLOWED_API_HOSTS to prevent Server-Side Request Forgery (SSRF).
  * When `token` is provided it is sent as a Bearer Authorization header,
  * enabling access to private GitHub repositories.
  *
@@ -428,6 +435,16 @@ function _getGithubPat() {
  */
 function _fetchJson(url, token) {
   return new Promise((resolve, reject) => {
+    let parsed;
+    try { parsed = new URL(url); } catch {
+      reject(new Error('Invalid URL'));
+      return;
+    }
+    if (!ALLOWED_API_HOSTS.includes(parsed.hostname)) {
+      reject(new Error(`URL host '${parsed.hostname}' is not an allowed GitHub API host`));
+      return;
+    }
+
     const headers = {
       'User-Agent': `FrogAutomation/${getCurrentVersion()}`,
       'Accept':     'application/vnd.github.v3+json',
