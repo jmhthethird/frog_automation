@@ -387,4 +387,147 @@ async function ensureCategoryFolders({ clientId, clientSecret, refreshToken, roo
   return created;
 }
 
-module.exports = { uploadToDrive, uploadFolder, uploadFile, buildOAuth2Client, buildDriveClientFromOAuth, ensureFolder, findFolder, domainFromUrl, listSubfolders, migrateDriveFolders, ensureCategoryFolders };
+// ─── Sheets client ────────────────────────────────────────────────────────────
+
+/**
+ * Build an authenticated Sheets v4 client reusing the same OAuth2 credentials
+ * that are used for Drive.
+ *
+ * @param {string} clientId
+ * @param {string} clientSecret
+ * @param {string} refreshToken
+ * @returns {import('googleapis').sheets_v4.Sheets}
+ */
+function buildSheetsClient(clientId, clientSecret, refreshToken) {
+  const auth = buildOAuth2Client(clientId, clientSecret);
+  auth.setCredentials({ refresh_token: refreshToken });
+  return google.sheets({ version: 'v4', auth });
+}
+
+// ─── Download & list utilities ────────────────────────────────────────────────
+
+/**
+ * Download a file from Google Drive as text.
+ *
+ * @param {string} fileId
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @returns {Promise<string>}
+ */
+async function downloadFileAsText(fileId, drive) {
+  const resp = await drive.files.get(
+    { fileId, alt: 'media' },
+    { responseType: 'stream' },
+  );
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    resp.data.on('data', c => chunks.push(c));
+    resp.data.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    resp.data.on('error', reject);
+  });
+}
+
+/**
+ * List all files inside a Drive folder.
+ *
+ * @param {string} folderId
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @returns {Promise<Array<{ id: string, name: string, mimeType: string, modifiedTime: string }>>}
+ */
+async function listFolderContents(folderId, drive) {
+  const safeFolderId = (folderId && DRIVE_ID_RE.test(folderId)) ? folderId : null;
+  const inParent = safeFolderId ? `'${safeFolderId}' in parents` : "'root' in parents";
+  const q = `${inParent} and trashed=false`;
+  const files = [];
+  let pageToken;
+  do {
+    const resp = await drive.files.list({
+      q,
+      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime)',
+      spaces: 'drive',
+      pageSize: 200,
+      ...(pageToken ? { pageToken } : {}),
+    });
+    files.push(...(resp.data.files || []));
+    pageToken = resp.data.nextPageToken;
+  } while (pageToken);
+  return files;
+}
+
+/**
+ * Find a subfolder by exact name inside a parent folder.
+ *
+ * @param {string} parentId
+ * @param {string} name
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @returns {Promise<string|null>}  Folder ID or null
+ */
+async function findFolderByName(parentId, name, drive) {
+  return findFolder(drive, name, parentId);
+}
+
+/**
+ * List domain folders that contain crawl data.
+ *
+ * Navigates to the `Crawls/` category folder under the given root and lists
+ * its immediate subfolders (which represent domains).
+ *
+ * @param {string|null} rootFolderId
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @returns {Promise<Array<{ name: string, folderId: string }>>}
+ */
+async function listDomainsWithCrawlData(rootFolderId, drive) {
+  const safeRootId = (rootFolderId && DRIVE_ID_RE.test(rootFolderId)) ? rootFolderId : null;
+  const crawlsFolderId = await findFolder(drive, DRIVE_CATEGORIES.CRAWLS.folder, safeRootId);
+  if (!crawlsFolderId) return [];
+  const subfolders = await listSubfolders(drive, crawlsFolderId);
+  return subfolders.map(f => ({ name: f.name, folderId: f.id }));
+}
+
+/**
+ * Get the most recently modified crawl folder for a domain.
+ *
+ * @param {string} domainFolderId
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @returns {Promise<{ id: string, name: string }|null>}
+ */
+async function getLatestCrawlFolder(domainFolderId, drive) {
+  const contents = await listFolderContents(domainFolderId, drive);
+  const folders = contents
+    .filter(f => f.mimeType === 'application/vnd.google-apps.folder')
+    .sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime));
+  return folders.length > 0 ? { id: folders[0].id, name: folders[0].name } : null;
+}
+
+/**
+ * Find a file (non-folder) by exact name inside a parent folder.
+ *
+ * @param {string} parentId   Parent folder ID
+ * @param {string} name       Exact file name to search for
+ * @param {import('googleapis').drive_v3.Drive} drive
+ * @returns {Promise<string|null>}  File ID or null
+ */
+async function findFileByName(parentId, name, drive) {
+  const safeParentId = (parentId && DRIVE_ID_RE.test(parentId)) ? parentId : null;
+  const inParent = safeParentId ? `'${safeParentId}' in parents` : "'root' in parents";
+  const escapedName = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const q = `name='${escapedName}' and ${inParent} and trashed=false and mimeType != 'application/vnd.google-apps.folder'`;
+
+  const resp = await drive.files.list({
+    q,
+    fields: 'files(id, name)',
+    spaces: 'drive',
+    pageSize: 1,
+  });
+
+  const files = resp.data.files || [];
+  return files.length > 0 ? files[0].id : null;
+}
+
+module.exports = {
+  uploadToDrive, uploadFolder, uploadFile,
+  buildOAuth2Client, buildDriveClientFromOAuth, buildSheetsClient,
+  ensureFolder, findFolder, domainFromUrl, listSubfolders,
+  migrateDriveFolders, ensureCategoryFolders,
+  downloadFileAsText, listFolderContents, findFolderByName, findFileByName,
+  listDomainsWithCrawlData, getLatestCrawlFolder,
+};

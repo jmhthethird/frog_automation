@@ -236,32 +236,38 @@ For each domain:
 
 ---
 
-## Phase 6 — Google Sheets Builder
+## Phase 6 — Google Sheets Builder (Template-Copy Approach)
 
 **Step 9** — Create `src/automations/sheets-builder.js`:
 
 ```
-async function createContentArchitectureAudit(domain, contentRows, imageRows, customJsRows, issueCounts, drive, sheets)
+async function createContentArchitectureAudit(domain, contentRows, imageRows, customJsRows, issueCounts, drive, sheets, reportsFolderId, templateFileId)
 ```
 
-1. Create new spreadsheet via `sheets.spreadsheets.create({ resource: { properties: { title: 'Content Architecture Audit — domain.com — YYYY-MM-DD' }, sheets: [{ properties: { title: 'Scorecard & Summary' } }, ...8 sheets] } })`
-2. Rename all 8 sheets to match template names
-3. Populate each sheet via `sheets.spreadsheets.values.batchUpdate()`:
-   - **Scorecard & Summary**: Write title "Content Architecture Audit" + domain + date + issue count summary table + a "Manual Review Required" checklist block for non-deterministic process checks. Seed this block with page-10–40 checks: `Titles Lead with Primary Keyphrase`, `Title Provides Clear Semantic Label`, `Meta Descriptions Lead with Keyphrase`, `Meta Keyword Abuse`, `Primary Keyword in H1`, `Missing H2 (contextual)`, `H2/H3 phrased as user questions`, `H3/H4/H5 opportunities`, `TL;DR summary block for long-form`, `Heading size`, `Heading tag stuffing`, `Image Cloaking`, `Contextually Rich ALT`, `Irrelevant ALT`, `Keywords Early in URLs`, `Hyphen-Separated URL words`, `Image URLs`, `Navigation Elements Non-image-based`, `Text in Images`, `Text in Video`, `Text hidden by JavaScript`, `Text hidden by CSS`, `Tabbed Content`, `Missing Anchor Text`, `User-Agent Cloaking`, `Foreground/Background Contrast`, `Emphasis`, `Emphasis Abuse`, `Target Keywords Higher on Pages`, `Other Areas Lead with Intended Keywords`, `Rich Media Supported (No Flash)`, `No Isolated Keyword Blocks`, `No Duplicate Text Across Pages`, `Content Freshness`, plus free-text `Why`/`How` columns.
-   - **Overview**: Issues Detailed table (12 rows, columns: Issue, Priority, SEO Impact, Count) + Summary block (4 totals)
-   - **Content Metadata**: Header row + one row per filtered HTML page. All computed flags as text (e.g. "Fail", "Pass", "Rewrite", ""). New Title/Desc/H1 pre-populated with current value.
-   - **Image Metadata**: Header row + one row per image. Flags as text.
-   - **Raw Crawl (Content)**: Header row + raw filtered SF data (all columns from internal_html.csv)
-   - **Raw Crawl (Images)**: Header row + raw image data (must include Source URL, Destination URL, and Alt Text when present)
-   - **Custom JS**: Header + raw Custom JavaScript export data used for rewrite lookups (Address + generated title/description fields)
-   - **config**: Write lookup table (pass/fail, Status, Priority columns with their values)
-4. Apply basic formatting via `sheets.spreadsheets.batchUpdate()`:
-   - Freeze row 1 on Content Metadata, Image Metadata, Raw Crawl sheets
-   - Bold header rows
-   - Set background color on header row (#B7E1CD for green-ish, #FCE8B2 for yellow action columns) — approximate the template colors
-5. Move spreadsheet to the correct Drive folder:
-   - Use `drive.files.update({ fileId: spreadsheetId, addParents: reportsFolderIdForDomain, removeParents: 'root', fields: 'id, parents' })`
+**Template-based approach**: Instead of creating a spreadsheet from scratch, the builder copies the template spreadsheet located at `Templates/TEMPLATE _ Content Architecture Audit` to `Reports/<domain>/` and renames it (e.g. `Content Architecture Audit — google.com — 2026-03-23`).
+
+**Key principles**:
+- **Copy, don't create**: Uses `drive.files.copy()` to duplicate the template, preserving all formatting, formulas, data validation, conditional formatting, and structure
+- **Respect formulas**: Only writes to five data-entry tabs; leaves Scorecard & Summary, Overview, and config tabs untouched so their formulas auto-populate from the data
+- **Respect dropdowns**: All values written to dropdown-validated cells use only values from the config tab (Pass/Fail column uses `Pass`, `Needs Improvement`, etc. — never `Fail` or `Rewrite`)
+- **Write below headers**: Data is written starting at row 2 on Content Metadata and Image Metadata to preserve header rows and any header-level formulas
+
+1. Locate the template in `Templates/` folder via `findFileByName()`
+2. Copy it to `Reports/<domain>/` via `drive.files.copy({ fileId: templateFileId, requestBody: { name: title, parents: [reportsFolderId] } })`
+3. Read the copied spreadsheet's sheet properties to discover sheet IDs
+4. Populate five data-entry sheets via `sheets.spreadsheets.values.batchUpdate()`:
+   - **Content Metadata** (row 2 onward): One row per filtered HTML page. Pass/fail checks use `Pass` / `Needs Improvement` (from config dropdown). Status uses `Pending` / empty. Priority uses `1. High` / `2. Medium` / `3. Low` / empty.
+   - **Image Metadata** (row 2 onward): One row per image. Same dropdown-safe values.
+   - **Raw Crawl (Content)** (row 1): Header row + raw filtered SF data
+   - **Raw Crawl (Images)** (row 1): Header row + raw image data
+   - **Custom JS** (row 1): Header + raw Custom JavaScript export data
+5. Use `USER_ENTERED` value input option so numbers and dates are recognised, but never write formulas
 6. Return `{ spreadsheetId, spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/...' }`
+
+**Dropdown-safe values** (from config tab):
+- Pass/Fail: `Pass`, `Needs Improvement`, `New Opportunity`, `Not Applicable`, `In Progress`, `To Discuss`
+- Status: `Resolved`, `See Notes`, `In Progress`, `Pending`, `Ignore`, `No-Index`
+- Priority: `1. High`, `2. Medium`, `3. Low`, `Not applicable`
 
 ---
 

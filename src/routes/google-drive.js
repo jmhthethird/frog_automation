@@ -231,7 +231,7 @@ router.get('/auth-url', readLimit, (req, res) => {
 
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope:       ['https://www.googleapis.com/auth/drive'],
+    scope:       ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets'],
     // prompt:'consent' guarantees a refresh_token is returned on every auth.
     prompt: 'consent',
     state,
