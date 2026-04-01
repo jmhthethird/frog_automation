@@ -772,10 +772,10 @@
     </div>
 
     <!-- Domain selection modal -->
-    <div id="automation-modal" class="modal-overlay" style="display:none">
-      <div class="modal-box">
+    <div id="automation-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="automation-modal-title" onclick="if(event.target===this)closeAutomationModal()">
+      <div class="modal-box" tabindex="-1">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <h2 style="margin:0;font-size:16px;color:#ccc;">Select Domains to Audit</h2>
+          <h2 id="automation-modal-title" style="margin:0;font-size:16px;color:#ccc;">Select Domains to Audit</h2>
           <button class="btn btn-secondary" style="padding:4px 10px;font-size:13px;" onclick="closeAutomationModal()" aria-label="Close modal">&times;</button>
         </div>
         <div id="automation-domain-list" style="max-height:320px;overflow-y:auto;margin-bottom:16px;">
@@ -3114,7 +3114,8 @@ async function openAutomationModal(automationId) {
 
   domainList.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">Loading domains…</p>';
   startBtn.disabled = true;
-  modal.style.display = 'flex';
+  modal.classList.remove('hidden');
+  modal.querySelector('.modal-box').focus();
 
   try {
     const resp = await fetch('/api/automation/domains');
@@ -3128,13 +3129,19 @@ async function openAutomationModal(automationId) {
       domainList.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">No domains with crawl data found in Google Drive.</p>';
       return;
     }
-    domainList.innerHTML = data.domains.map(d => {
+    domainList.innerHTML = '';
+    data.domains.forEach(d => {
       const name = typeof d === 'string' ? d : d.name;
-      const escaped = _escHtml(name);
-      return '<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:var(--text);cursor:pointer;">'
-        + '<input type="checkbox" class="automation-domain-cb" value="' + escaped + '"> ' + escaped
-        + '</label>';
-    }).join('');
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:var(--text);cursor:pointer;';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.className = 'automation-domain-cb';
+      input.value = name;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(name));
+      domainList.appendChild(label);
+    });
 
     // Enable/disable start button based on selection
     domainList.querySelectorAll('.automation-domain-cb').forEach(cb => {
@@ -3154,7 +3161,7 @@ function _escHtml(str) {
 }
 
 function closeAutomationModal() {
-  document.getElementById('automation-modal').style.display = 'none';
+  document.getElementById('automation-modal').classList.add('hidden');
   _automationCurrentId = null;
 }
 
@@ -3163,6 +3170,7 @@ async function startAutomation() {
   const domains = Array.from(checkboxes).map(cb => cb.value);
   if (domains.length === 0) return;
 
+  const automationId = _automationCurrentId || 'content-architecture-audit';
   closeAutomationModal();
 
   // Show progress overlay
@@ -3174,7 +3182,7 @@ async function startAutomation() {
     const resp = await fetch('/api/automation/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ automationId: _automationCurrentId || 'content-architecture-audit', domains }),
+      body: JSON.stringify({ automationId, domains }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));

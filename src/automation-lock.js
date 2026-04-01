@@ -48,6 +48,7 @@ function acquireLock(automationId, domains) {
  */
 function releaseLock(results, error) {
   lock.isRunning    = false;
+  lock.cancelled    = false;
   lock.progress     = error ? `Error: ${error}` : 'Complete';
   lock.results      = results || null;
   lock.error        = error || null;

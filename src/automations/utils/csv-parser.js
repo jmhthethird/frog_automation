@@ -7,6 +7,8 @@
  * matching the logic already used in src/differ.js.
  */
 
+const { getColumn } = require('./sf-columns');
+
 /**
  * Parse a single CSV line into an array of field values.
  *
@@ -76,15 +78,17 @@ function parseCsvText(text) {
  *   - Indexability === 'Indexable'
  *   - Address does NOT contain '/page/'
  *
+ * Uses getColumn() with SF column aliases for compatibility across export variants.
+ *
  * @param {object[]} rows  Parsed CSV rows
  * @returns {object[]}
  */
 function filterInternalHtmlPages(rows) {
   return rows.filter(row => {
-    const status      = (row['Status Code'] || '').trim();
-    const contentType = (row['Content Type'] || '').trim().toLowerCase();
-    const indexable   = (row['Indexability'] || '').trim().toLowerCase();
-    const address     = (row['Address'] || '').trim();
+    const status      = getColumn(row, 'STATUS_CODE').trim();
+    const contentType = getColumn(row, 'CONTENT_TYPE').trim().toLowerCase();
+    const indexable   = getColumn(row, 'INDEXABILITY').trim().toLowerCase();
+    const address     = getColumn(row, 'ADDRESS').trim();
 
     return status === '200'
       && contentType.includes('text/html')

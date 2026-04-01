@@ -25,7 +25,7 @@ function seedDriveCreds(overrides = {}) {
   db.prepare(`
     INSERT INTO api_credentials (service, enabled, credentials)
     VALUES ('google_drive', 1, ?)
-    ON CONFLICT(service) DO UPDATE SET credentials = excluded.credentials
+    ON CONFLICT(service) DO UPDATE SET enabled = 1, credentials = excluded.credentials
   `).run(JSON.stringify(creds));
 }
 

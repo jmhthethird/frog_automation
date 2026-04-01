@@ -12,6 +12,9 @@ const { getColumn } = require('./utils/sf-columns');
 const { getLockState } = require('../automation-lock');
 const sheetsBuilder = require('./sheets-builder');
 
+// ─── Validation ───────────────────────────────────────────────────────────────
+const DRIVE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+
 // ─── Configurable thresholds ──────────────────────────────────────────────────
 const THRESHOLDS = {
   TITLE_MIN:    30,
@@ -199,7 +202,7 @@ async function run(domainNames, creds, progress) {
 
   // Locate the template spreadsheet in Templates/ folder
   update('Locating audit template…');
-  const safeRootId = creds.root_folder_id || null;
+  const safeRootId = (creds.root_folder_id && DRIVE_ID_RE.test(creds.root_folder_id)) ? creds.root_folder_id : null;
   const templatesFolderId = await findFolder(drive, DRIVE_CATEGORIES.TEMPLATES.folder, safeRootId);
   if (!templatesFolderId) {
     return domainNames.map(d => ({ domain: d, error: 'Templates/ folder not found in Google Drive. Run "Ensure Folders" first.' }));

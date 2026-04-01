@@ -10,19 +10,25 @@ const router = express.Router();
 
 // ─── Rate limiting (skipped in test env) ──────────────────────────────────────
 const skipRateLimitInTest = process.env.NODE_ENV === 'test' ? { skip: () => true } : {};
-const readLimit  = rateLimit({ windowMs: 60_000, max: 120, ...skipRateLimitInTest });
-const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  ...skipRateLimitInTest });
+const readLimit  = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false, ...skipRateLimitInTest });
+const writeLimit = rateLimit({ windowMs: 60_000, max: 30,  standardHeaders: true, legacyHeaders: false, ...skipRateLimitInTest });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
  * Read Google Drive credentials from the DB.
+ * Only returns credentials when the integration is explicitly enabled.
  * @returns {{ client_id: string, client_secret: string, refresh_token: string, root_folder_id: string }|null}
  */
 function getDriveCreds() {
-  const row = db.prepare("SELECT credentials FROM api_credentials WHERE service = 'google_drive'").get();
-  if (!row) return null;
-  const creds = JSON.parse(row.credentials);
+  const row = db.prepare("SELECT enabled, credentials FROM api_credentials WHERE service = 'google_drive'").get();
+  if (!row || row.enabled !== 1) return null;
+  let creds;
+  try {
+    creds = JSON.parse(row.credentials);
+  } catch (_err) {
+    return null;
+  }
   if (!creds.client_id || !creds.client_secret || !creds.refresh_token) return null;
   return creds;
 }
