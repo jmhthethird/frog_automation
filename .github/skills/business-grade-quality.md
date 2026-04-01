@@ -8,7 +8,7 @@ description: >
   UI/UX quality, accessibility, Google Drive integration, security, and testing.
 ---
 
-This skill is the single authoritative quality reference for the Frog Automation / SEO Automation Suite. It synthesises `senior-architect`, `senior-ui-developer`, `senior-ux-developer`, and guidance from `copilot-instructions.md` into a phased workflow. For Google Drive / OAuth2 work, invoke `google-drive-oauth` in addition to this skill. For greenfield UI design requiring a bold aesthetic direction, invoke `frontend-design` in addition.
+This skill is the single authoritative quality reference for the Frog Automation / SEO Automation Suite. It synthesises `senior-architect`, `senior-ui-developer`, `senior-ux-developer`, and guidance from `.github/copilot-instructions.md` into a phased workflow. For Google Drive / OAuth2 work, invoke `google-drive-oauth` in addition to this skill. For greenfield UI design requiring a bold aesthetic direction, invoke `frontend-design` in addition.
 
 Work through each phase in order. Use the checkbox blocks as your working state — mark items `[x]` as you complete them.
 
