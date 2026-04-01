@@ -55,7 +55,7 @@ Complete this phase before writing any code. These are the architecture decision
 |---|---|
 | Each panel is a self-contained DOM subtree | No code queries outside its own `#panel-*` container |
 | New element IDs are prefixed per the namespacing table (Appendix A) | No ID collision with existing elements |
-| `_apiCredentialsCache` is written through a single canonical code path | No parallel write path introduced |
+| `_apiCredentialsCache` is updated only via the approved helper functions | Any new code reuses those helpers; no ad-hoc cache mutations |
 | User-supplied values use `escHtml()` or `textContent` — never raw `innerHTML` | XSS safe |
 
 ### 1.3 Security Gate
