@@ -98,6 +98,50 @@ describe('POST /api/automation/run', () => {
       .expect(409);
     expect(res.body.error).toMatch(/already running/i);
   });
+
+  it('returns 202 with started:true when automation is accepted', async () => {
+    seedDriveCreds();
+    const googleDrive = require('../../src/google-drive');
+    // Stub sheets client: scope-check probe returns 404 (scope valid, sheet not found).
+    const sheetsStub = {
+      spreadsheets: {
+        get: jest.fn().mockRejectedValue(
+          Object.assign(new Error('Not Found'), { response: { status: 404 } })
+        ),
+      },
+    };
+    jest.spyOn(googleDrive, 'buildSheetsClient').mockReturnValue(sheetsStub);
+
+    const res = await ctx.request
+      .post('/api/automation/run')
+      .send({ automationId: 'content-architecture-audit', domains: ['example.com'] })
+      .expect(202);
+    expect(res.body).toEqual({ started: true });
+
+    jest.restoreAllMocks();
+  });
+
+  it('returns 503 when Sheets scope is missing', async () => {
+    seedDriveCreds();
+    const googleDrive = require('../../src/google-drive');
+    // Stub sheets client: probe returns 403 (scope absent).
+    const sheetsStub = {
+      spreadsheets: {
+        get: jest.fn().mockRejectedValue(
+          Object.assign(new Error('Forbidden'), { response: { status: 403 } })
+        ),
+      },
+    };
+    jest.spyOn(googleDrive, 'buildSheetsClient').mockReturnValue(sheetsStub);
+
+    const res = await ctx.request
+      .post('/api/automation/run')
+      .send({ automationId: 'content-architecture-audit', domains: ['example.com'] })
+      .expect(503);
+    expect(res.body.error).toMatch(/re-authorize/i);
+
+    jest.restoreAllMocks();
+  });
 });
 
 describe('DELETE /api/automation/cancel', () => {

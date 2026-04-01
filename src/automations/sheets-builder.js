@@ -84,7 +84,7 @@ async function createContentArchitectureAudit(opts) {
   });
   const spreadsheetId = copyResp.data.id;
 
-  // 2. Read the copied spreadsheet to discover sheet IDs (tab names → sheetId)
+  // 2. Read the copied spreadsheet to discover sheet names and validate structure.
   const ssResp = await sheets.spreadsheets.get({
     spreadsheetId,
     fields: 'sheets.properties',
@@ -92,6 +92,23 @@ async function createContentArchitectureAudit(opts) {
   const sheetMap = {};
   for (const s of ssResp.data.sheets) {
     sheetMap[s.properties.title] = s.properties.sheetId;
+  }
+
+  // 2a. Validate all required data-entry tabs exist in the copied template.
+  //     If the template is malformed, fail fast with a clear error rather than
+  //     silently writing to a wrong or missing sheet.
+  const REQUIRED_TABS = [
+    'Content Metadata', 'Image Metadata',
+    'Raw Crawl (Content)', 'Raw Crawl (Images)', 'Custom JS',
+  ];
+  const missingTabs = REQUIRED_TABS.filter(t => !(t in sheetMap));
+  if (missingTabs.length > 0) {
+    // Delete the broken copy so it doesn't clutter the user's Drive.
+    await drive.files.delete({ fileId: spreadsheetId }).catch(() => {});
+    throw new Error(
+      `Template is missing required tabs: ${missingTabs.join(', ')}. ` +
+      'Please update the template on Google Drive and try again.'
+    );
   }
 
   // 3. Write data into the five data-entry tabs (row 2 onward, preserving headers)

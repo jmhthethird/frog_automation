@@ -123,6 +123,14 @@ describe('analyseContentRows', () => {
     expect(issueCounts.missingTitle).toBe(1);
   });
 
+  it('missingTitle-only row has High priority and Pending status', () => {
+    const rows = [makeContentRow({ 'Title 1': '', 'Title 1 Length': '0' })];
+    const { analysedRows } = analyseContentRows(rows);
+    expect(analysedRows[0]._missingTitle).toBe(true);
+    expect(analysedRows[0]._rowPriority).toBe('1. High');
+    expect(analysedRows[0]._rowStatus).toBe('Pending');
+  });
+
   it('detects duplicate titles', () => {
     const rows = [
       makeContentRow({ 'Address': 'https://example.com/a' }),

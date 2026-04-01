@@ -5,7 +5,7 @@ const rateLimit = require('express-rate-limit');
 const { db } = require('../db');
 const { acquireLock, releaseLock, cancelLock, setProgress, getLockState } = require('../automation-lock');
 const {
-  buildDriveClientFromOAuth, listDomainsWithCrawlData,
+  buildDriveClientFromOAuth, buildSheetsClient, listDomainsWithCrawlData,
 } = require('../google-drive');
 
 const router = express.Router();
@@ -79,6 +79,29 @@ router.post('/run', writeLimit, async (req, res) => {
 
     const creds = getDriveCreds();
     if (!creds) return res.status(503).json({ error: 'Google Drive not connected' });
+
+    // Verify the stored token has the Sheets scope before acquiring the lock.
+    // spreadsheets.get on a non-existent ID returns 404 when scope is valid,
+    // and 401/403 when the scope is absent.
+    try {
+      const sheets = buildSheetsClient(creds.client_id, creds.client_secret, creds.refresh_token);
+      await sheets.spreadsheets.get({ spreadsheetId: 'scope-check' }).catch(err => {
+        const status = err?.response?.status ?? err?.code;
+        if (status === 401 || status === 403) {
+          const scopeErr = new Error('SCOPE_MISSING');
+          scopeErr.isScopeMissing = true;
+          throw scopeErr;
+        }
+        // Any other error (e.g. 404 spreadsheet not found) — scope is valid.
+      });
+    } catch (err) {
+      if (err.isScopeMissing) {
+        return res.status(503).json({
+          error: 'Google Drive is connected but the Sheets scope is missing. Please disconnect and re-authorize Google Drive to grant Sheets access.',
+        });
+      }
+      // Non-scope probe errors are non-fatal; proceed.
+    }
 
     const acquired = acquireLock(automationId, domains);
     if (!acquired) return res.status(409).json({ error: 'Automation already running' });

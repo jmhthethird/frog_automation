@@ -454,18 +454,6 @@ async function listFolderContents(folderId, drive) {
 }
 
 /**
- * Find a subfolder by exact name inside a parent folder.
- *
- * @param {string} parentId
- * @param {string} name
- * @param {import('googleapis').drive_v3.Drive} drive
- * @returns {Promise<string|null>}  Folder ID or null
- */
-async function findFolderByName(parentId, name, drive) {
-  return findFolder(drive, name, parentId);
-}
-
-/**
  * List domain folders that contain crawl data.
  *
  * Navigates to the `Crawls/` category folder under the given root and lists
@@ -528,6 +516,6 @@ module.exports = {
   buildOAuth2Client, buildDriveClientFromOAuth, buildSheetsClient,
   ensureFolder, findFolder, domainFromUrl, listSubfolders,
   migrateDriveFolders, ensureCategoryFolders,
-  downloadFileAsText, listFolderContents, findFolderByName, findFileByName,
+  downloadFileAsText, listFolderContents, findFileByName,
   listDomainsWithCrawlData, getLatestCrawlFolder,
 };

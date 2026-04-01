@@ -105,7 +105,7 @@ function analyseContentRows(rows) {
     const h1Rewrite    = missingH1_flag || duplicateH1 || h1LengthFail || multipleH1;
 
     // Priority: any high-issue → '1. High'; any medium → '2. Medium'; else ''
-    const hasHigh   = duplicateTitle || missingDescription || duplicateDescription || missingH1_flag;
+    const hasHigh   = missingTitle || duplicateTitle || missingDescription || duplicateDescription || missingH1_flag;
     const hasMedium = titleLengthFail || descLengthFail || titleBadDelimiter || duplicateH1 || multipleH1 || h1LengthFail;
     const rowPriority = hasHigh ? '1. High' : (hasMedium ? '2. Medium' : '');
     const rowStatus   = (titleRewrite || descRewrite || h1Rewrite) ? 'Pending' : '';
@@ -249,6 +249,15 @@ async function run(domainNames, creds, progress) {
       const contentRows = parseCsvText(contentCsvText);
       const filteredContent = filterInternalHtmlPages(contentRows);
 
+      // Guard against excessively large crawls (Sheets API cell limit ~5M).
+      const CRAWL_ROW_LIMIT = 10_000;
+      let crawlTruncated = false;
+      if (filteredContent.length > CRAWL_ROW_LIMIT) {
+        crawlTruncated = true;
+        update(`Warning: crawl has ${filteredContent.length} pages; truncating to ${CRAWL_ROW_LIMIT} for Sheets.`);
+        filteredContent.splice(CRAWL_ROW_LIMIT);
+      }
+
       // Find and download image CSV
       const imageFile = findCsvByName(files, 'image')
                      || findCsvByName(files, 'all_image');
@@ -310,6 +319,7 @@ async function run(domainNames, creds, progress) {
         spreadsheetUrl: sheetResult.spreadsheetUrl,
         issueCounts,
         crawlFolder: latestFolder.name,
+        crawlTruncated,
       });
 
     } catch (err) {
