@@ -4,9 +4,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { db } = require('../db');
 const { acquireLock, releaseLock, cancelLock, setProgress, getLockState } = require('../automation-lock');
-const {
-  buildDriveClientFromOAuth, buildSheetsClient, listDomainsWithCrawlData,
-} = require('../google-drive');
+const googleDrive = require('../google-drive');
 
 const router = express.Router();
 
@@ -40,8 +38,8 @@ router.get('/domains', readLimit, async (req, res) => {
     const creds = getDriveCreds();
     if (!creds) return res.status(503).json({ error: 'Google Drive not connected' });
 
-    const drive = buildDriveClientFromOAuth(creds.client_id, creds.client_secret, creds.refresh_token);
-    const domains = await listDomainsWithCrawlData(creds.root_folder_id, drive);
+    const drive = googleDrive.buildDriveClientFromOAuth(creds.client_id, creds.client_secret, creds.refresh_token);
+    const domains = await googleDrive.listDomainsWithCrawlData(creds.root_folder_id, drive);
     res.json({ domains });
   } catch (err) {
     res.status(500).json({ error: err.message || String(err) });
@@ -84,7 +82,7 @@ router.post('/run', writeLimit, async (req, res) => {
     // spreadsheets.get on a non-existent ID returns 404 when scope is valid,
     // and 401/403 when the scope is absent.
     try {
-      const sheets = buildSheetsClient(creds.client_id, creds.client_secret, creds.refresh_token);
+      const sheets = googleDrive.buildSheetsClient(creds.client_id, creds.client_secret, creds.refresh_token);
       await sheets.spreadsheets.get({ spreadsheetId: 'scope-check' }).catch(err => {
         const status = err?.response?.status ?? err?.code;
         if (status === 401 || status === 403) {
