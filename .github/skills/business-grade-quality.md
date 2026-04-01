@@ -222,10 +222,11 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal()
 ### 3.6 XSS Safety (mandatory)
 
 ```javascript
-// Safe — use for user-supplied strings in innerHTML contexts
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// Canonical helper — already defined in public/index.html; do not redefine
+// Returns '' for null/undefined; escapes &, <, >, " for safe innerHTML use
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // Prefer textContent when not building HTML
