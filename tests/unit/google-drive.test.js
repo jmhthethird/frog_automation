@@ -24,6 +24,7 @@ jest.mock('googleapis', () => {
       list:   jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      get:    jest.fn(),
     },
   };
 
@@ -49,6 +50,11 @@ const {
   listSubfolders,
   migrateDriveFolders,
   ensureCategoryFolders,
+  downloadFileAsText,
+  listFolderContents,
+  listDomainsWithCrawlData,
+  getLatestCrawlFolder,
+  findFileByName,
 } = require('../../src/google-drive');
 
 // ─── buildOAuth2Client ────────────────────────────────────────────────────────
@@ -647,5 +653,190 @@ describe('ensureCategoryFolders()', () => {
     for (const call of _mockDrive.files.list.mock.calls) {
       expect(call[0].q).toContain("'root' in parents");
     }
+  });
+});
+
+// ─── downloadFileAsText ───────────────────────────────────────────────────────
+describe('downloadFileAsText()', () => {
+  const { EventEmitter } = require('events');
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('resolves with the file content as a UTF-8 string', async () => {
+    const emitter = new EventEmitter();
+    _mockDrive.files.get.mockResolvedValueOnce({ data: emitter });
+
+    const promise = downloadFileAsText('file-id-123', _mockDrive);
+
+    // Emit stream events synchronously after the promise is set up
+    setImmediate(() => {
+      emitter.emit('data', Buffer.from('hello '));
+      emitter.emit('data', Buffer.from('world'));
+      emitter.emit('end');
+    });
+
+    const result = await promise;
+    expect(result).toBe('hello world');
+  });
+
+  it('rejects when the stream emits an error', async () => {
+    const emitter = new EventEmitter();
+    _mockDrive.files.get.mockResolvedValueOnce({ data: emitter });
+
+    const promise = downloadFileAsText('file-id-123', _mockDrive);
+
+    setImmediate(() => {
+      emitter.emit('error', new Error('stream error'));
+    });
+
+    await expect(promise).rejects.toThrow('stream error');
+  });
+
+  it('calls files.get with alt:media and stream responseType', async () => {
+    const emitter = new EventEmitter();
+    _mockDrive.files.get.mockResolvedValueOnce({ data: emitter });
+
+    const promise = downloadFileAsText('my-file-id', _mockDrive);
+    setImmediate(() => { emitter.emit('data', Buffer.from('')); emitter.emit('end'); });
+    await promise;
+
+    expect(_mockDrive.files.get).toHaveBeenCalledWith(
+      { fileId: 'my-file-id', alt: 'media' },
+      { responseType: 'stream' },
+    );
+  });
+});
+
+// ─── listFolderContents ───────────────────────────────────────────────────────
+describe('listFolderContents()', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns all files in a folder', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({
+      data: { files: [{ id: 'f1', name: 'a.csv', mimeType: 'text/csv', modifiedTime: '2026-01-01' }] },
+    });
+    const files = await listFolderContents('folder-id', _mockDrive);
+    expect(files).toHaveLength(1);
+    expect(files[0].id).toBe('f1');
+  });
+
+  it('paginates through multiple pages', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [{ id: 'f1', name: 'a.csv', mimeType: 'text/csv', modifiedTime: '2026-01-01' }], nextPageToken: 'tok2' } })
+      .mockResolvedValueOnce({ data: { files: [{ id: 'f2', name: 'b.csv', mimeType: 'text/csv', modifiedTime: '2026-01-02' }] } });
+    const files = await listFolderContents('folder-id', _mockDrive);
+    expect(files).toHaveLength(2);
+    expect(_mockDrive.files.list).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns empty array when folder has no files', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    const files = await listFolderContents('folder-id', _mockDrive);
+    expect(files).toEqual([]);
+  });
+
+  it('falls back to Drive root for invalid folder IDs', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    await listFolderContents("bad'id", _mockDrive);
+    expect(_mockDrive.files.list.mock.calls[0][0].q).toContain("'root' in parents");
+  });
+});
+
+// ─── listDomainsWithCrawlData ─────────────────────────────────────────────────
+describe('listDomainsWithCrawlData()', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns domain names and folder IDs from the Crawls subfolder', async () => {
+    // findFolder for 'Crawls'
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder-id' }] } })
+      // listSubfolders inside Crawls
+      .mockResolvedValueOnce({ data: { files: [
+        { id: 'd1', name: 'example.com' },
+        { id: 'd2', name: 'test.org' },
+      ] } });
+
+    const domains = await listDomainsWithCrawlData('root-id', _mockDrive);
+    expect(domains).toEqual([
+      { name: 'example.com', folderId: 'd1' },
+      { name: 'test.org', folderId: 'd2' },
+    ]);
+  });
+
+  it('returns empty array when the Crawls folder does not exist', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    const domains = await listDomainsWithCrawlData('root-id', _mockDrive);
+    expect(domains).toEqual([]);
+  });
+
+  it('returns empty array when Crawls folder has no subfolders', async () => {
+    _mockDrive.files.list
+      .mockResolvedValueOnce({ data: { files: [{ id: 'crawls-folder' }] } })
+      .mockResolvedValueOnce({ data: { files: [] } });
+    const domains = await listDomainsWithCrawlData('root-id', _mockDrive);
+    expect(domains).toEqual([]);
+  });
+});
+
+// ─── getLatestCrawlFolder ─────────────────────────────────────────────────────
+describe('getLatestCrawlFolder()', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns the most recently modified folder', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({
+      data: { files: [
+        { id: 'f1', name: 'crawl-old', mimeType: 'application/vnd.google-apps.folder', modifiedTime: '2026-01-01T00:00:00Z' },
+        { id: 'f2', name: 'crawl-new', mimeType: 'application/vnd.google-apps.folder', modifiedTime: '2026-03-01T00:00:00Z' },
+      ] },
+    });
+    const result = await getLatestCrawlFolder('domain-folder-id', _mockDrive);
+    expect(result).toEqual({ id: 'f2', name: 'crawl-new' });
+  });
+
+  it('returns null when there are no folders', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    const result = await getLatestCrawlFolder('domain-folder-id', _mockDrive);
+    expect(result).toBeNull();
+  });
+
+  it('ignores non-folder files', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({
+      data: { files: [
+        { id: 'f1', name: 'data.csv', mimeType: 'text/csv', modifiedTime: '2026-03-01T00:00:00Z' },
+        { id: 'f2', name: 'crawl-folder', mimeType: 'application/vnd.google-apps.folder', modifiedTime: '2026-01-01T00:00:00Z' },
+      ] },
+    });
+    const result = await getLatestCrawlFolder('domain-folder-id', _mockDrive);
+    expect(result).toEqual({ id: 'f2', name: 'crawl-folder' });
+  });
+});
+
+// ─── findFileByName ───────────────────────────────────────────────────────────
+describe('findFileByName()', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns the file ID when a matching file is found', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [{ id: 'file-id-1', name: 'internal_all.csv' }] } });
+    const id = await findFileByName('parent-id', 'internal_all.csv', _mockDrive);
+    expect(id).toBe('file-id-1');
+  });
+
+  it('returns null when no matching file is found', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    const id = await findFileByName('parent-id', 'missing.csv', _mockDrive);
+    expect(id).toBeNull();
+  });
+
+  it('falls back to Drive root for invalid parent IDs', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    await findFileByName("bad'id", 'file.csv', _mockDrive);
+    expect(_mockDrive.files.list.mock.calls[0][0].q).toContain("'root' in parents");
+  });
+
+  it('escapes single quotes in the file name', async () => {
+    _mockDrive.files.list.mockResolvedValueOnce({ data: { files: [] } });
+    await findFileByName('parent-id', "O'Brien's data.csv", _mockDrive);
+    const q = _mockDrive.files.list.mock.calls[0][0].q;
+    expect(q).toContain("O\\'Brien\\'s data.csv");
   });
 });
