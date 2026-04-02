@@ -54,6 +54,50 @@ describe('GET /api/automation/domains', () => {
     const res = await ctx.request.get('/api/automation/domains').expect(503);
     expect(res.body.error).toMatch(/not connected/i);
   });
+
+  it('returns 503 when Drive credentials are disabled', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 0, '{"client_id":"a","client_secret":"b","refresh_token":"c"}')
+      ON CONFLICT(service) DO UPDATE SET enabled = 0, credentials = excluded.credentials
+    `).run();
+    const res = await ctx.request.get('/api/automation/domains').expect(503);
+    expect(res.body.error).toMatch(/not connected/i);
+  });
+
+  it('returns 503 when Drive credentials JSON is malformed', async () => {
+    db.prepare(`
+      INSERT INTO api_credentials (service, enabled, credentials)
+      VALUES ('google_drive', 1, 'not-json')
+      ON CONFLICT(service) DO UPDATE SET enabled = 1, credentials = 'not-json'
+    `).run();
+    const res = await ctx.request.get('/api/automation/domains').expect(503);
+    expect(res.body.error).toMatch(/not connected/i);
+  });
+
+  it('returns list of domains when Drive is connected', async () => {
+    seedDriveCreds();
+    const googleDrive = require('../../src/google-drive');
+    jest.spyOn(googleDrive, 'buildDriveClientFromOAuth').mockReturnValue({});
+    jest.spyOn(googleDrive, 'listDomainsWithCrawlData').mockResolvedValue([
+      { name: 'example.com', folderId: 'f1' },
+      { name: 'test.org', folderId: 'f2' },
+    ]);
+    const res = await ctx.request.get('/api/automation/domains').expect(200);
+    expect(res.body.domains).toHaveLength(2);
+    expect(res.body.domains[0].name).toBe('example.com');
+    jest.restoreAllMocks();
+  });
+
+  it('returns 500 when Drive call throws', async () => {
+    seedDriveCreds();
+    const googleDrive = require('../../src/google-drive');
+    jest.spyOn(googleDrive, 'buildDriveClientFromOAuth').mockReturnValue({});
+    jest.spyOn(googleDrive, 'listDomainsWithCrawlData').mockRejectedValue(new Error('network error'));
+    const res = await ctx.request.get('/api/automation/domains').expect(500);
+    expect(res.body.error).toMatch(/network error/);
+    jest.restoreAllMocks();
+  });
 });
 
 describe('POST /api/automation/run', () => {
